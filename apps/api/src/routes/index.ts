@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { asc, and, count, desc, eq, sql } from "drizzle-orm";
-import bcrypt from "bcryptjs";
+import { hashPassword, verifyPasswordDetailed } from "../lib/crypto.js";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
 import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customers, inventory, inventoryMovements, newsletterSubscribers, orderItems, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
 import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
+import { adminGuard } from "../lib/rbac.js";
 import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule } from "../middleware/authRateLimit.js";
 import type { Config } from "../config.js";
 import { registerSchema, loginSchema, adminCustomerSchema, checkoutSchema, cartItemSchema, orderStatusSchema, stockMovementSchema, productSchema, orderVolumeLimitsSchema, gatewayConfigSchema, chargebackStatusSchema } from "@airsoft/shared";
@@ -439,7 +440,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         return;
       }
 
-      const passwordHash = await bcrypt.hash(password, 12);
+      const passwordHash = await hashPassword(password);
 
       // Corrida de requisições:ON CONFLICT evita 500 por e-mail duplicado.
       let inserted: (typeof customers.$inferSelect)[] = [];
@@ -493,7 +494,10 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       const { email, password } = parsed.data;
       const found = await db.select().from(customers).where(eq(customers.email, email)).limit(1);
       const customer = found[0];
-      if (!customer?.passwordHash || !(await bcrypt.compare(password, customer.passwordHash))) {
+      const { ok } = customer?.passwordHash
+        ? await verifyPasswordDetailed(password, customer.passwordHash)
+        : { ok: false };
+      if (!ok || !customer) {
         await writeAudit(db, request, {
           action: "auth.login.failed",
           entity: "customer",
@@ -569,7 +573,10 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     const { email, password } = parsed.data;
     const found = await db.select().from(users).where(eq(users.email, email)).limit(1);
     const user = found[0];
-    if (!user || !user.active || !(await bcrypt.compare(password, user.passwordHash))) {
+    const verification = user?.passwordHash
+      ? await verifyPasswordDetailed(password, user.passwordHash)
+      : { ok: false as const };
+    if (!user || !user.active || !verification.ok) {
       await writeAudit(db, request, {
         action: "auth.admin.login.failed",
         entity: "user",
@@ -579,6 +586,10 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       reply.status(401);
       reply.send({ error: { code: "unauthorized", message: "E-mail ou senha incorretos" } });
       return;
+    }
+    // Rehash transparente: bcrypt legado → argon2id no primeiro login bem-sucedido.
+    if (verification.rehash) {
+      await db.update(users).set({ passwordHash: verification.rehash }).where(eq(users.id, user.id));
     }
     await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
     const token = await signJwt({ sub: user.id, role: user.role, type: "access" });
@@ -601,7 +612,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   // ---------------------------------------------------------- Admin clientes
   app.get(
     "/api/admin/customers",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("customers", "read")] },
     async (request, reply) => {
       const q = request.query as Record<string, string | undefined>;
       const term = (q.q ?? "").trim();
@@ -616,7 +627,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   app.get(
     "/api/admin/customers/:id",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("customers", "read")] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const found = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
@@ -631,7 +642,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   app.post(
     "/api/admin/customers",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("customers", "create")] },
     async (request, reply) => {
       const parsed = adminCustomerSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -646,7 +657,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         reply.send({ error: { code: "email_taken", message: "E-mail já cadastrado" } });
         return;
       }
-      const passwordHash = password ? await bcrypt.hash(password, 10) : null;
+      const passwordHash = password ? await hashPassword(password) : null;
       const inserted = await db
         .insert(customers)
         .values({
@@ -675,7 +686,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   // ---------------------------------------------------------- Admin métricas
   app.get(
     "/api/admin/metrics",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("dashboard", "read")] },
     async (request, reply) => {
       const [oTotal, oApproved, pTotal, lowStock, cbTotal] = await Promise.all([
         db.select({ value: count() }).from(orders),
@@ -701,7 +712,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   // ---------------------------------------------------------- Admin produtos
   app.get(
     "/api/admin/products",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("products", "read")] },
     async (request, reply) => {
       const rows = await db.select().from(products).orderBy(desc(products.createdAt));
       const items = await Promise.all(
@@ -716,7 +727,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   app.post(
     "/api/admin/products",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("products", "create")] },
     async (request, reply) => {
       const parsed = productSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -773,7 +784,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   app.patch(
     "/api/admin/products/:id",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("products", "update")] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const body = request.body as Partial<{ name: string; published: boolean; featured: boolean }>;
@@ -800,7 +811,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   // ---------------------------------------------------------- Admin estoque
   app.get(
     "/api/admin/inventory",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("inventory", "read")] },
     async (request, reply) => {
       const rows = await db.select().from(inventory).orderBy(asc(inventory.variantId));
       const items = await Promise.all(
@@ -816,7 +827,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   app.post(
     "/api/admin/inventory/movements",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("inventory", "update")] },
     async (request, reply) => {
       const parsed = stockMovementSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -844,7 +855,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   // ---------------------------------------------------------- Admin pedidos
   app.get(
     "/api/admin/orders",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("orders", "read")] },
     async (request, reply) => {
       const rows = await db.select().from(orders).orderBy(desc(orders.createdAt)).limit(200);
       const items = await Promise.all(
@@ -863,7 +874,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   app.post(
     "/api/admin/orders/:id/transition",
-    { preHandler: authMiddleware },
+    { preHandler: [authMiddleware, adminGuard("orders", "update")] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const parsed = orderStatusSchema.safeParse(request.body);
@@ -890,7 +901,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   );
 
   // Admin health — protegido como as demais rotas de admin
-  app.get("/api/admin/health", { preHandler: authMiddleware }, async (request, reply) => {
+  app.get("/api/admin/health", { preHandler: [authMiddleware, adminGuard("dashboard", "read")] }, async (request, reply) => {
     reply.send({ status: "ok" });
   });
 

@@ -1,3 +1,4 @@
+import argon2 from "argon2";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { config } from "../config.js";
@@ -21,12 +22,43 @@ export class CredentialDecryptionError extends Error {
   }
 }
 
-export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, 12);
+/** Hashes legados (bcrypt) ainda aceitos na verificação — rehash no login. */
+function isBcryptHash(hash: string): boolean {
+  return /^\$2[aby]\$/.test(hash);
 }
 
+/** Senha nova: argon2id (OWASP). */
+export async function hashPassword(plain: string): Promise<string> {
+  return argon2.hash(plain, { type: argon2.argon2id });
+}
+
+export interface PasswordVerifyResult {
+  ok: boolean;
+  /** Hash argon2id novo quando o original era bcrypt válido — gravar no banco. */
+  rehash?: string;
+}
+
+/**
+ * Verifica senha aceitando bcrypt legado (rehash transparente) e argon2id.
+ */
+export async function verifyPasswordDetailed(plain: string, hash: string): Promise<PasswordVerifyResult> {
+  if (!hash) return { ok: false };
+  if (isBcryptHash(hash)) {
+    const ok = await bcrypt.compare(plain, hash);
+    if (!ok) return { ok: false };
+    return { ok: true, rehash: await hashPassword(plain) };
+  }
+  try {
+    const ok = await argon2.verify(hash, plain);
+    return ok ? { ok: true } : { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** Compat: boolean simples (sem rehash). Preferir verifyPasswordDetailed no login. */
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(plain, hash);
+  return (await verifyPasswordDetailed(plain, hash)).ok;
 }
 
 function gatewayKey(): Buffer {

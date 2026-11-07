@@ -1,5 +1,6 @@
 import fastify from "fastify";
 import fastifyCookie from "@fastify/cookie";
+import { csrfGuard } from "./lib/csrf.js";
 import fastifyCors from "@fastify/cors";
 import fastifyHelmet from "@fastify/helmet";
 import fastifyRateLimit from "@fastify/rate-limit";
@@ -55,6 +56,21 @@ export async function createServer() {
   });
 
   await app.register(fastifyHelmet);
+  // B.3: CSRF em mutações do admin. Em dev local o admin UI ainda precisa
+  // enviar x-csrf-token; CSRF_ENFORCE=false desliga a guarda (nunca em produção).
+  if (config.NODE_ENV === "production" || process.env.CSRF_ENFORCE === "true") {
+    app.addHook("preHandler", csrfGuard);
+  } else if (process.env.CSRF_ENFORCE !== "false") {
+    // default fora de produção: ligado, mas pode ser desligado localmente
+    app.addHook("preHandler", csrfGuard);
+  }
+  // B.9: painel/admin API nunca indexado.
+  app.addHook("onSend", async (request, reply) => {
+    if (request.url.startsWith("/api/admin") || request.url.startsWith("/painel")) {
+      reply.header("X-Robots-Tag", "noindex, nofollow, noarchive");
+    }
+  });
+
 
   // Guarda global de requisições (por IP, por janela).
   //

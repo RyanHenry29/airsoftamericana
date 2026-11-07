@@ -61,7 +61,8 @@ export const movementTypeEnum = pgEnum("movement_type", [
   "liberacao",
   "transferencia",
 ]);
-export const userRoleEnum = pgEnum("user_role", ["admin", "manager", "operator", "viewer"]);
+// Legado: mantido para compatibilidade de import; papéis reais em lib/rbac.ts (7 papéis).
+export const userRoleEnum = { enumValues: ["admin","manager","operator","viewer","superadmin","gerente","estoque","atendimento","marketing","financeiro","somente-leitura"] as const };
 
 export const users = pgTable(
   "users",
@@ -70,7 +71,7 @@ export const users = pgTable(
     email: varchar("email", { length: 254 }).notNull(),
     passwordHash: text("password_hash").notNull(),
     name: varchar("name", { length: 120 }).notNull(),
-    role: userRoleEnum("role").notNull().default("operator"),
+    role: varchar("role", { length: 32 }).notNull().default("atendimento"),
     mfaEnabled: boolean("mfa_enabled").notNull().default(false),
     totpSecret: text("totp_secret"),
     active: boolean("active").notNull().default(true),

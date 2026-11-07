@@ -15,6 +15,7 @@ import { z } from "zod";
 import type { Db } from "../db/index.js";
 import { blogPosts } from "../db/schema.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { adminGuard } from "../lib/rbac.js";
 
 const postInputSchema = z.object({
   title: z.string().trim().min(4).max(200),
@@ -153,7 +154,7 @@ export function registerBlogRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // --------------------------------------------------------------------- Admin
-  app.get("/api/admin/blog", { preHandler: authMiddleware }, async (request, reply) => {
+  app.get("/api/admin/blog", { preHandler: [authMiddleware, adminGuard("content","read")] }, async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
     const search = q.q?.trim();
     const status = q.status?.trim();
@@ -177,7 +178,7 @@ export function registerBlogRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ items: rows.map(toView) });
   });
 
-  app.post("/api/admin/blog", { preHandler: authMiddleware }, async (request, reply) => {
+  app.post("/api/admin/blog", { preHandler: [authMiddleware, adminGuard("content","create")] }, async (request, reply) => {
     const parsed = postInputSchema.safeParse(request.body);
     if (!parsed.success) {
       reply.status(400);
@@ -232,7 +233,7 @@ export function registerBlogRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ post: toView(row) });
   });
 
-  app.patch("/api/admin/blog/:id", { preHandler: authMiddleware }, async (request, reply) => {
+  app.patch("/api/admin/blog/:id", { preHandler: [authMiddleware, adminGuard("content","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const parsed = postPatchSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -293,7 +294,7 @@ export function registerBlogRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ post: toView(row) });
   });
 
-  app.delete("/api/admin/blog/:id", { preHandler: authMiddleware }, async (request, reply) => {
+  app.delete("/api/admin/blog/:id", { preHandler: [authMiddleware, adminGuard("content","delete")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const found = await db.select({ id: blogPosts.id }).from(blogPosts).where(eq(blogPosts.id, id)).limit(1);
     if (!found[0]) {
@@ -306,7 +307,7 @@ export function registerBlogRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // Slug sugerido a partir do título — usado pelo formulário do painel.
-  app.get("/api/admin/blog/slug-preview", { preHandler: authMiddleware }, async (request, reply) => {
+  app.get("/api/admin/blog/slug-preview", { preHandler: [authMiddleware, adminGuard("content","read")] }, async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
     const title = q.title?.trim() ?? "";
     const base = slugify(title) || "artigo";

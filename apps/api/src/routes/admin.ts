@@ -3,7 +3,9 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
-import { authMiddleware, requireRole } from "../middleware/auth.js";
+import { authMiddleware } from "../middleware/auth.js";
+import { adminGuard } from "../lib/rbac.js";
+import { csrfTokenFor } from "../lib/csrf.js";
 import { listAudit } from "../lib/audit.js";
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
@@ -63,9 +65,7 @@ function actorOf(request: FastifyRequest): string | null {
  * Toda mutação persiste e deixa rastro em audit_logs.
  */
 export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
-  const admin = {
-    preHandler: [authMiddleware, requireRole("admin", "manager")],
-  };
+  const A = authMiddleware; // compat; cada rota declara adminGuard(mod,act)
 
   const audit = async (
     request: FastifyRequest,
@@ -83,13 +83,20 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     });
   };
 
+  // ---------------------------------------------------------------- CSRF (B.3)
+  app.get("/api/admin/csrf", { preHandler: [A, adminGuard("dashboard", "read")] }, async (request, reply) => {
+    const cookies = (request as any).cookies;
+    const session = cookies?.aa_session ? String(cookies.aa_session) : "";
+    reply.send({ token: session ? csrfTokenFor(session) : null });
+  });
+
   // ---------------------------------------------------------------- Banners / campanhas
-  app.get("/api/admin/banners", admin, async (_request, reply) => {
+  app.get("/api/admin/banners", { preHandler: [A, adminGuard("banners","read")] }, async (_request, reply) => {
     const rows = await db.select().from(schema.banners).orderBy(asc(schema.banners.position));
     reply.send({ items: rows });
   });
 
-  app.post("/api/admin/banners", admin, async (request, reply) => {
+  app.post("/api/admin/banners", { preHandler: [A, adminGuard("banners","create")] }, async (request, reply) => {
     const body = request.body as BannerInput;
     if (!body?.title) {
       reply.status(400);
@@ -118,7 +125,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ banner: row });
   });
 
-  app.patch("/api/admin/banners/:id", admin, async (request, reply) => {
+  app.patch("/api/admin/banners/:id", { preHandler: [A, adminGuard("banners","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as Partial<BannerInput>;
     const [row] = await db
@@ -148,7 +155,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ banner: row });
   });
 
-  app.delete("/api/admin/banners/:id", admin, async (request, reply) => {
+  app.delete("/api/admin/banners/:id", { preHandler: [A, adminGuard("banners","delete")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     await db.delete(schema.banners).where(eq(schema.banners.id, id));
     await audit(request, "banner.deleted", "banners", id);
@@ -156,7 +163,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Seções da homepage
-  app.get("/api/admin/homepage-sections", admin, async (_request, reply) => {
+  app.get("/api/admin/homepage-sections", { preHandler: [A, adminGuard("homepage","read")] }, async (_request, reply) => {
     const rows = await db
       .select()
       .from(schema.homepageSections)
@@ -164,7 +171,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ items: rows });
   });
 
-  app.post("/api/admin/homepage-sections", admin, async (request, reply) => {
+  app.post("/api/admin/homepage-sections", { preHandler: [A, adminGuard("homepage","create")] }, async (request, reply) => {
     const body = request.body as SectionInput;
     if (!body?.kind) {
       reply.status(400);
@@ -187,7 +194,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ section: row });
   });
 
-  app.patch("/api/admin/homepage-sections/:id", admin, async (request, reply) => {
+  app.patch("/api/admin/homepage-sections/:id", { preHandler: [A, adminGuard("homepage","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as Partial<SectionInput>;
     const [row] = await db
@@ -211,7 +218,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ section: row });
   });
 
-  app.post("/api/admin/homepage-sections/reorder", admin, async (request, reply) => {
+  app.post("/api/admin/homepage-sections/reorder", { preHandler: [A, adminGuard("homepage","update")] }, async (request, reply) => {
     const body = request.body as { ids?: string[] };
     const ids = body?.ids ?? [];
     for (const [index, id] of ids.entries()) {
@@ -224,7 +231,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ ok: true, count: ids.length });
   });
 
-  app.delete("/api/admin/homepage-sections/:id", admin, async (request, reply) => {
+  app.delete("/api/admin/homepage-sections/:id", { preHandler: [A, adminGuard("homepage","delete")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     await db.delete(schema.homepageSections).where(eq(schema.homepageSections.id, id));
     await audit(request, "homepage_section.deleted", "homepage_sections", id);
@@ -232,7 +239,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Categorias
-  app.get("/api/admin/categories", admin, async (_request, reply) => {
+  app.get("/api/admin/categories", { preHandler: [A, adminGuard("categories","read")] }, async (_request, reply) => {
     const rows = await db
       .select()
       .from(schema.categories)
@@ -248,7 +255,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ items: tree, total: rows.length });
   });
 
-  app.post("/api/admin/categories", admin, async (request, reply) => {
+  app.post("/api/admin/categories", { preHandler: [A, adminGuard("categories","create")] }, async (request, reply) => {
     const body = request.body as CategoryInput;
     if (!body?.name || !body?.slug) {
       reply.status(400);
@@ -273,7 +280,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ category: row });
   });
 
-  app.patch("/api/admin/categories/:id", admin, async (request, reply) => {
+  app.patch("/api/admin/categories/:id", { preHandler: [A, adminGuard("categories","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as Partial<CategoryInput>;
     const [row] = await db
@@ -299,7 +306,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ category: row });
   });
 
-  app.delete("/api/admin/categories/:id", admin, async (request, reply) => {
+  app.delete("/api/admin/categories/:id", { preHandler: [A, adminGuard("categories","delete")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const children = await db
       .select({ id: schema.categories.id })
@@ -321,7 +328,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Marcas
-  app.get("/api/admin/brands", admin, async (_request, reply) => {
+  app.get("/api/admin/brands", { preHandler: [A, adminGuard("brands","read")] }, async (_request, reply) => {
     const rows = await db
       .select()
       .from(schema.brands)
@@ -329,7 +336,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ items: rows });
   });
 
-  app.post("/api/admin/brands", admin, async (request, reply) => {
+  app.post("/api/admin/brands", { preHandler: [A, adminGuard("brands","create")] }, async (request, reply) => {
     const body = request.body as BrandInput;
     if (!body?.name || !body?.slug) {
       reply.status(400);
@@ -352,7 +359,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ brand: row });
   });
 
-  app.patch("/api/admin/brands/:id", admin, async (request, reply) => {
+  app.patch("/api/admin/brands/:id", { preHandler: [A, adminGuard("brands","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as Partial<BrandInput>;
     const [row] = await db
@@ -376,7 +383,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ brand: row });
   });
 
-  app.delete("/api/admin/brands/:id", admin, async (request, reply) => {
+  app.delete("/api/admin/brands/:id", { preHandler: [A, adminGuard("brands","delete")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const used = await db
       .select({ id: schema.products.id })
@@ -394,7 +401,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Produto: ficha, galeria, relacionados
-  app.get("/api/admin/products/:id", admin, async (request, reply) => {
+  app.get("/api/admin/products/:id", { preHandler: [A, adminGuard("products","read")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const rows = await db.select().from(schema.products).where(eq(schema.products.id, id)).limit(1);
     const product = rows[0];
@@ -435,7 +442,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     });
   });
 
-  app.post("/api/admin/products/:id/images", admin, async (request, reply) => {
+  app.post("/api/admin/products/:id/images", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as { url?: string; alt?: string; kind?: string };
     if (!body?.url) {
@@ -457,14 +464,14 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ image: row });
   });
 
-  app.delete("/api/admin/products/:id/images/:imageId", admin, async (request, reply) => {
+  app.delete("/api/admin/products/:id/images/:imageId", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id, imageId } = request.params as { id: string; imageId: string };
     await db.delete(schema.productImages).where(eq(schema.productImages.id, imageId));
     await audit(request, "product.image.removed", "products", id);
     reply.send({ ok: true });
   });
 
-  app.post("/api/admin/products/:id/specs", admin, async (request, reply) => {
+  app.post("/api/admin/products/:id/specs", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as { key?: string; label?: string; value?: string };
     if (!body?.label || !body?.value) {
@@ -492,14 +499,14 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ spec: row });
   });
 
-  app.delete("/api/admin/products/:id/specs/:specId", admin, async (request, reply) => {
+  app.delete("/api/admin/products/:id/specs/:specId", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id, specId } = request.params as { id: string; specId: string };
     await db.delete(schema.productSpecs).where(eq(schema.productSpecs.id, specId));
     await audit(request, "product.spec.removed", "products", id);
     reply.send({ ok: true });
   });
 
-  app.post("/api/admin/products/:id/related", admin, async (request, reply) => {
+  app.post("/api/admin/products/:id/related", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as { relatedProductId?: string };
     if (!body?.relatedProductId) {
@@ -522,7 +529,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ related: row ?? null });
   });
 
-  app.delete("/api/admin/products/:id/related/:relatedId", admin, async (request, reply) => {
+  app.delete("/api/admin/products/:id/related/:relatedId", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id, relatedId } = request.params as { id: string; relatedId: string };
     await db
       .delete(schema.relatedProducts)
@@ -532,7 +539,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Preço e estoque da variante
-  app.patch("/api/admin/variants/:id", admin, async (request, reply) => {
+  app.patch("/api/admin/variants/:id", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as {
       priceCents?: number;
@@ -586,7 +593,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ variant: row });
   });
 
-  app.get("/api/admin/inventory/movements", admin, async (request, reply) => {
+  app.get("/api/admin/inventory/movements", { preHandler: [A, adminGuard("inventory","read")] }, async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
     const limit = Math.min(200, Math.max(1, Number(q.limit ?? 100) || 100));
     const rows = await db
@@ -598,7 +605,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Expedição e rastreio
-  app.post("/api/admin/orders/:id/shipment", admin, async (request, reply) => {
+  app.post("/api/admin/orders/:id/shipment", { preHandler: [A, adminGuard("orders","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as {
       carrier?: string;
@@ -634,7 +641,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ shipment });
   });
 
-  app.get("/api/admin/orders/:id/shipment", admin, async (request, reply) => {
+  app.get("/api/admin/orders/:id/shipment", { preHandler: [A, adminGuard("orders","read")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const shipments = await db.select().from(schema.shipments).where(eq(schema.shipments.orderId, id));
     const events = shipments.length
@@ -648,7 +655,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Atendimento
-  app.get("/api/admin/tickets", admin, async (_request, reply) => {
+  app.get("/api/admin/tickets", { preHandler: [A, adminGuard("customers","read")] }, async (_request, reply) => {
     const rows = await db
       .select()
       .from(schema.supportTickets)
@@ -657,7 +664,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ items: rows });
   });
 
-  app.patch("/api/admin/tickets/:id", admin, async (request, reply) => {
+  app.patch("/api/admin/tickets/:id", { preHandler: [A, adminGuard("customers","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as { status?: string };
     const [row] = await db
@@ -675,14 +682,14 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Configurações comerciais
-  app.get("/api/admin/settings", admin, async (_request, reply) => {
+  app.get("/api/admin/settings", { preHandler: [A, adminGuard("settings","read")] }, async (_request, reply) => {
     const rows = await db.select().from(schema.systemSettings);
     reply.send({
       items: rows.map((r) => ({ key: r.key, value: r.value, updatedAt: r.updatedAt })),
     });
   });
 
-  app.put("/api/admin/settings/:key", admin, async (request, reply) => {
+  app.put("/api/admin/settings/:key", { preHandler: [A, adminGuard("settings","update")] }, async (request, reply) => {
     const { key } = request.params as { key: string };
     const body = request.body as { value?: unknown };
     if (body?.value === undefined) {
@@ -700,7 +707,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Auditoria e relatórios
-  app.get("/api/admin/audit", admin, async (request, reply) => {
+  app.get("/api/admin/audit", { preHandler: [A, adminGuard("audit","read")] }, async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
     const limit = Math.min(300, Math.max(1, Number(q.limit ?? 100) || 100));
     const from = q.from ? new Date(q.from) : undefined;
@@ -724,7 +731,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     });
   });
 
-  app.get("/api/admin/reports", admin, async (_request, reply) => {
+  app.get("/api/admin/reports", { preHandler: [A, adminGuard("reports","read")] }, async (_request, reply) => {
     const [sales, products, lowStock, tickets, chargebacks] = await Promise.all([
       db
         .select({
