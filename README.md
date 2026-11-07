@@ -49,11 +49,15 @@ npm run typecheck
 
 ## Docs
 
-- `SKILL.md` — skill de execução do projeto (escopo, regras duras, critérios de aceitação)
 - `docs/API.md` — contrato REST
-- `docs/skills/design-comercial-profissional.md` — regras de design (cópias: `SKILL 2.md` e `.skill`)
+
+## Skills (carregadas pelo OpenCode em `.opencode/skills/`)
+
+- `.opencode/skills/reconstrucao-airsoftamericana/SKILL.md` — skill de execução do projeto (escopo, regras duras, critérios de aceitação)
+- `.opencode/skills/design-comercial-profissional/SKILL.md` — regras de design. Obrigatória antes de qualquer UI (ver `AGENTS.md`)
+- Cópias de segurança em `docs/legacy-zero-dep/*.bak` — uma única versão vale: a de `.opencode/skills/`
 - `docs/QA_CHECKLIST.md` — checklist de entrega visual/funcional/SEO
 - `docs/legacy-zero-dep/` — protótipo antigo zerado (zip + extração `loja/`); arquivado, sem build ativo
 - `scripts/patches/` — patches únicos aplicados à store (histórico)
 - `docs/brand/LOGO.png` — arte original da marca
-- `mirror/` — espelho estático do site antigo, referência de auditoria (não é código do novo sistema)
+- `mirror/` — espelho estático do site antigo, referência de auditoria (fora do git por filename; não é código do novo sistema)
