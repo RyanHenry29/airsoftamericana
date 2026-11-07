@@ -50,6 +50,21 @@ async function main() {
     email: "admin-mfa-csv2@e2e.local", passwordHash: pass, name: "Admin CSV2 E2E", role: "superadmin",
     active: true, mfaEnabled: true, totpSecret: totpCsv2.encryptedSecret,
   }).onConflictDoNothing({ target: schema.users.email });
+  const totpMkt = generateTotpSetup("admin-mfa-marketing@e2e.local");
+  await db.insert(schema.users).values({
+    email: "admin-mfa-marketing@e2e.local", passwordHash: pass, name: "Marketing E2E", role: "marketing",
+    active: true, mfaEnabled: true, totpSecret: totpMkt.encryptedSecret,
+  }).onConflictDoNothing({ target: schema.users.email });
+  const totpCatAdm = generateTotpSetup("admin-mfa-catalog@e2e.local");
+  await db.insert(schema.users).values({
+    email: "admin-mfa-catalog@e2e.local", passwordHash: pass, name: "Admin Catalog E2E", role: "superadmin",
+    active: true, mfaEnabled: true, totpSecret: totpCatAdm.encryptedSecret,
+  }).onConflictDoNothing({ target: schema.users.email });
+  const totpAtCat = generateTotpSetup("operador-atendimento-catalog@e2e.local");
+  await db.insert(schema.users).values({
+    email: "operador-atendimento-catalog@e2e.local", passwordHash: pass, name: "Atendimento Catalog E2E", role: "atendimento",
+    active: true, mfaEnabled: true, totpSecret: totpAtCat.encryptedSecret,
+  }).onConflictDoNothing({ target: schema.users.email });
   const totpAtImport = generateTotpSetup("operador-atendimento-import@e2e.local");
   const [atImp] = await db.insert(schema.users).values({
     email: "operador-atendimento-import@e2e.local", passwordHash: pass, name: "Atendimento Import E2E", role: "atendimento",
@@ -92,6 +107,9 @@ async function main() {
     E2E_TOTP_SECRET_AT_IMPORT: totpAtImport.secretBase32,
     E2E_TOTP_SECRET_CSV1: totpCsv1.secretBase32,
     E2E_TOTP_SECRET_CSV2: totpCsv2.secretBase32,
+    E2E_TOTP_SECRET_MARKETING: totpMkt.secretBase32,
+    E2E_TOTP_SECRET_CATALOG: totpCatAdm.secretBase32,
+    E2E_TOTP_SECRET_AT_CATALOG: totpAtCat.secretBase32,
     E2E_TOTP_SECRET_RECOVERY: totpRec.secretBase32,
     E2E_RECOVERY_USER: "admin-recovery@e2e.local",
     E2E_RECOVERY_CODE: recoveryRec[0],
