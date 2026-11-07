@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node -e \"console.log('no tests: @airsoft/store (nenhum arquivo *.test.*/*.spec.* encontrado)')\""
   },
   "dependencies": {
     "@airsoft/shared": "*",
