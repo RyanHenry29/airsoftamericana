@@ -13,7 +13,6 @@ export default defineConfig({
     maxWorkers: 1,
     sequence: { concurrent: false },
     pool: "forks",
-    forks: { singleFork: true, minForks: 1, maxForks: 1 },
     typecheck: {
       enabled: true,
     },
