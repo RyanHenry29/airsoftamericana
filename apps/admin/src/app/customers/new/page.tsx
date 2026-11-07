@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { adminFetch } from "../../../lib/api";
 
 export default function NewCustomerPage() {
   const router = useRouter();
@@ -18,10 +16,8 @@ export default function NewCustomerPage() {
     setError("");
     setBusy(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/customers`, {
+      const res = await adminFetch("/api/admin/customers", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           name: data.name.trim(),
           email: data.email.trim().toLowerCase(),

@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { API_URL, adminFetch } from "../../lib/api";
 
 type Variant = { id: string; sku: string; priceCents: number };
 type Product = {
@@ -56,10 +54,8 @@ export default function ProductsPage() {
   }, []);
 
   async function toggle(id: string, field: "published" | "featured", value: boolean) {
-    await fetch(`${API_URL}/api/admin/products/${id}`, {
+    await adminFetch(`/api/admin/products/${id}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
       body: JSON.stringify({ [field]: !value }),
     });
     load();

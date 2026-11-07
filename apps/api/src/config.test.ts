@@ -65,4 +65,9 @@ describe("arranque em produção", () => {
     expect(variaveis).toContain("STORE_URL");
     expect(variaveis).toContain("ADMIN_URL");
   });
+
+  it("B.1: em produção, CSRF_ENFORCE=false recusa subir", () => {
+    expect(problemas({ CSRF_ENFORCE: "false" })).toContain("CSRF_ENFORCE");
+    expect(problemas({ CSRF_ENFORCE: "true" })).not.toContain("CSRF_ENFORCE");
+  });
 });

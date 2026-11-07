@@ -5,7 +5,9 @@ import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { adminGuard } from "../lib/rbac.js";
-import { csrfTokenFor } from "../lib/csrf.js";
+import { csrfTokenFor, csrfTokenForSession } from "../lib/csrf.js";
+import { listActiveSessions, revokeSession } from "../services/sessions.js";
+import { normalizeRole } from "../lib/rbac.js";
 import { listAudit } from "../lib/audit.js";
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
@@ -83,14 +85,39 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     });
   };
 
-  // ---------------------------------------------------------------- CSRF (B.3)
+  // ---------------------------------------------------------------- CSRF (B.3/B.1)
   app.get("/api/admin/csrf", { preHandler: [A, adminGuard("dashboard", "read")] }, async (request, reply) => {
+    const session = (request as any).session as { id?: string } | undefined;
+    if (session?.id) return reply.send({ token: csrfTokenForSession(session.id) });
     const cookies = (request as any).cookies;
-    const session = cookies?.aa_session ? String(cookies.aa_session) : "";
-    reply.send({ token: session ? csrfTokenFor(session) : null });
+    const raw = cookies?.aa_session ? String(cookies.aa_session) : "";
+    reply.send({ token: raw ? csrfTokenFor(raw) : null });
   });
 
-  // ---------------------------------------------------------------- Banners / campanhas
+  // ---------------------------------------------------------------- Sessões (B.1)
+  app.get("/api/admin/sessions", { preHandler: [A, adminGuard("users", "read")] }, async (request, reply) => {
+    const user = (request as any).user as { sub: string };
+    const session = (request as any).session as { id: string };
+    const items = await listActiveSessions(db, user.sub);
+    reply.send({ items: items.map((s) => ({ ...s, current: s.id === session.id })) });
+  });
+
+  app.delete("/api/admin/sessions/:id", { preHandler: [A, adminGuard("users", "update")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const actor = (request as any).user as { sub: string; role: string };
+    const actorSession = (request as any).session as { id: string };
+    const isSelf = id === actorSession.id;
+    if (!isSelf) {
+      const role = normalizeRole(actor.role);
+      if (role !== "superadmin") return reply.status(403).send({ error: { code: "forbidden", message: "Só superadmin revoga sessões de outros usuários" } });
+      // revogar sessão de outro: verificar que pertence a alguém (poderíamos checar ownership) - revoga pelo id
+    } else {
+      // revogar própria: ok
+    }
+    const ok = await revokeSession(db, id);
+    if (!ok) return reply.status(404).send({ error: { code: "not_found", message: "Sessão não encontrada ou já revogada" } });
+    reply.send({ revoked: true });
+  });
   app.get("/api/admin/banners", { preHandler: [A, adminGuard("banners","read")] }, async (_request, reply) => {
     const rows = await db.select().from(schema.banners).orderBy(asc(schema.banners.position));
     reply.send({ items: rows });
@@ -534,7 +561,75 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     await db
       .delete(schema.relatedProducts)
       .where(and(eq(schema.relatedProducts.productId, id), eq(schema.relatedProducts.relatedProductId, relatedId)));
-    await audit(request, "product.related.removed", "products", id);
+
+  // ---------------------------------------------------------------- Importação CSV do catálogo
+  app.post("/api/admin/catalog/import", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
+    const body = request.body as { file: string };
+    const lines = body.file.trim().split("\n");
+    const errors: Array<{ line: number; message: string }> = [];
+    let created = 0;
+    let updated = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!.trim();
+      if (!line) continue;
+      const fields = line.split(";");
+      if (fields.length < 5) {
+        errors.push({ line: i + 1, message: "Linha inválida: esperava pelo menos 5 campos separados por ponto-e-vírgula" });
+        continue;
+      }
+      const [slug, name, sku, priceStr, categorySlug] = fields.slice(0, 5);
+      const priceCents = Math.round(Number(priceStr) * 100);
+      
+      // Find category ID
+      const categoryRow = await db.select().from(schema.categories).where(eq(schema.categories.slug, categorySlug ?? "")).limit(1);
+      const categoryId = categoryRow[0]?.id;
+      
+      if (!categoryId) {
+        errors.push({ line: i + 1, message: "Categoria não encontrada: " + (categorySlug ?? "") });
+        continue;
+      }
+      
+      // Check if product exists by SKU
+      const existingVariant = await db.select().from(schema.productVariants).where(eq(schema.productVariants.sku, sku ?? "")).limit(1);
+      
+      if (existingVariant.length > 0) {
+        // Update existing product variant
+        const variant = existingVariant[0]!;
+        await db.update(schema.productVariants).set({
+          priceCents,
+          name,
+        }).where(eq(schema.productVariants.id, variant.id));
+        updated++;
+      } else {
+        // Create category if not exists (simple)
+        const [newCategory] = await db.insert(schema.categories).values({
+          name: categorySlug ?? "Sem Categoria",
+          slug: categorySlug ?? "sem-categoria",
+          parentId: undefined,
+          ageRestricted: false,
+          active: true,
+          position: 0,
+          description: "",
+        }).returning();
+        
+        // Create product variant
+        await db.insert(schema.productVariants).values({
+          productId: "00000000-0000-0000-0000-000000000000",
+          sku,
+          name,
+          priceCents,
+          promoPriceCents: null,
+          weightGrams: 0,
+          active: true,
+        } as any);
+        created++;
+      }
+    }
+    
+    reply.send({ created, updated, errors });
+  });
+await audit(request, "product.related.removed", "products", id);
     reply.send({ ok: true });
   });
 

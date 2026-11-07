@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { API_URL, adminFetch } from "../../lib/api";
 
 type Order = {
   id: string;
@@ -54,10 +52,8 @@ export default function OrdersPage() {
   }, []);
 
   async function transition(id: string, to: string) {
-    const res = await fetch(`${API_URL}/api/admin/orders/${id}/transition`, {
+    const res = await adminFetch(`/api/admin/orders/${id}/transition`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
       body: JSON.stringify({ status: to }),
     });
     if (!res.ok) {

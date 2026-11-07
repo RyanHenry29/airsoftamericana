@@ -56,14 +56,8 @@ export async function createServer() {
   });
 
   await app.register(fastifyHelmet);
-  // B.3: CSRF em mutações do admin. Em dev local o admin UI ainda precisa
-  // enviar x-csrf-token; CSRF_ENFORCE=false desliga a guarda (nunca em produção).
-  if (config.NODE_ENV === "production" || process.env.CSRF_ENFORCE === "true") {
-    app.addHook("preHandler", csrfGuard);
-  } else if (process.env.CSRF_ENFORCE !== "false") {
-    // default fora de produção: ligado, mas pode ser desligado localmente
-    app.addHook("preHandler", csrfGuard);
-  }
+  // B.3: CSRF em mutações do admin. Produção com CSRF_ENFORCE=false recusa subir (config).
+  app.addHook("preHandler", csrfGuard);
   // B.9: painel/admin API nunca indexado.
   app.addHook("onSend", async (request, reply) => {
     if (request.url.startsWith("/api/admin") || request.url.startsWith("/painel")) {
@@ -95,6 +89,7 @@ export async function createServer() {
 
   // Database setup
   const db = await getDb();
+  app.decorate("db", db as any);
 
   if (config.NODE_ENV !== "test") {
     await migrate(db);

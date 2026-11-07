@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { API_URL, adminFetch } from "../../../lib/api";
 
 type Category = { id: string; name: string; slug: string };
 type Brand = { id: string; name: string; slug: string };
@@ -50,10 +48,8 @@ export default function NewProductPage() {
     setError("");
     setBusy(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/products`, {
+      const res = await adminFetch("/api/admin/products", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           name: data.name.trim(),
           slug: data.slug.trim() || data.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),

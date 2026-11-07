@@ -6,30 +6,35 @@ import { config } from "../config.js";
 
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** Token derivado do segredo da sessão — stateless, verificável sem DB. */
-export function csrfTokenFor(sessionToken: string): string {
-  return crypto.createHmac("sha256", config.JWT_SECRET).update(`csrf:${sessionToken}`).digest("base64url");
+/** CSRF ligado ao id da sessão (estável entre leituras; muda na rotação). */
+export function csrfTokenForSession(sessionId: string): string {
+  return crypto.createHmac("sha256", config.JWT_SECRET).update(`csrf:sid:${sessionId}`).digest("base64url");
 }
 
-function sessionTokenOf(request: FastifyRequest): string | undefined {
-  const cookies = (request as any).cookies;
-  if (cookies?.aa_session) return String(cookies.aa_session);
-  const auth = request.headers.authorization;
-  if (auth?.startsWith("Bearer ")) return auth.slice(7);
-  return undefined;
+/** Legado: derivado do token cru (transição). */
+export function csrfTokenFor(sessionToken: string): string {
+  return crypto.createHmac("sha256", config.JWT_SECRET).update(`csrf:${sessionToken}`).digest("base64url");
 }
 
 export async function csrfGuard(request: FastifyRequest): Promise<void> {
   if (SAFE.has(request.method)) return;
   if (!request.url.startsWith("/api/admin")) return;
-  const session = sessionTokenOf(request);
-  // Sem sessão autenticada o auth guard barra; CSRF só faz sentido com sessão.
-  if (!session) return;
+  // sessão anexada pelo authMiddleware (onRequest/preHandler anterior)
+  const session = (request as any).session as { id?: string } | undefined;
+  const cookies = (request as any).cookies;
+  const hasSessionCookie = !!cookies?.aa_session;
+  if (!session?.id && !hasSessionCookie) return; // sem sessão, auth barra
   const header = request.headers["x-csrf-token"];
   const provided = Array.isArray(header) ? header[0] : header;
-  const expected = csrfTokenFor(session);
   if (!provided) throw forbidden("Token CSRF ausente");
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw forbidden("Token CSRF inválido");
+  const candidates: string[] = [];
+  if (session?.id) candidates.push(csrfTokenForSession(session.id));
+  if (cookies?.aa_session) candidates.push(csrfTokenFor(String(cookies.aa_session)));
+  const ok = candidates.some((expected) => {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
+  if (!ok) throw forbidden("Token CSRF inválido");
 }
+

@@ -61,20 +61,37 @@ export async function migrate(db: Db) {
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS "users_email_idx" ON "users" ("email");
   `);
+  // Evolui role: enum legado → varchar(32) para os 7 papéis (B.6/B.8). Idempotente.
+  await db.execute(sql.raw(`ALTER TABLE "users" ALTER COLUMN "role" TYPE varchar(32) USING "role"::text;`));
+  await db.execute(sql.raw(`ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'atendimento';`));
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "sessions" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-      "refresh_token_hash" text NOT NULL,
+      "token_hash" text,
+      "refresh_token_hash" text,
       "user_agent" text,
       "ip" varchar(45),
       "expires_at" timestamptz NOT NULL,
+      "idle_expires_at" timestamptz,
+      "last_seen_at" timestamptz,
+      "revoked_at" timestamptz,
+      "mfa_verified_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
     );
   `);
+  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "token_hash" text;`);
+  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "idle_expires_at" timestamptz;`);
+  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "last_seen_at" timestamptz;`);
+  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "revoked_at" timestamptz;`);
+  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "mfa_verified_at" timestamptz;`);
+  await db.execute(sql`ALTER TABLE "sessions" ALTER COLUMN "refresh_token_hash" DROP NOT NULL;`);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "sessions_user_idx" ON "sessions" ("user_id");
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "sessions_token_hash_idx" ON "sessions" ("token_hash");
   `);
 
   await db.execute(sql`
@@ -178,6 +195,12 @@ export async function migrate(db: Db) {
       "created_at" timestamptz NOT NULL DEFAULT now()
     );
   `);
+  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "condicao" varchar(20) NOT NULL DEFAULT 'novo';`);
+  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "estado_conservacao" varchar(100) DEFAULT '';`);
+  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "itens_inclusos" text DEFAULT '';`);
+  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "garantia_dias" integer NOT NULL DEFAULT 30;`);
+  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "unidade_unica" boolean NOT NULL DEFAULT false;`);
+
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS "products_slug_idx" ON "products" ("slug");
   `);

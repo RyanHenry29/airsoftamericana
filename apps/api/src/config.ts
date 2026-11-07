@@ -132,6 +132,14 @@ export function assertProductionEnv(env: NodeJS.ProcessEnv): EnvProblem[] {
     }
   }
 
+  // CSRF obrigatório em produção — desligar explicitamente é recusa de arranque.
+  if ((env.NODE_ENV ?? "") === "production" && (env.CSRF_ENFORCE ?? "").toLowerCase() === "false") {
+    problems.push({
+      variable: "CSRF_ENFORCE",
+      message: "CSRF_ENFORCE=false em produção — a API recusou subir. Proteção CSRF é obrigatória no painel.",
+    });
+  }
+
   return problems;
 }
 

@@ -86,13 +86,22 @@ export const sessions = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    refreshTokenHash: text("refresh_token_hash").notNull(),
+    /** SHA-256 hex do cookie opaco (256 bits). Nunca armazenar o token cru. */
+    tokenHash: text("token_hash"),
+    /** Legado (refresh token) — mantido para compatibilidade de leitura. */
+    refreshTokenHash: text("refresh_token_hash"),
     userAgent: text("user_agent"),
     ip: varchar("ip", { length: 45 }),
+    /** Validade absoluta (8h). */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Validade ociosa (30 min, rolante). */
+    idleExpiresAt: timestamp("idle_expires_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    mfaVerifiedAt: timestamp("mfa_verified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
-  (t) => [index("sessions_user_idx").on(t.userId)],
+  (t) => [index("sessions_user_idx").on(t.userId), uniqueIndex("sessions_token_hash_idx").on(t.tokenHash)],
 );
 
 export const customers = pgTable(
@@ -178,6 +187,11 @@ export const products = pgTable(
     featured: boolean("featured").notNull().default(false),
     published: boolean("published").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    condicao: varchar("condicao", { length: 20 }).notNull().default("novo"),
+    estado_conservacao: varchar("estado_conservacao", { length: 100 }).default(""),
+    itens_inclusos: text("itens_inclusos").default(""),
+    garantia_dias: integer("garantia_dias").notNull().default(30),
+    unidade_unica: boolean("unidade_unica").notNull().default(false),
   },
   (t) => [
     uniqueIndex("products_slug_idx").on(t.slug),

@@ -164,16 +164,15 @@ describe("B0.5 — frete grátis: uma fonte, passada explicitamente", () => {
 
 // ----------------------------------------------------------------- Item 3: admin-login — sessão só por cookie, sem token no corpo
 describe("B0.3 — admin-login não expõe token no corpo da resposta", () => {
-  it("o handler de /api/auth/admin-login responde sem campo token", () => {
+  it("o handler de /api/auth/admin-login responde sem campo token (sessão DB opaca)", () => {
     const routesPath = path.resolve(__dirname, "../routes/index.ts");
     const src = fs.readFileSync(routesPath, "utf8");
     const marker = '"/api/auth/admin-login"';
     const start = src.indexOf(marker);
     expect(start).toBeGreaterThan(-1);
-    // Pega um bloco generoso para cobrir rehash + setCookie + resposta final.
-    const block = src.slice(start, start + 3200);
-    expect(block).toContain("setCookie(\"aa_session\"");
-    expect(block).toContain("httpOnly: true");
+    const block = src.slice(start, start + 4000);
+    expect(block).toContain("setCookie(ADMIN_SESSION_COOKIE");
+    expect(block).toContain("createSession(db");
     // Resposta de sucesso: só { user }, sem token no corpo.
     expect(block).toMatch(/reply\.send\(\{\s*user:\s*\{/);
     expect(block).not.toMatch(/reply\.send\(\{[\s\S]{0,120}\btoken\b[\s\S]{0,40}\}\)\s*;?\s*(?:\/\/[^\n]*)?\n\s*\}\);?/);

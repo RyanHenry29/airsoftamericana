@@ -6,6 +6,8 @@ import type { Db } from "../db/index.js";
 import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customers, inventory, inventoryMovements, newsletterSubscribers, orderItems, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
 import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
 import { adminGuard } from "../lib/rbac.js";
+import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
+import { schema } from "../db/index.js";
 import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule } from "../middleware/authRateLimit.js";
 import type { Config } from "../config.js";
 import { registerSchema, loginSchema, adminCustomerSchema, checkoutSchema, cartItemSchema, orderStatusSchema, stockMovementSchema, productSchema, orderVolumeLimitsSchema, gatewayConfigSchema, chargebackStatusSchema } from "@airsoft/shared";
@@ -592,20 +594,27 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       await db.update(users).set({ passwordHash: verification.rehash }).where(eq(users.id, user.id));
     }
     await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
-    const token = await signJwt({ sub: user.id, role: user.role, type: "access" });
-    reply.setCookie("aa_session", token, {
-      path: "/",
-      httpOnly: true,
-      sameSite: "lax",
-      secure: config.NODE_ENV === "production",
-      maxAge: 60 * 60 * 12,
+    // Rotação no login: revoga sessão anterior apresentada (se houver) e emite nova.
+    const presented = (request.cookies as any)?.[ADMIN_SESSION_COOKIE];
+    if (presented) {
+      try {
+        await db.update(schema.sessions).set({ revokedAt: new Date() }).where(eq(schema.sessions.tokenHash, hashToken(String(presented))));
+      } catch { /* best-effort */ }
+    }
+    const session = await createSession(db, {
+      userId: user.id,
+      ip: request.ip,
+      userAgent: request.headers["user-agent"] ?? null,
+      mfaVerified: false,
     });
+    reply.setCookie(ADMIN_SESSION_COOKIE, session.token, adminSessionCookieOptions(config.NODE_ENV === "production"));
     await writeAudit(db, request, {
       action: "auth.admin.login",
       entity: "user",
       entityId: user.id,
       actorLabel: maskEmail(email),
     });
+    // Cookie opaco define a sessão — nada sensível no corpo.
     reply.send({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   });
 
