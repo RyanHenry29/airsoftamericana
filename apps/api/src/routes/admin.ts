@@ -9,6 +9,7 @@ import { csrfTokenFor, csrfTokenForSession } from "../lib/csrf.js";
 import { listActiveSessions, revokeSession } from "../services/sessions.js";
 import { normalizeRole, type Role } from "../lib/rbac.js";
 import { createInvite } from "../services/invites.js";
+import { outboxNotify, roleChangedBody, bulkPriceBody } from "../services/outbox.js";
 import { listAudit } from "../lib/audit.js";
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
@@ -115,6 +116,28 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const ok = await revokeSession(db, id);
     if (!ok) return reply.status(404).send({ error: { code: "not_found", message: "Sessão não encontrada ou já revogada" } });
     reply.send({ revoked: true });
+  });
+
+  // ---------------------------------------------------------------- Usuários (B.7: mudança de papel → outbox na mesma transação)
+  app.patch("/api/admin/users/:id", { preHandler: [A, adminGuard("users", "update")] }, async (request, reply) => {
+    const actor = (request as any).user as { sub: string; role: string; email?: string };
+    if (normalizeRole(actor.role) !== "superadmin") {
+      return reply.status(403).send({ error: { code: "forbidden", message: "Só superadmin altera papéis" } });
+    }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { role?: string };
+    const newRole = body.role ? String(body.role) : "";
+    if (!normalizeRole(newRole)) return reply.status(400).send({ error: { code: "invalid_input", message: "Papel inválido" } });
+    const [target] = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    if (!target) return reply.status(404).send({ error: { code: "not_found", message: "Usuário não encontrado" } });
+    const from = target.role;
+    if (from === newRole) return reply.send({ user: { id, role: newRole } });
+    await (db as any).transaction(async (tx: any) => {
+      await tx.update(schema.users).set({ role: newRole }).where(eq(schema.users.id, id));
+      await tx.insert(schema.auditLogs).values({ action: "user.role_changed", entity: "users", entityId: id, actorUserId: actor.sub, after: { from, to: newRole } });
+      await outboxNotify(tx, roleChangedBody({ targetEmail: target.email, from, to: newRole, by: actor.email ?? actor.sub }));
+    });
+    reply.send({ user: { id, role: newRole } });
   });
 
   // ---------------------------------------------------------------- Convites (B.3) — só superadmin
@@ -448,6 +471,30 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Produto: ficha, galeria, relacionados
+  // B.7: alteração de preço em massa → outbox na mesma transação
+  app.post("/api/admin/products/bulk-price", { preHandler: [A, adminGuard("products", "update")] }, async (request, reply) => {
+    const actor = (request as any).user as { sub: string; email?: string };
+    const body = (request.body ?? {}) as { percent?: number; productIds?: string[] };
+    const percent = Number(body.percent);
+    if (!Number.isFinite(percent) || percent === 0 || percent < -90 || percent > 500) {
+      return reply.status(400).send({ error: { code: "invalid_input", message: "percent deve ser um número != 0 entre -90 e 500" } });
+    }
+    const ids = Array.isArray(body.productIds) ? body.productIds.filter(Boolean) : null;
+    const factor = 1 + percent / 100;
+    const updated = await (db as any).transaction(async (tx: any) => {
+      let variants = await tx.select().from(schema.productVariants);
+      if (ids && ids.length) variants = variants.filter((v: any) => ids.includes(v.productId));
+      for (const v of variants) {
+        const next = Math.max(0, Math.round(v.priceCents * factor));
+        await tx.update(schema.productVariants).set({ priceCents: next }).where(eq(schema.productVariants.id, v.id));
+      }
+      await tx.insert(schema.auditLogs).values({ action: "product.bulk_price_change", entity: "product_variants", actorUserId: actor.sub, after: { percent, count: variants.length } });
+      await outboxNotify(tx, bulkPriceBody({ count: variants.length, by: actor.email ?? actor.sub, mode: `${percent}%` }));
+      return variants.length;
+    });
+    reply.send({ ok: true, updated });
+  });
+
   app.get("/api/admin/products/:id", { preHandler: [A, adminGuard("products","read")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const rows = await db.select().from(schema.products).where(eq(schema.products.id, id)).limit(1);

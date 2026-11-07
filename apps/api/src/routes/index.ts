@@ -9,6 +9,7 @@ import { adminGuard } from "../lib/rbac.js";
 import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
 import { acceptInvite } from "../services/invites.js";
 import { isLocked, registerFailure, registerSuccess, lockoutKeys } from "../services/lockout.js";
+import { outboxNotify, loginNewDeviceBody } from "../services/outbox.js";
 import { schema } from "../db/index.js";
 import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule } from "../middleware/authRateLimit.js";
 import type { Config } from "../config.js";
@@ -650,13 +651,23 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         await db.update(schema.sessions).set({ revokedAt: new Date() }).where(eq(schema.sessions.tokenHash, hashToken(String(presented))));
       } catch { /* best-effort */ }
     }
-    // MFA obrigatório (B.2): sessão nasce não verificada; o gate server-side
-    // restringe a rotas de setup/verificação até concluir o MFA.
-    const session = await createSession(db, {
-      userId: user.id,
-      ip: request.ip,
-      userAgent: request.headers["user-agent"] ?? null,
-      mfaVerified: false,
+    // B.7: login em dispositivo novo → outbox na mesma transação da sessão.
+    const ua = (request.headers["user-agent"] as string | undefined) ?? null;
+    const priorSameDevice = ua
+      ? await db.select({ id: schema.sessions.id }).from(schema.sessions).where(and(eq(schema.sessions.userId, user.id), eq(schema.sessions.userAgent, ua))).limit(1)
+      : [];
+    const isNewDevice = priorSameDevice.length === 0;
+    const session = await (db as any).transaction(async (tx: any) => {
+      const s = await createSession(tx, {
+        userId: user.id,
+        ip: request.ip,
+        userAgent: ua,
+        mfaVerified: false,
+      });
+      if (isNewDevice) {
+        await outboxNotify(tx, loginNewDeviceBody({ email: user.email, ip: request.ip, userAgent: ua }));
+      }
+      return s;
     });
     reply.setCookie(ADMIN_SESSION_COOKIE, session.token, adminSessionCookieOptions(config.NODE_ENV === "production"));
     await writeAudit(db, request, {
