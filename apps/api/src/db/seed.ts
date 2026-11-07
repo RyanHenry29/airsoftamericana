@@ -471,11 +471,27 @@ export async function seed(db: Db) {
             email_contato: "contato@airsoftamericana.com.br",
             telefone_principal_whatsapp: "(19) 98450-4992",
             telefone_secundario: "(19) 99150-4992",
-        });
+          }),
+        },
+      ]);
+      console.log("✅ Default system settings seeded");
+    }
+
+
+    // ---------------------------------------------------------------- Cliente demo
+    const existingCustomers = await db.select().from(customers);
+    if (existingCustomers.length === 0) {
+      await db.insert(customers).values([
+        {
+          name: "Cliente Demo",
+          email: "cliente@demo.com",
+          passwordHash: await bcrypt.hash("Cliente123!", 10),
+          cpf: "12345678901",
+          phone: "19999999999",
+        },
       ]);
       console.log("✅ Demo customer seeded (cliente@demo.com)");
     }
-
     // ---------------------------------------------------------------- Operação
     const existingVolume = await db.select().from(orderVolumeLimits);
     if (existingVolume.length === 0) {
