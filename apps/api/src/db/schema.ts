@@ -815,6 +815,19 @@ export const productChangeHistory = pgTable(
   ],
 );
 
+export const idempotencyKeys = pgTable(
+  "idempotency_keys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    key: varchar("key", { length: 255 }).notNull().unique(),
+    action: varchar("action", { length: 80 }).notNull(),
+    payloadHash: varchar("payload_hash", { length: 64 }),
+    result: jsonb("result"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex("idempotency_keys_key_idx").on(t.key)],
+);
+
 export const supportTickets = pgTable(
   "support_tickets",
   {

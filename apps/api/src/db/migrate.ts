@@ -875,6 +875,21 @@ export async function migrate(db: Db) {
     CREATE UNIQUE INDEX IF NOT EXISTS "newsletter_subscribers_email_idx" ON "newsletter_subscribers" ("email");
   `);
 
+  // FASE 3 — Idempotência para operações em lote (ex.: bulk-price).
+  // Uma chave + ação só produz efeito uma vez; resultado é reutilizado em repetição.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "idempotency_keys" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "key" varchar(255) NOT NULL UNIQUE,
+      "action" varchar(80) NOT NULL,
+      "payload_hash" varchar(64),
+      "result" jsonb,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "idempotency_keys_key_idx" ON "idempotency_keys" ("key");`);
+  await db.execute(sql`ALTER TABLE "idempotency_keys" ADD COLUMN IF NOT EXISTS "payload_hash" varchar(64);`);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "support_tickets" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),

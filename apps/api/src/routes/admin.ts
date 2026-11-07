@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { canSeeCost } from "../services/product-history.js";
-import { randomUUID } from "node:crypto";
+import { appendProductHistory, canSeeCost } from "../services/product-history.js";
+import { createHash, randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
@@ -573,28 +573,73 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
   });
 
   // ---------------------------------------------------------------- Produto: ficha, galeria, relacionados
-  // B.7: alteração de preço em massa → outbox na mesma transação
+  // B.7: alteração de preço em massa → idempotente, transação única, histórico por variante, outbox na mesma transação
   app.post("/api/admin/products/bulk-price", { preHandler: [A, adminGuard("products", "update")] }, async (request, reply) => {
-    const actor = (request as any).user as { sub: string; email?: string };
-    const body = (request.body ?? {}) as { percent?: number; productIds?: string[] };
+    const actor = (request as any).user as { sub: string; email?: string; role?: string };
+    const body = (request.body ?? {}) as { percent?: number; productIds?: string[]; idempotencyKey?: string };
     const percent = Number(body.percent);
     if (!Number.isFinite(percent) || percent === 0 || percent < -90 || percent > 500) {
-      return reply.status(400).send({ error: { code: "invalid_input", message: "percent deve ser um número != 0 entre -90 e 500" } });
+      return reply.status(400).send({ error: { code: "invalid_input", message: "percent deve ser um numero != 0 entre -90 e 500" } });
     }
-    const ids = Array.isArray(body.productIds) ? body.productIds.filter(Boolean) : null;
-    const factor = 1 + percent / 100;
-    const updated = await (db as any).transaction(async (tx: any) => {
-      let variants = await tx.select().from(schema.productVariants);
-      if (ids && ids.length) variants = variants.filter((v: any) => ids.includes(v.productId));
+    const ids = Array.isArray(body.productIds) ? body.productIds.filter(Boolean).map(String) : null;
+    const idemKey = typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
+      ? body.idempotencyKey.trim().slice(0, 255)
+      : (typeof request.headers["idempotency-key"] === "string" ? String(request.headers["idempotency-key"]).trim().slice(0, 255) : null);
+    const payloadHash = createHash("sha256").update(JSON.stringify({ action: "bulk_price", percent, productIds: ids ? [...ids].sort() : null })).digest("hex");
+
+    async function runBulk(tx: any) {
+      let variants = await tx.select({ id: schema.productVariants.id, productId: schema.productVariants.productId, sku: schema.productVariants.sku, priceCents: schema.productVariants.priceCents }).from(schema.productVariants);
+      if (ids && ids.length) variants = variants.filter((v: any) => ids.includes(String(v.productId)));
+      const factor = 1 + percent / 100;
+      const history: any[] = [];
       for (const v of variants) {
         const next = Math.max(0, Math.round(v.priceCents * factor));
+        if (next === v.priceCents) continue;
         await tx.update(schema.productVariants).set({ priceCents: next }).where(eq(schema.productVariants.id, v.id));
+        history.push({ productId: v.productId, actorUserId: actor.sub, actorLabel: actor.email ?? actor.sub, field: "variant.bulk_price", beforeValue: { variantId: v.id, sku: v.sku, priceCents: v.priceCents, percent }, afterValue: { variantId: v.id, sku: v.sku, priceCents: next } });
       }
-      await tx.insert(schema.auditLogs).values({ action: "product.bulk_price_change", entity: "product_variants", actorUserId: actor.sub, after: { percent, count: variants.length } });
-      await outboxNotify(tx, bulkPriceBody({ count: variants.length, by: actor.email ?? actor.sub, mode: `${percent}%` }));
-      return variants.length;
-    });
-    reply.send({ ok: true, updated });
+      await appendProductHistory(tx, history);
+      await tx.insert(schema.auditLogs).values({ action: "product.bulk_price_change", entity: "product_variants", actorUserId: actor.sub, after: { percent, matched: variants.length, updated: history.length, productIds: ids } } as any);
+      await outboxNotify(tx, bulkPriceBody({ count: history.length, by: actor.email ?? actor.sub, mode: `${percent}%` }));
+      return { ok: true, percent, matched: variants.length, updated: history.length, idempotencyKey: idemKey, replayed: false };
+    }
+
+    if (idemKey) {
+      const existing = await db.select().from(schema.idempotencyKeys).where(and(eq(schema.idempotencyKeys.key, idemKey), eq(schema.idempotencyKeys.action, "bulk_price"))).limit(1);
+      if (existing[0]) {
+        if ((existing[0] as any).payloadHash && (existing[0] as any).payloadHash !== payloadHash) {
+          return reply.status(409).send({ error: { code: "idempotency_conflict", message: "Idempotency key ja usada com payload diferente." } });
+        }
+        return reply.send({ ...(existing[0].result as any || {}), replayed: true });
+      }
+      try {
+        const result = await (db as any).transaction(async (tx: any) => {
+          const ex2 = await tx.select().from(schema.idempotencyKeys).where(and(eq(schema.idempotencyKeys.key, idemKey), eq(schema.idempotencyKeys.action, "bulk_price"))).limit(1);
+          if (ex2[0]) return { cached: true, row: ex2[0] };
+          const res = await runBulk(tx);
+          await tx.insert(schema.idempotencyKeys).values({ key: idemKey, action: "bulk_price", payloadHash, result: res } as any);
+          return { cached: false, res };
+        });
+        if ((result as any).cached) {
+          const row = (result as any).row;
+          if ((row as any).payloadHash && (row as any).payloadHash !== payloadHash) return reply.status(409).send({ error: { code: "idempotency_conflict", message: "Idempotency key ja usada com payload diferente." } });
+          return reply.send({ ...(row.result as any || {}), replayed: true });
+        }
+        return reply.send((result as any).res);
+      } catch (e: any) {
+        if (/unique|duplicate/i.test(String(e?.message || e?.cause?.message || ""))) {
+          const row = (await db.select().from(schema.idempotencyKeys).where(and(eq(schema.idempotencyKeys.key, idemKey), eq(schema.idempotencyKeys.action, "bulk_price"))).limit(1))[0];
+          if (row) {
+            if ((row as any).payloadHash && (row as any).payloadHash !== payloadHash) return reply.status(409).send({ error: { code: "idempotency_conflict", message: "Idempotency key ja usada com payload diferente." } });
+            return reply.send({ ...(row.result as any || {}), replayed: true });
+          }
+        }
+        throw e;
+      }
+    }
+
+    const result = await (db as any).transaction(async (tx: any) => runBulk(tx));
+    reply.send(result);
   });
 
   app.get("/api/admin/products/:id", { preHandler: [A, adminGuard("products","read")] }, async (request, reply) => {
@@ -826,43 +871,80 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
     const body = request.body as { priceCents?: number; promoPriceCents?: number | null; weightGrams?: number; active?: boolean; stockPhysical?: number; stockMin?: number };
     const badNum = (v: unknown) => typeof v === "number" && (!Number.isFinite(v) || v < 0);
     if (badNum(body.priceCents) || badNum(body.promoPriceCents as any) || badNum(body.weightGrams) || badNum(body.stockPhysical) || badNum(body.stockMin)) {
-      return reply.status(400).send({ error: { code: "invalid_input", message: "Pre?o, estoque e peso n?o podem ser negativos." } });
+      return reply.status(400).send({ error: { code: "invalid_input", message: "Preco, estoque e peso nao podem ser negativos." } });
     }
-    const [row] = await db
-      .update(schema.productVariants)
-      .set({
-        ...(body.priceCents !== undefined ? { priceCents: body.priceCents | 0 } : {}),
-        ...(body.promoPriceCents !== undefined ? { promoPriceCents: body.promoPriceCents == null ? null : (body.promoPriceCents | 0) } : {}),
-        ...(body.weightGrams !== undefined ? { weightGrams: body.weightGrams | 0 } : {}),
-        ...(body.active !== undefined ? { active: body.active } : {}),
-      })
-      .where(eq(schema.productVariants.id, id))
-      .returning();
-    if (!row) return reply.status(404).send({ error: { code: "not_found", message: "Variante n?o encontrada" } });
-    if (body.stockPhysical !== undefined || body.stockMin !== undefined) {
-      await (db as any).transaction(async (tx: any) => {
-        const current = await tx.select().from(schema.inventory).where(eq(schema.inventory.variantId, id)).limit(1);
-        const physical = body.stockPhysical !== undefined ? (body.stockPhysical | 0) : (current[0]?.physical ?? 0);
-        const min = body.stockMin !== undefined ? (body.stockMin | 0) : (current[0]?.minQuantity ?? 0);
-        const reserved = current[0]?.reserved ?? 0;
-        if (physical < 0 || min < 0) throw Object.assign(new Error("negative"), { statusCode: 400 });
-        if (current[0]) {
-          await tx.update(schema.inventory).set({ physical, minQuantity: min, updatedAt: new Date() }).where(eq(schema.inventory.variantId, id));
-        } else {
-          await tx.insert(schema.inventory).values({ variantId: id, physical, reserved: 0, minQuantity: min });
+    const actor = (request as any).user as { sub?: string; email?: string; role?: string } | undefined;
+    const actorId = actor?.sub ?? actorOf(request);
+    const actorLabel = actor?.email ?? actor?.role ?? null;
+
+    try {
+      const result = await (db as any).transaction(async (tx: any) => {
+        const vRows = await tx.select().from(schema.productVariants).where(eq(schema.productVariants.id, id)).for("update").limit(1);
+        const beforeV = vRows[0];
+        if (!beforeV) throw Object.assign(new Error("not_found"), { statusCode: 404, code: "not_found" });
+
+        // inventory lock (cria se ausente, com reserved=0)
+        let invRows = await tx.select().from(schema.inventory).where(eq(schema.inventory.variantId, id)).for("update").limit(1);
+        if (!invRows[0]) {
+          await tx.insert(schema.inventory).values({ variantId: id, physical: 0, reserved: 0, minQuantity: 0 });
+          invRows = await tx.select().from(schema.inventory).where(eq(schema.inventory.variantId, id)).for("update").limit(1);
         }
-        await tx.insert(schema.inventoryMovements).values({
-          id: randomUUID(), variantId: id, type: "ajuste",
-          quantity: Math.abs(physical - (current[0]?.physical ?? 0)),
-          physicalBefore: current[0]?.physical ?? 0, physicalAfter: physical,
-          reservedBefore: reserved, reservedAfter: reserved,
-          reason: "Ajuste pelo painel", userId: actorOf(request),
-        });
-        await tx.insert(schema.auditLogs).values({ actorUserId: actorOf(request), action: "inventory.adjusted", entity: "product_variants", entityId: id } as any);
+        const inv = invRows[0]!;
+        const reserved = inv.reserved ?? 0;
+        const nextPhysical = body.stockPhysical !== undefined ? (body.stockPhysical | 0) : inv.physical;
+        const nextMin = body.stockMin !== undefined ? (body.stockMin | 0) : inv.minQuantity;
+        if (nextPhysical < 0 || nextMin < 0) throw Object.assign(new Error("negative"), { statusCode: 400, code: "invalid_input", message: "Estoque nao pode ser negativo." });
+        // regra: f?sico nunca abaixo do reservado (alinhado a adjustStock/reserveStock)
+        if (nextPhysical < reserved) throw Object.assign(new Error("below_reserved"), { statusCode: 409, code: "below_reserved", message: "Estoque fisico nao pode ficar abaixo do reservado (" + reserved + ")." });
+
+        const vSet: any = {};
+        if (body.priceCents !== undefined) vSet.priceCents = body.priceCents | 0;
+        if (body.promoPriceCents !== undefined) vSet.promoPriceCents = body.promoPriceCents == null ? null : (body.promoPriceCents | 0);
+        if (body.weightGrams !== undefined) vSet.weightGrams = body.weightGrams | 0;
+        if (body.active !== undefined) vSet.active = body.active;
+        const [afterV] = Object.keys(vSet).length
+          ? await tx.update(schema.productVariants).set(vSet).where(eq(schema.productVariants.id, id)).returning()
+          : [beforeV];
+
+        const invChanged = body.stockPhysical !== undefined || body.stockMin !== undefined;
+        if (invChanged) {
+          await tx.update(schema.inventory).set({ physical: nextPhysical, minQuantity: nextMin, updatedAt: new Date() }).where(eq(schema.inventory.id, inv.id));
+          await tx.insert(schema.inventoryMovements).values({
+            id: randomUUID(), variantId: id, type: "ajuste",
+            quantity: Math.abs(nextPhysical - inv.physical),
+            physicalBefore: inv.physical, physicalAfter: nextPhysical,
+            reservedBefore: reserved, reservedAfter: reserved,
+            reason: "Ajuste pelo painel", userId: actorId,
+          });
+        }
+
+        const history: any[] = [];
+        if (body.priceCents !== undefined && beforeV.priceCents !== (afterV as any).priceCents) {
+          history.push({ productId: beforeV.productId, actorUserId: actorId, actorLabel, field: "variant.priceCents", beforeValue: { variantId: id, sku: beforeV.sku, priceCents: beforeV.priceCents }, afterValue: { variantId: id, sku: beforeV.sku, priceCents: (afterV as any).priceCents } });
+        }
+        if (body.promoPriceCents !== undefined && beforeV.promoPriceCents !== (afterV as any).promoPriceCents) {
+          history.push({ productId: beforeV.productId, actorUserId: actorId, actorLabel, field: "variant.promoPriceCents", beforeValue: { variantId: id, promoPriceCents: beforeV.promoPriceCents }, afterValue: { variantId: id, promoPriceCents: (afterV as any).promoPriceCents } });
+        }
+        if (invChanged) {
+          history.push({ productId: beforeV.productId, actorUserId: actorId, actorLabel, field: "variant.stock", beforeValue: { variantId: id, physical: inv.physical, minQuantity: inv.minQuantity, reserved }, afterValue: { variantId: id, physical: nextPhysical, minQuantity: nextMin, reserved } });
+        }
+        await appendProductHistory(tx as any, history);
+
+        await tx.insert(schema.auditLogs).values({
+          actorUserId: actorId,
+          action: invChanged ? "variant.stock_price.updated" : "variant.updated",
+          entity: "product_variants",
+          entityId: id,
+          after: { variant: vSet, stock: invChanged ? { physical: nextPhysical, minQuantity: nextMin, reserved } : undefined },
+        } as any);
+
+        return { variant: afterV };
       });
+      reply.send(result);
+    } catch (err: any) {
+      const status = err?.statusCode || 400;
+      return reply.status(status).send({ error: { code: err?.code || "invalid_input", message: err?.message || "Falha ao atualizar variante." } });
     }
-    await audit(request, "variant.updated", "product_variants", id);
-    reply.send({ variant: row });
   });
 
   app.get("/api/admin/inventory/movements", { preHandler: [A, adminGuard("inventory","read")] }, async (request, reply) => {

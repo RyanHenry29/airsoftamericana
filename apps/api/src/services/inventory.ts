@@ -176,50 +176,68 @@ export async function adjustStock(
     userId?: string | null;
   },
 ): Promise<Snapshot> {
+  let result: Snapshot | undefined;
+  await db.transaction(async (tx) => {
+    result = await adjustStockInTx(tx, input);
+  });
+  if (!result) throw badRequest("adjust_failed", "Falha ao ajustar estoque");
+  return result;
+}
+
+/**
+ * Core de ajuste de estoque executado dentro de uma transação já aberta
+ * (passada via `tx`). Usado por adjustStock (que abre sua própria tx) e por
+ * rotas que precisam de auditoria na mesma transação do movimento.
+ */
+export async function adjustStockInTx(
+  tx: any,
+  input: {
+    variantId: string;
+    type: Extract<InventoryMovementType, "entrada" | "saida" | "ajuste" | "transferencia">;
+    quantity: number;
+    reason: string;
+    userId?: string | null;
+  },
+): Promise<Snapshot> {
   if (input.quantity <= 0) throw badRequest("invalid_quantity", "Quantidade deve ser > 0");
   if (input.reason.trim().length < 3) {
     throw badRequest("reason_required", "Informe o motivo da movimentação");
   }
 
-  let result: Snapshot | undefined;
-  await db.transaction(async (tx) => {
-    const inv = await lockInventory(tx as unknown as Db, input.variantId);
-    const before = { physical: inv.physical, reserved: inv.reserved };
-    let physical = inv.physical;
-    if (input.type === "entrada" || input.type === "transferencia") {
-      physical += input.quantity;
-    } else if (input.type === "saida") {
-      physical -= input.quantity;
-    } else {
-      physical = input.quantity;
-    }
-    if (physical < 0) {
-      throw conflict("negative_stock", "A movimentação deixaria o estoque negativo");
-    }
-    if (physical < inv.reserved) {
-      throw conflict(
-        "below_reserved",
-        `Estoque físico ficaria abaixo do reservado (${inv.reserved})`,
-      );
-    }
-    const after = { physical, reserved: inv.reserved };
-    await tx
-      .update(schema.inventory)
-      .set({ physical: after.physical, updatedAt: new Date() })
-      .where(eq(schema.inventory.id, inv.id));
-    await writeMovement(tx as unknown as Db, {
-      variantId: input.variantId,
-      type: input.type,
-      quantity: input.type === "ajuste" ? Math.abs(physical - before.physical) : input.quantity,
-      before,
-      after,
-      reason: input.reason,
-      userId: input.userId,
-    });
-    result = after;
+  const inv = await lockInventory(tx, input.variantId);
+  const before = { physical: inv.physical, reserved: inv.reserved };
+  let physical = inv.physical;
+  if (input.type === "entrada" || input.type === "transferencia") {
+    physical += input.quantity;
+  } else if (input.type === "saida") {
+    physical -= input.quantity;
+  } else {
+    physical = input.quantity;
+  }
+  if (physical < 0) {
+    throw conflict("negative_stock", "A movimentação deixaria o estoque negativo");
+  }
+  if (physical < inv.reserved) {
+    throw conflict(
+      "below_reserved",
+      `Estoque físico ficaria abaixo do reservado (${inv.reserved})`,
+    );
+  }
+  const after = { physical, reserved: inv.reserved };
+  await tx
+    .update(schema.inventory)
+    .set({ physical: after.physical, updatedAt: new Date() })
+    .where(eq(schema.inventory.id, inv.id));
+  await writeMovement(tx as unknown as Db, {
+    variantId: input.variantId,
+    type: input.type,
+    quantity: input.type === "ajuste" ? Math.abs(physical - before.physical) : input.quantity,
+    before,
+    after,
+    reason: input.reason,
+    userId: input.userId,
   });
-  if (!result) throw badRequest("adjust_failed", "Falha ao ajustar estoque");
-  return result;
+  return after;
 }
 
 export async function getAvailable(db: Db, variantId: string): Promise<number> {

@@ -23,7 +23,7 @@ import { getFreeShippingFromCents } from "../services/settings.js";
 import { canTransition, type OrderStatus } from "@airsoft/shared";
 import { registerAdapter, type NormalizedWebhookEvent } from "../services/payments/types.js";
 import { getAdapter } from "../services/payments/types.js";
-import { adjustStock } from "../services/inventory.js";
+import { adjustStock, adjustStockInTx } from "../services/inventory.js";
 import { registerStorefrontRoutes } from "./storefront.js";
 import { registerAdminRoutes } from "./admin.js";
 
@@ -860,63 +860,67 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       const technical = (data as any).technical && typeof (data as any).technical === "object" ? (data as any).technical : {};
       const publishedAt = data.published ? new Date() : null;
       try {
-        const [product] = await db
-          .insert(products)
-          .values({
-            name: data.name,
-            slug: data.slug,
-            description: data.description,
-            shortDescription: (data as any).shortDescription ?? "",
-            categoryId: data.categoryId,
-            brandId: data.brandId ?? null,
-            ageRestricted: data.ageRestricted,
-            featured: data.featured,
-            published: data.published,
-            condicao,
-            estadoConservacao,
-            acessoriosIncluidos: String((data as any).acessoriosIncluidos ?? ""),
-            garantiaDias: Number.isFinite((data as any).garantiaDias) ? Math.max(0, (data as any).garantiaDias | 0) : 30,
-            tags: String((data as any).tags ?? ""),
-            seoTitle: String((data as any).seoTitle ?? ""),
-            seoDescription: String((data as any).seoDescription ?? ""),
-            technical,
-            videos,
-            costCents,
-            publishedAt,
-          } as any)
-          .returning();
-        if (!product) throw new Error("product insert failed");
-        const variants = [];
-        for (const v of data.variants) {
-          const [variant] = await db
-            .insert(productVariants)
+        // FASE3-ATOMIC-PRODUCT: produto+variantes+invent?rio+hist?rico+auditoria em transa??o ?nica
+        const { product, variants } = await (db as any).transaction(async (tx: any) => {
+          const [product] = await tx
+            .insert(products)
             .values({
-              productId: product.id,
-              sku: v.sku,
-              name: v.name,
-              priceCents: v.priceCents,
-              promoPriceCents: v.promoPriceCents ?? null,
-              weightGrams: v.weightGrams,
-              active: v.active,
-            })
+              name: data.name,
+              slug: data.slug,
+              description: data.description,
+              shortDescription: (data as any).shortDescription ?? "",
+              categoryId: data.categoryId,
+              brandId: data.brandId ?? null,
+              ageRestricted: data.ageRestricted,
+              featured: data.featured,
+              published: data.published,
+              condicao,
+              estadoConservacao,
+              acessoriosIncluidos: String((data as any).acessoriosIncluidos ?? ""),
+              garantiaDias: Number.isFinite((data as any).garantiaDias) ? Math.max(0, (data as any).garantiaDias | 0) : 30,
+              tags: String((data as any).tags ?? ""),
+              seoTitle: String((data as any).seoTitle ?? ""),
+              seoDescription: String((data as any).seoDescription ?? ""),
+              technical,
+              videos,
+              costCents,
+              publishedAt,
+            } as any)
             .returning();
-          if (!variant) continue;
-          const existing = await db.select().from(inventory).where(eq(inventory.variantId, variant.id));
-          if (!existing[0]) {
-            await db.insert(inventory).values({
-              variantId: variant.id,
-              physical: v.stockPhysical,
-              reserved: 0,
-              minQuantity: v.stockMin,
-            });
+          if (!product) throw new Error("product insert failed");
+          const variants = [];
+          for (const v of data.variants) {
+            const [variant] = await tx
+              .insert(productVariants)
+              .values({
+                productId: product.id,
+                sku: v.sku,
+                name: v.name,
+                priceCents: v.priceCents,
+                promoPriceCents: v.promoPriceCents ?? null,
+                weightGrams: v.weightGrams,
+                active: v.active,
+              })
+              .returning();
+            if (!variant) continue;
+            const existing = await tx.select().from(inventory).where(eq(inventory.variantId, variant.id));
+            if (!existing[0]) {
+              await tx.insert(inventory).values({
+                variantId: variant.id,
+                physical: v.stockPhysical,
+                reserved: 0,
+                minQuantity: v.stockMin,
+              });
+            }
+            variants.push(variant);
           }
-          variants.push(variant);
-        }
-        await db.insert(auditLogs).values({ actorUserId: actorId, action: "product.created", entity: "products", entityId: product.id } as any);
-        await appendProductHistory(db, [
-          { productId: product.id, actorUserId: actorId, actorLabel, field: "created", beforeValue: null, afterValue: { slug: data.slug, condicao } },
-          ...(data.published ? [{ productId: product.id, actorUserId: actorId, actorLabel, field: "published", beforeValue: false, afterValue: true }] : []),
-        ]);
+          await tx.insert(auditLogs).values({ actorUserId: actorId, action: "product.created", entity: "products", entityId: product.id } as any);
+          await appendProductHistory(tx, [
+            { productId: product.id, actorUserId: actorId, actorLabel, field: "created", beforeValue: null, afterValue: { slug: data.slug, condicao } },
+            ...(data.published ? [{ productId: product.id, actorUserId: actorId, actorLabel, field: "published", beforeValue: false, afterValue: true }] : []),
+          ]);
+          return { product, variants };
+        });
         const out: any = { ...product, variants };
         if (!canSeeCost(role)) delete out.costCents;
         reply.status(201);
@@ -1049,14 +1053,22 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         return;
       }
       try {
-        await adjustStock(db, {
-          variantId: parsed.data.variantId,
-          type: parsed.data.type,
-          quantity: parsed.data.quantity,
-          reason: parsed.data.reason,
-          userId: (request as { user?: { sub: string } }).user?.sub ?? "",
+        const actorId = (request as { user?: { sub: string } }).user?.sub ?? null;
+        await (db as any).transaction(async (tx: any) => {
+          await adjustStockInTx(tx, {
+            variantId: parsed.data.variantId,
+            type: parsed.data.type,
+            quantity: parsed.data.quantity,
+            reason: parsed.data.reason,
+            userId: actorId ?? undefined,
+          });
+          await tx.insert(auditLogs).values({
+            actorUserId: actorId,
+            action: "stock.movement",
+            entity: "inventory",
+            entityId: parsed.data.variantId,
+          } as any);
         });
-        await db.insert(auditLogs).values({ action: "stock.movement", entity: "inventory", entityId: parsed.data.variantId });
         reply.send({ ok: true });
       } catch (err) {
         reply.status((err as { status?: number }).status ?? 400);
