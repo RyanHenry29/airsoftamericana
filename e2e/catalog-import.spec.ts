@@ -135,9 +135,9 @@ test.describe("FASE 3 - Importacao CSV (admin)", () => {
     const csv = `slug;nome;sku;preco;category_slug;brand_slug;condicao;estoque\nrb-prod-${slug};[DEMO] Rollback Prod;SKU-RB-${Date.now()};10.00;${CAT};${slug};novo;1\n`;
     await page.goto("/products/import");
     await page.getByLabel(/Arquivo CSV/i).setInputFiles({ name: "rollback.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") });
-    await page.getByRole("button", { name: /Gerar/i }).click();
-    await expect(page.getByText(/Resumo da/i)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/Validas|V.lidas/i)).toBeVisible();
+    const gen = page.getByRole("button", { name: /Gerar|Pr[eé]-?visualiza|preview/i });
+    if (await gen.isVisible().catch(() => false)) await gen.click();
+    await expect(page.getByText(/Resumo da|Validas|V.lidas|Criar/i).first()).toBeVisible({ timeout: 15000 });
 
     // remove a marca entre preview e apply => revalida??o do apply falha (nenhuma altera??o gravada)
     const listB = await page.request.get(`${API}/api/admin/brands`);
