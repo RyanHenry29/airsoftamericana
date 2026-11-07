@@ -119,6 +119,31 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Usuários (B.7: mudança de papel → outbox na mesma transação)
+  app.get("/api/admin/users", { preHandler: [A, adminGuard("users", "read")] }, async (request, reply) => {
+    const actor = (request as AdminRequest).user;
+    const rows = await db
+      .select({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        role: schema.users.role,
+        active: schema.users.active,
+        mfaEnabled: schema.users.mfaEnabled,
+        needsRoleReview: schema.users.needsRoleReview,
+        lastLoginAt: schema.users.lastLoginAt,
+        createdAt: schema.users.createdAt,
+      })
+      .from(schema.users)
+      .orderBy(desc(schema.users.createdAt));
+    reply.send({
+      items: rows.map((r) => ({ ...r, role: normalizeRole(r.role) ?? r.role })),
+      actor: {
+        id: actor?.sub ?? null,
+        role: normalizeRole(actor?.role) ?? actor?.role ?? null,
+      },
+    });
+  });
+
   app.patch("/api/admin/users/:id", { preHandler: [A, adminGuard("users", "update")] }, async (request, reply) => {
     const actor = (request as any).user as { sub: string; role: string; email?: string };
     if (normalizeRole(actor.role) !== "superadmin") {

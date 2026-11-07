@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { adminJson, messageOf } from "../../lib/api";
+import { useGateRedirect } from "../../lib/useGate";
 
 type Customer = { id: string; name: string; email: string; cpf?: string | null; phone?: string | null; createdAt?: string };
 
@@ -12,33 +11,23 @@ export default function CustomersPage() {
   const [items, setItems] = useState<Customer[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
-  const [unauth, setUnauth] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
   const [error, setError] = useState("");
+  useGateRedirect(failure);
 
   async function load(term = "") {
     setLoading(true);
     setError("");
     try {
-      const url = new URL(`${API_URL}/api/admin/customers`);
-      if (term.trim()) url.searchParams.set("q", term.trim());
-      const res = await fetch(url, {
-        credentials: "include",
-      });
-      const json = (await res.json().catch(() => ({}))) as { items?: Customer[]; error?: { message?: string } };
-      if (res.status === 401) {
-        setUnauth(true);
-        setItems([]);
-        return;
-      }
-      if (!res.ok) {
-        setError(json.error?.message ?? "Falha ao carregar clientes.");
-        setItems([]);
-        return;
-      }
-      setUnauth(false);
+      const path = term.trim()
+        ? `/api/admin/customers?q=${encodeURIComponent(term.trim())}`
+        : "/api/admin/customers";
+      const json = await adminJson<{ items?: Customer[] }>(path);
       setItems(json.items ?? []);
-    } catch {
-      setError("Erro de conexão com a API.");
+      setFailure(null);
+    } catch (e) {
+      setFailure(e);
+      setError(messageOf(e, "Falha ao carregar clientes."));
       setItems([]);
     } finally {
       setLoading(false);
@@ -56,25 +45,6 @@ export default function CustomersPage() {
           <div className="h-24 bg-[#0a0a0a] border border-[#111]" />
           <div className="h-24 bg-[#0a0a0a] border border-[#111]" />
         </div>
-      </main>
-    );
-  }
-
-  if (unauth) {
-    return (
-      <main className="px-6 py-24 text-center">
-        <div className="font-mono font-black text-6xl uppercase tracking-tighter text-[#8bcf16] mb-6">
-          401
-        </div>
-        <h1 className="font-display font-black text-4xl md:text-5xl uppercase leading-none tracking-tighter text-white mb-6">
-          Sessão expirada
-        </h1>
-        <p className="text-[#666] font-mono text-xs mb-10 max-w-md mx-auto">
-          Entre no painel com sua conta de operador para ver a base de clientes.
-        </p>
-        <a href="/login" className="btn-primary px-8 py-3">
-          IR PARA O LOGIN
-        </a>
       </main>
     );
   }

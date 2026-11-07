@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { asc, and, count, desc, eq, sql } from "drizzle-orm";
+import { asc, and, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { hashPassword, verifyPasswordDetailed } from "../lib/crypto.js";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
@@ -772,12 +772,36 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       ]);
       const revenueRows = await db.select({ total: orders.totalCents }).from(orders).where(eq(orders.status, "pagamento_aprovado"));
       const revenueCents = revenueRows.reduce((a, r) => a + r.total, 0);
+      // Valor contestado vem da disputa registrada (chargebacks), não de chute.
+      const cbAmountRows = await db
+        .select({ amount: chargebacks.amountCents })
+        .from(chargebacks);
+      const chargebackAmountCents = cbAmountRows.reduce((a, r) => a + r.amount, 0);
+      // Comparação dia a dia — contagem real no banco, nada chutado no painel.
+      const startToday = new Date();
+      startToday.setHours(0, 0, 0, 0);
+      const startYesterday = new Date(startToday.getTime() - 24 * 60 * 60 * 1000);
+      const [todayCount, yesterdayCount, todayRevenue] = await Promise.all([
+        db.select({ value: count() }).from(orders).where(gte(orders.createdAt, startToday)),
+        db
+          .select({ value: count() })
+          .from(orders)
+          .where(and(gte(orders.createdAt, startYesterday), lt(orders.createdAt, startToday))),
+        db
+          .select({ total: orders.totalCents })
+          .from(orders)
+          .where(and(eq(orders.status, "pagamento_aprovado"), gte(orders.createdAt, startToday))),
+      ]);
       reply.send({
         ordersTotal: Number(oTotal[0]?.value ?? 0),
         ordersApproved: Number(oApproved[0]?.value ?? 0),
+        ordersToday: Number(todayCount[0]?.value ?? 0),
+        ordersYesterday: Number(yesterdayCount[0]?.value ?? 0),
+        revenueTodayCents: todayRevenue.reduce((a, r) => a + r.total, 0),
         productsPublished: Number(pTotal[0]?.value ?? 0),
         lowStock: lowStock.length,
         chargebacks: Number(cbTotal[0]?.value ?? 0),
+        chargebackAmountCents,
         revenueCents,
         ticketCents: revenueRows.length ? Math.floor(revenueCents / revenueRows.length) : 0,
       });

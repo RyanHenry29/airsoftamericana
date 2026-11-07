@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_URL, adminFetch } from "../../lib/api";
+import { adminJson, messageOf } from "../../lib/api";
+import { useGateRedirect } from "../../lib/useGate";
 
 type Order = {
   id: string;
@@ -22,28 +23,21 @@ function brl(cents: number) {
 export default function OrdersPage() {
   const [items, setItems] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [unauth, setUnauth] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
   const [error, setError] = useState("");
+  useGateRedirect(failure);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(`${API_URL}/api/admin/orders`, {
-          credentials: "include",
-        });
-        if (res.status === 401) {
-          setUnauth(true);
-          return;
-        }
-        if (!res.ok) {
-          setError("Falha ao carregar pedidos.");
-          return;
-        }
-        const json = (await res.json()) as { items?: Order[] };
+        const json = await adminJson<{ items?: Order[] }>("/api/admin/orders");
         setItems(json.items ?? []);
-      } catch {
-        setError("Erro de conexão com a API.");
+        setFailure(null);
+        setError("");
+      } catch (e) {
+        setFailure(e);
+        setError(messageOf(e, "Falha ao carregar pedidos."));
       } finally {
         setLoading(false);
       }
@@ -52,15 +46,17 @@ export default function OrdersPage() {
   }, []);
 
   async function transition(id: string, to: string) {
-    const res = await adminFetch(`/api/admin/orders/${id}/transition`, {
-      method: "POST",
-      body: JSON.stringify({ status: to }),
-    });
-    if (!res.ok) {
-      setError("Falha ao alterar status do pedido.");
-      return;
+    setError("");
+    try {
+      await adminJson(`/api/admin/orders/${id}/transition`, {
+        method: "POST",
+        body: JSON.stringify({ status: to }),
+      });
+      setItems(items.map((o) => (o.id === id ? { ...o, status: to } : o)));
+    } catch (e) {
+      setFailure(e);
+      setError(messageOf(e, "Falha ao alterar status do pedido."));
     }
-    setItems(items.map((o) => (o.id === id ? { ...o, status: to } : o)));
   }
 
   if (loading) {
@@ -70,25 +66,6 @@ export default function OrdersPage() {
           <div className="h-20 bg-[#0a0a0a] border border-[#111]" />
           <div className="h-20 bg-[#0a0a0a] border border-[#111]" />
         </div>
-      </main>
-    );
-  }
-
-  if (unauth) {
-    return (
-      <main className="px-6 py-24 text-center">
-        <div className="font-mono font-black text-6xl uppercase tracking-tighter text-[#8bcf16] mb-6">
-          401
-        </div>
-        <h1 className="font-display font-black text-4xl md:text-5xl uppercase leading-none tracking-tighter text-white mb-6">
-          Sessão expirada
-        </h1>
-        <p className="text-[#666] font-mono text-xs mb-10 max-w-md mx-auto">
-          Entre no painel para gerenciar pedidos.
-        </p>
-        <a href="/login" className="btn-primary px-8 py-3">
-          IR PARA O LOGIN
-        </a>
       </main>
     );
   }
