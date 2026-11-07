@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
-import { adminJson, messageOf } from "../../../lib/api";
+import { adminJson, clearCsrfToken, messageOf } from "../../../lib/api";
 
 type MfaStatus = {
   mfaEnabled: boolean;
@@ -93,6 +93,8 @@ export default function MfaSetupPage() {
       if (res.recoveryCodes?.length) {
         setCodes(res.recoveryCodes);
       } else {
+        // A elevação rotaciona a sessão: o token CSRF em cache é doCookie antigo.
+        clearCsrfToken();
         router.replace("/dashboard");
       }
     } catch (e) {
@@ -119,7 +121,10 @@ export default function MfaSetupPage() {
         { method: "POST", body: JSON.stringify(response) },
       );
       if (res.recoveryCodes?.length) setCodes(res.recoveryCodes);
-      else router.replace("/dashboard");
+      else {
+        clearCsrfToken();
+        router.replace("/dashboard");
+      }
     } catch (e) {
       setError(
         messageOf(e, "Não foi possível registrar a passkey neste navegador."),

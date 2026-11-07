@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { adminJson, messageOf } from "../../../lib/api";
+import { adminJson, clearCsrfToken, messageOf } from "../../../lib/api";
 
 type MfaStatus = {
   mfaEnabled: boolean;
@@ -71,6 +71,8 @@ export default function MfaVerifyPage() {
         method: "POST",
         body: JSON.stringify({ code: value }),
       });
+      // A elevação rotaciona a sessão: o token CSRF em cache é do cookie antigo.
+      clearCsrfToken();
       router.replace("/dashboard");
     } catch (e) {
       setError(messageOf(e, "Código inválido."));
@@ -95,6 +97,7 @@ export default function MfaVerifyPage() {
         method: "POST",
         body: JSON.stringify(response),
       });
+      clearCsrfToken();
       router.replace("/dashboard");
     } catch (e) {
       setError(messageOf(e, "Não foi possível validar a passkey."));

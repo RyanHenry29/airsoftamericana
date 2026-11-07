@@ -5,7 +5,7 @@ import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { adminGuard } from "../lib/rbac.js";
-import { csrfTokenFor, csrfTokenForSession } from "../lib/csrf.js";
+import { csrfTokenFor } from "../lib/csrf.js";
 import { listActiveSessions, revokeSession } from "../services/sessions.js";
 import { normalizeRole, type Role } from "../lib/rbac.js";
 import { createInvite } from "../services/invites.js";
@@ -89,8 +89,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
 
   // ---------------------------------------------------------------- CSRF (B.3/B.1)
   app.get("/api/admin/csrf", { preHandler: [A, adminGuard("dashboard", "read")] }, async (request, reply) => {
-    const session = (request as any).session as { id?: string } | undefined;
-    if (session?.id) return reply.send({ token: csrfTokenForSession(session.id) });
+    // Mesma função que a guarda confere: HMAC do valor do cookie de sessão.
     const cookies = (request as any).cookies;
     const raw = cookies?.aa_session ? String(cookies.aa_session) : "";
     reply.send({ token: raw ? csrfTokenFor(raw) : null });
