@@ -14,3 +14,11 @@ coverage/
 mirror/
 temp_base/
 logs/
+
+# PGlite lock/test data (não versionar)
+*.pglite.lock
+data-test/
+data-test-root/
+apps/api/data-test/
+vitest/data-test-root/
+apps/api/data/
