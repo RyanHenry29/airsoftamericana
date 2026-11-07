@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import crypto from "node:crypto";
 import { getDb } from "../db/index.js";
 import { migrate } from "../db/migrate.js";
@@ -12,344 +12,41 @@ const customerEmail = "cliente@demo.com";
 
 let db: any;
 
-async function ensureTables() {
-  // Drop e recria para garantir esquema limpo entre execucoes do vitest
-  await db.execute(`DROP TABLE IF EXISTS "payment_events" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "payments" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "order_status_history" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "order_items" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "orders" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "inventory_movements" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "watchlist" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "coupons" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "gateway_configs" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "fraud_rules" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "fraud_assessments" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "audit_logs" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "inventory" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "product_variants" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "products" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "brands" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "categories" CASCADE`);
-  await db.execute(`DROP TABLE IF EXISTS "system_settings" CASCADE`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "system_settings" (
-      "key" varchar(60) PRIMARY KEY,
-      "value" jsonb NOT NULL,
-      "updated_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`DROP TABLE IF EXISTS "customers" CASCADE`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "customers" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "name" varchar(120) NOT NULL,
-      "email" varchar(254) NOT NULL,
-      "password_hash" text,
-      "cpf" varchar(11),
-      "phone" varchar(20),
-      "born_at" timestamptz,
-      "age_verified_at" timestamptz,
-      "notes" text,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "customers_email_idx" ON "customers" ("email")`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "customer_addresses" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "customer_id" uuid NOT NULL REFERENCES "customers"("id") ON DELETE CASCADE,
-      "recipient" varchar(120) NOT NULL,
-      "zip" varchar(8) NOT NULL,
-      "street" varchar(160) NOT NULL,
-      "number" varchar(20) NOT NULL,
-      "complement" varchar(120),
-      "neighborhood" varchar(80) NOT NULL,
-      "city" varchar(80) NOT NULL,
-      "state" varchar(2) NOT NULL,
-      "country" varchar(2) NOT NULL DEFAULT 'BR',
-      "is_default" boolean NOT NULL DEFAULT false
-    )
-  `);
-  await db.execute(`CREATE INDEX IF NOT EXISTS "customer_addresses_customer_idx" ON "customer_addresses" ("customer_id")`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "categories" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "parent_id" uuid,
-      "name" varchar(80) NOT NULL,
-      "slug" varchar(80) NOT NULL,
-      "description" text DEFAULT '',
-      "image_url" text,
-      "age_restricted" boolean NOT NULL DEFAULT false,
-      "active" boolean NOT NULL DEFAULT true,
-      "position" integer NOT NULL DEFAULT 0
-    )
-  `);
-  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "categories_slug_idx" ON "categories" ("slug")`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "brands" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "name" varchar(80) NOT NULL,
-      "slug" varchar(80) NOT NULL,
-      "logo_url" text,
-      "description" text DEFAULT '',
-      "position" integer NOT NULL DEFAULT 0,
-      "active" boolean NOT NULL DEFAULT true
-    )
-  `);
-  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "brands_slug_idx" ON "brands" ("slug")`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "products" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "name" varchar(160) NOT NULL,
-      "slug" varchar(160) NOT NULL,
-      "short_description" text DEFAULT '',
-      "description" text DEFAULT '',
-      "category_id" uuid NOT NULL,
-      "brand_id" uuid,
-      "age_restricted" boolean NOT NULL DEFAULT false,
-      "featured" boolean NOT NULL DEFAULT false,
-      "published" boolean NOT NULL DEFAULT false,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "product_variants" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "product_id" uuid NOT NULL,
-      "sku" varchar(64) NOT NULL,
-      "name" varchar(120) NOT NULL,
-      "price_cents" integer NOT NULL,
-      "promo_price_cents" integer,
-      "weight_grams" integer NOT NULL DEFAULT 0,
-      "active" boolean NOT NULL DEFAULT true
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "inventory" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "variant_id" uuid NOT NULL,
-      "physical" integer NOT NULL DEFAULT 0,
-      "reserved" integer NOT NULL DEFAULT 0,
-      "min_quantity" integer NOT NULL DEFAULT 0,
-      "updated_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "fraud_rules" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "key" varchar(60) NOT NULL,
-      "name" varchar(120) NOT NULL,
-      "enabled" boolean NOT NULL DEFAULT true,
-      "weight" integer NOT NULL DEFAULT 10,
-      "threshold" integer,
-      "action" varchar(20) NOT NULL DEFAULT 'soma',
-      "updated_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "fraud_rules_key_idx" ON "fraud_rules" ("key")`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "fraud_assessments" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "order_id" uuid NOT NULL,
-      "score" integer NOT NULL,
-      "level" varchar(20) NOT NULL,
-      "action" varchar(20) NOT NULL,
-      "reasons" jsonb NOT NULL,
-      "ip" varchar(45),
-      "device_fingerprint" text,
-      "auto_decision" boolean NOT NULL DEFAULT true,
-      "reviewed_by_user_id" uuid,
-      "review_note" text,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "watchlist" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "kind" varchar(20) NOT NULL,
-      "value" varchar(254) NOT NULL,
-      "reason" text NOT NULL,
-      "added_by_user_id" uuid,
-      "expires_at" timestamptz,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "watchlist_kind_value_idx" ON "watchlist" ("kind", "value")`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "orders" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "number" varchar(20) NOT NULL,
-      "customer_id" uuid NOT NULL,
-      "status" varchar(40) NOT NULL DEFAULT 'aguardando_pagamento',
-      "subtotal_cents" integer NOT NULL,
-      "discount_cents" integer NOT NULL DEFAULT 0,
-      "shipping_cents" integer NOT NULL DEFAULT 0,
-      "total_cents" integer NOT NULL,
-      "coupon_code" varchar(40),
-      "payment_method" varchar(20),
-      "address_json" jsonb NOT NULL,
-      "customer_notes" text,
-      "terms_version" varchar(20),
-      "terms_accepted_at" timestamptz,
-      "terms_ip" varchar(45),
-      "volume_day" varchar(10),
-      "risk_level" varchar(20),
-      "risk_score" integer DEFAULT 0,
-      "risk_reasons" jsonb,
-      "created_at" timestamptz NOT NULL DEFAULT now(),
-      "updated_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "order_items" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "order_id" uuid NOT NULL,
-      "variant_id" uuid NOT NULL,
-      "sku" varchar(64) NOT NULL,
-      "name" varchar(200) NOT NULL,
-      "quantity" integer NOT NULL,
-      "unit_price_cents" integer NOT NULL,
-      "total_cents" integer NOT NULL
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "order_status_history" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "order_id" uuid NOT NULL,
-      "from_status" varchar(40),
-      "to_status" varchar(40) NOT NULL,
-      "reason" text,
-      "actor_user_id" uuid,
-      "actor_system" boolean NOT NULL DEFAULT false,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "payments" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "order_id" uuid NOT NULL,
-      "provider" varchar(32) NOT NULL,
-      "method" varchar(20) NOT NULL,
-      "status" varchar(20) NOT NULL DEFAULT 'pendente',
-      "amount_cents" integer NOT NULL,
-      "authorized_cents" integer,
-      "provider_transaction_id" varchar(120),
-      "payload" text,
-      "expires_at" timestamptz,
-      "captured_at" timestamptz,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "payment_events" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "payment_id" uuid,
-      "provider" varchar(32) NOT NULL,
-      "event_id" varchar(160) NOT NULL,
-      "type" varchar(80) NOT NULL,
-      "payload" jsonb NOT NULL,
-      "signature_valid" boolean,
-      "processed_at" timestamptz,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "inventory_movements" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "variant_id" uuid NOT NULL,
-      "type" varchar(20) NOT NULL,
-      "quantity" integer NOT NULL,
-      "physical_before" integer NOT NULL,
-      "physical_after" integer NOT NULL,
-      "reserved_before" integer NOT NULL,
-      "reserved_after" integer NOT NULL,
-      "reason" text NOT NULL,
-      "order_id" uuid,
-      "user_id" uuid,
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "coupons" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "code" varchar(40) NOT NULL,
-      "kind" varchar(20) NOT NULL,
-      "value" integer NOT NULL,
-      "min_order_cents" integer NOT NULL DEFAULT 0,
-      "max_uses" integer,
-      "used_count" integer NOT NULL DEFAULT 0,
-      "starts_at" timestamptz,
-      "ends_at" timestamptz,
-      "active" boolean NOT NULL DEFAULT true
-    )
-  `);
-  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "coupons_code_idx" ON "coupons" ("code")`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "gateway_configs" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "provider" varchar(32) NOT NULL,
-      "credentials_encrypted" text,
-      "enabled" boolean NOT NULL DEFAULT false,
-      "is_default" boolean NOT NULL DEFAULT false,
-      "methods" jsonb NOT NULL DEFAULT '["pix", "cartao", "boleto"]',
-      "capture_after_review" boolean NOT NULL DEFAULT false,
-      "require3ds" boolean NOT NULL DEFAULT false,
-      "pix_discount_percent" integer NOT NULL DEFAULT 0,
-      "updated_at" timestamptz NOT NULL DEFAULT now(),
-      "updated_by_user_id" uuid
-    )
-  `);
-  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS "gateway_configs_provider_idx" ON "gateway_configs" ("provider")`);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS "audit_logs" (
-      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "actor_user_id" uuid,
-      "actor_label" varchar(120),
-      "action" varchar(80) NOT NULL,
-      "entity" varchar(60) NOT NULL,
-      "entity_id" varchar(64),
-      "before_json" text,
-      "after_json" text,
-      "ip" varchar(45),
-      "correlation_id" varchar(64),
-      "created_at" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-}
-
+/** Limpa dados entre testes. audit_logs é append-only (trigger) — não deletar. */
 async function clearTables() {
-  await db.execute(`DELETE FROM "payment_events"`);
-  await db.execute(`DELETE FROM "payments"`);
-  await db.execute(`DELETE FROM "order_status_history"`);
-  await db.execute(`DELETE FROM "order_items"`);
-  await db.execute(`DELETE FROM "orders"`);
-  await db.execute(`DELETE FROM "inventory_movements"`);
-  await db.execute(`DELETE FROM "watchlist"`);
-  await db.execute(`DELETE FROM "audit_logs"`);
-  await db.execute(`UPDATE "inventory" SET reserved = 0`);
+  // ordem respeita FKs do schema real (migrações). audit_logs é append-only (trigger).
+  await db.execute(`DELETE FROM "payment_events"`).catch(() => {});
+  await db.execute(`DELETE FROM "refunds"`).catch(() => {});
+  await db.execute(`DELETE FROM "payments"`).catch(() => {});
+  await db.execute(`DELETE FROM "chargeback_evidence"`).catch(() => {});
+  await db.execute(`DELETE FROM "chargebacks"`).catch(() => {});
+  await db.execute(`DELETE FROM "shipping_events"`).catch(() => {});
+  await db.execute(`DELETE FROM "shipments"`).catch(() => {});
+  await db.execute(`DELETE FROM "fraud_review_events"`).catch(() => {});
+  await db.execute(`DELETE FROM "fraud_assessments"`).catch(() => {});
+  await db.execute(`DELETE FROM "order_status_history"`).catch(() => {});
+  await db.execute(`DELETE FROM "order_items"`).catch(() => {});
+  await db.execute(`DELETE FROM "orders"`).catch(() => {});
+  await db.execute(`DELETE FROM "inventory_movements"`).catch(() => {});
+  await db.execute(`DELETE FROM "watchlist"`).catch(() => {});
+  await db.execute(`DELETE FROM "cart_items"`).catch(() => {});
+  await db.execute(`DELETE FROM "carts"`).catch(() => {});
+  await db.execute(`DELETE FROM "coupons"`).catch(() => {});
+  await db.execute(`DELETE FROM "gateway_configs"`).catch(() => {});
+  await db.execute(`DELETE FROM "fraud_rules"`).catch(() => {});
+  await db.execute(`DELETE FROM "daily_metrics"`).catch(() => {});
+  await db.execute(`DELETE FROM "inventory"`).catch(() => {});
+  await db.execute(`DELETE FROM "product_images"`).catch(() => {});
+  await db.execute(`DELETE FROM "product_specs"`).catch(() => {});
+  await db.execute(`DELETE FROM "related_products"`).catch(() => {});
+  await db.execute(`DELETE FROM "product_variants"`).catch(() => {});
+  await db.execute(`DELETE FROM "products"`).catch(() => {});
 }
+
+beforeAll(async () => {
+  db = await getDb();
+  await migrate(db);
+});
 
 async function getCustomerId() {
   const rows = await db.select().from(schema.customers).where(eq(schema.customers.email, customerEmail));
@@ -432,11 +129,6 @@ function addr(number: string) {
 
 describe("checkout service", () => {
   beforeEach(async () => {
-    db = await getDb();
-    // Schema completo antes dos fixtures: o teste não pode depender de tabelas
-    // que por acaso existam no banco de desenvolvimento.
-    await migrate(db);
-    await ensureTables();
     await clearTables();
   });
 
@@ -595,8 +287,6 @@ describe("checkout service", () => {
 
 describe("estoque transacional", () => {
   beforeEach(async () => {
-    db = await getDb();
-    await ensureTables();
     await clearTables();
   });
 
@@ -645,9 +335,6 @@ describe("estoque transacional", () => {
 
 describe("concorrencia de estoque", () => {
   it("20 compras simultaneas do ultimo item: 1 vende, 19 rejeitam, estoque nunca negativo", async () => {
-    db = await getDb();
-    await migrate(db);
-    await ensureTables();
     await clearTables();
     const customerId = await getCustomerId();
 
