@@ -11,6 +11,7 @@ import {
   revokeSession,
   listActiveSessions,
   hashToken,
+  adminSessionCookieOptions,
   SESSION_ABSOLUTE_MS,
   SESSION_IDLE_MS,
 } from "./sessions.js";
@@ -131,5 +132,17 @@ describe("B.1 — sessões em banco", () => {
   it("janela absoluta 8h e ociosa 30 min (constantes)", () => {
     expect(SESSION_ABSOLUTE_MS).toBe(8 * 60 * 60 * 1000);
     expect(SESSION_IDLE_MS).toBe(30 * 60 * 1000);
+  });
+
+  it("cookie aa_session: HttpOnly, SameSite=Strict, Secure em produção (item 6)", () => {
+    const prod = adminSessionCookieOptions(true);
+    expect(prod.httpOnly).toBe(true);
+    expect(prod.sameSite).toBe("strict");
+    expect(prod.secure).toBe(true);
+    expect(prod.path).toBe("/");
+    const dev = adminSessionCookieOptions(false);
+    expect(dev.httpOnly).toBe(true);
+    expect(dev.sameSite).toBe("strict");
+    expect(dev.secure).toBe(false);
   });
 });
