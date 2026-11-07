@@ -5,12 +5,13 @@ import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
 import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customers, inventory, inventoryMovements, newsletterSubscribers, orderItems, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
 import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
-import { adminGuard } from "../lib/rbac.js";
+import { adminGuard, normalizeRole } from "../lib/rbac.js";
 import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
 import { acceptInvite } from "../services/invites.js";
 import { isLocked, registerFailure, registerSuccess, lockoutKeys } from "../services/lockout.js";
 import { outboxNotify, loginNewDeviceBody } from "../services/outbox.js";
 import { schema } from "../db/index.js";
+import { appendProductHistory, canSeeCost } from "../services/product-history.js";
 import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule } from "../middleware/authRateLimit.js";
 import type { Config } from "../config.js";
 import { registerSchema, loginSchema, adminCustomerSchema, checkoutSchema, cartItemSchema, orderStatusSchema, stockMovementSchema, productSchema, orderVolumeLimitsSchema, gatewayConfigSchema, chargebackStatusSchema } from "@airsoft/shared";
@@ -813,11 +814,15 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     "/api/admin/products",
     { preHandler: [authMiddleware, adminGuard("products", "read")] },
     async (request, reply) => {
+      const role = normalizeRole((request as any).user?.role);
+      const showCost = canSeeCost(role);
       const rows = await db.select().from(products).orderBy(desc(products.createdAt));
       const items = await Promise.all(
         rows.map(async (row) => {
           const variants = await db.select().from(productVariants).where(eq(productVariants.productId, row.id));
-          return { ...row, variants };
+          const p: any = { ...row, variants };
+          if (!showCost) delete p.costCents;
+          return p;
         }),
       );
       reply.send({ items });
@@ -835,49 +840,96 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         return;
       }
       const data = parsed.data;
-      const [product] = await db
-        .insert(products)
-        .values({
-          name: data.name,
-          slug: data.slug,
-          description: data.description,
-          categoryId: data.categoryId,
-          brandId: data.brandId ?? null,
-          ageRestricted: data.ageRestricted,
-          featured: data.featured,
-          published: data.published,
-        })
-        .returning();
-      if (!product) throw new Error("product insert failed");
-      const variants = [];
-      for (const v of data.variants) {
-        const [variant] = await db
-          .insert(productVariants)
-          .values({
-            productId: product.id,
-            sku: v.sku,
-            name: v.name,
-            priceCents: v.priceCents,
-            promoPriceCents: v.promoPriceCents ?? null,
-            weightGrams: v.weightGrams,
-            active: v.active,
-          })
-          .returning();
-        if (!variant) continue;
-        const existing = await db.select().from(inventory).where(eq(inventory.variantId, variant.id));
-        if (!existing[0]) {
-          await db.insert(inventory).values({
-            variantId: variant.id,
-            physical: v.stockPhysical,
-            reserved: 0,
-            minQuantity: v.stockMin,
-          });
-        }
-        variants.push(variant);
+      const role = normalizeRole((request as any).user?.role);
+      const actorId = (request as any).user?.sub ?? null;
+      const actorLabel = (request as any).user?.email ?? role ?? null;
+      const condicao = (data as any).condicao ?? "novo";
+      const estadoConservacao = String((data as any).estadoConservacao ?? "").trim();
+      if ((condicao === "usado" || condicao === "seminovo") && !estadoConservacao) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Produtos usados/seminovos exigem estado de conservação." } });
+        return;
       }
-      await db.insert(auditLogs).values({ action: "product.created", entity: "products", entityId: product.id });
-      reply.status(201);
-      reply.send({ product: { ...product, variants } });
+      const costCents = canSeeCost(role) ? ((data as any).costCents ?? null) : null;
+      if (costCents != null && costCents < 0) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Custo não pode ser negativo." } });
+        return;
+      }
+      const videos = Array.isArray((data as any).videos) ? (data as any).videos : [];
+      const technical = (data as any).technical && typeof (data as any).technical === "object" ? (data as any).technical : {};
+      const publishedAt = data.published ? new Date() : null;
+      try {
+        const [product] = await db
+          .insert(products)
+          .values({
+            name: data.name,
+            slug: data.slug,
+            description: data.description,
+            shortDescription: (data as any).shortDescription ?? "",
+            categoryId: data.categoryId,
+            brandId: data.brandId ?? null,
+            ageRestricted: data.ageRestricted,
+            featured: data.featured,
+            published: data.published,
+            condicao,
+            estadoConservacao,
+            acessoriosIncluidos: String((data as any).acessoriosIncluidos ?? ""),
+            garantiaDias: Number.isFinite((data as any).garantiaDias) ? Math.max(0, (data as any).garantiaDias | 0) : 30,
+            tags: String((data as any).tags ?? ""),
+            seoTitle: String((data as any).seoTitle ?? ""),
+            seoDescription: String((data as any).seoDescription ?? ""),
+            technical,
+            videos,
+            costCents,
+            publishedAt,
+          } as any)
+          .returning();
+        if (!product) throw new Error("product insert failed");
+        const variants = [];
+        for (const v of data.variants) {
+          const [variant] = await db
+            .insert(productVariants)
+            .values({
+              productId: product.id,
+              sku: v.sku,
+              name: v.name,
+              priceCents: v.priceCents,
+              promoPriceCents: v.promoPriceCents ?? null,
+              weightGrams: v.weightGrams,
+              active: v.active,
+            })
+            .returning();
+          if (!variant) continue;
+          const existing = await db.select().from(inventory).where(eq(inventory.variantId, variant.id));
+          if (!existing[0]) {
+            await db.insert(inventory).values({
+              variantId: variant.id,
+              physical: v.stockPhysical,
+              reserved: 0,
+              minQuantity: v.stockMin,
+            });
+          }
+          variants.push(variant);
+        }
+        await db.insert(auditLogs).values({ actorUserId: actorId, action: "product.created", entity: "products", entityId: product.id } as any);
+        await appendProductHistory(db, [
+          { productId: product.id, actorUserId: actorId, actorLabel, field: "created", beforeValue: null, afterValue: { slug: data.slug, condicao } },
+          ...(data.published ? [{ productId: product.id, actorUserId: actorId, actorLabel, field: "published", beforeValue: false, afterValue: true }] : []),
+        ]);
+        const out: any = { ...product, variants };
+        if (!canSeeCost(role)) delete out.costCents;
+        reply.status(201);
+        reply.send({ product: out });
+      } catch (err: any) {
+        const msg = String(err?.cause?.message || err?.message || "");
+        if (/unique|duplicate/i.test(msg)) {
+          reply.status(409);
+          reply.send({ error: { code: "conflict", message: "Slug ou SKU já existe." } });
+          return;
+        }
+        throw err;
+      }
     },
   );
 
@@ -886,27 +938,89 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     { preHandler: [authMiddleware, adminGuard("products", "update")] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const body = request.body as Partial<{ name: string; published: boolean; featured: boolean }>;
+      const body = (request.body ?? {}) as Record<string, any>;
       const found = await db.select().from(products).where(eq(products.id, id)).limit(1);
       if (!found[0]) {
         reply.status(404);
-        reply.send({ error: { code: "not_found", message: "Produto não encontrado" } });
+        reply.send({ error: { code: "not_found", message: "Produto n?o encontrado" } });
         return;
       }
-      const [updated] = await db
-        .update(products)
-        .set({
-          ...(body.name !== undefined ? { name: body.name } : {}),
-          ...(body.published !== undefined ? { published: body.published } : {}),
-          ...(body.featured !== undefined ? { featured: body.featured } : {}),
-        })
-        .where(eq(products.id, id))
-        .returning();
-      await db.insert(auditLogs).values({ action: "product.updated", entity: "products", entityId: id });
-      reply.send({ product: updated });
+      const before = found[0] as any;
+      const role = normalizeRole((request as any).user?.role);
+      const actorId = (request as any).user?.sub ?? null;
+      const actorLabel = (request as any).user?.email ?? role ?? null;
+      const set: Record<string, any> = {};
+      if (body.archived === true) { body.published = false; body.featured = false; }
+      if (body.name !== undefined) set.name = String(body.name).trim().slice(0, 160);
+      if (body.slug !== undefined) set.slug = String(body.slug).trim();
+      if (body.description !== undefined) set.description = String(body.description);
+      if (body.shortDescription !== undefined) set.shortDescription = String(body.shortDescription).slice(0, 500);
+      if (body.categoryId !== undefined) set.categoryId = body.categoryId;
+      if (body.brandId !== undefined) set.brandId = body.brandId || null;
+      if (body.ageRestricted !== undefined) set.ageRestricted = !!body.ageRestricted;
+      if (body.featured !== undefined) set.featured = !!body.featured;
+      if (body.tags !== undefined) set.tags = String(body.tags).slice(0, 500);
+      if (body.seoTitle !== undefined) set.seoTitle = String(body.seoTitle).slice(0, 200);
+      if (body.seoDescription !== undefined) set.seoDescription = String(body.seoDescription).slice(0, 320);
+      if (body.acessoriosIncluidos !== undefined) set.acessoriosIncluidos = String(body.acessoriosIncluidos).slice(0, 1000);
+      if (body.garantiaDias !== undefined) {
+        const g = Number(body.garantiaDias);
+        if (!Number.isFinite(g) || g < 0) { reply.status(400); reply.send({ error: { code: "invalid_input", message: "Garantia n?o pode ser negativa." } }); return; }
+        set.garantiaDias = g | 0;
+      }
+      if (body.condicao !== undefined) {
+        const c = String(body.condicao);
+        if (!["novo","usado","seminovo"].includes(c)) { reply.status(400); reply.send({ error: { code: "invalid_input", message: "Condi??o inv?lida." } }); return; }
+        set.condicao = c;
+      }
+      if (body.estadoConservacao !== undefined) set.estadoConservacao = String(body.estadoConservacao).slice(0, 120);
+      if (body.technical !== undefined && body.technical && typeof body.technical === "object") set.technical = body.technical;
+      if (body.videos !== undefined) {
+        if (!Array.isArray(body.videos)) { reply.status(400); reply.send({ error: { code: "invalid_input", message: "V?deos inv?lidos." } }); return; }
+        const okTypes = new Set(["youtube","vimeo","mp4","external"]);
+        for (const v of body.videos) {
+          if (!v || typeof v.url !== "string" || !/^https?:\/\//i.test(v.url)) { reply.status(400); reply.send({ error: { code: "invalid_input", message: "URL de v?deo inv?lida." } }); return; }
+          if (!okTypes.has(String(v.type || ""))) { reply.status(400); reply.send({ error: { code: "invalid_input", message: "Tipo de v?deo inv?lido." } }); return; }
+        }
+        set.videos = body.videos;
+      }
+      if (body.costCents !== undefined) {
+        if (!canSeeCost(role)) { reply.status(403); reply.send({ error: { code: "forbidden", message: "Sem permiss?o para editar custo interno." } }); return; }
+        if (body.costCents !== null && (typeof body.costCents !== "number" || !Number.isFinite(body.costCents) || body.costCents < 0)) {
+          reply.status(400); reply.send({ error: { code: "invalid_input", message: "Custo n?o pode ser negativo." } }); return;
+        }
+        set.costCents = body.costCents === null ? null : (body.costCents | 0);
+      }
+      if (body.publishedAt !== undefined) set.publishedAt = body.publishedAt ? new Date(body.publishedAt) : null;
+      if (body.published !== undefined) {
+        set.published = !!body.published;
+        if (set.published && before.publishedAt == null && body.publishedAt === undefined) set.publishedAt = new Date();
+      }
+      const finalCond = set.condicao ?? before.condicao ?? "novo";
+      const finalCons = String(set.estadoConservacao ?? before.estadoConservacao ?? "").trim();
+      if ((finalCond === "usado" || finalCond === "seminovo") && !finalCons) {
+        reply.status(400); reply.send({ error: { code: "invalid_input", message: "Produtos usados/seminovos exigem estado de conserva??o." } }); return;
+      }
+      if (Object.keys(set).length === 0) { const o:any={...before}; if(!canSeeCost(role)) delete o.costCents; reply.send({ product: o }); return; }
+      try {
+        const [updated] = await db.update(products).set(set as any).where(eq(products.id, id)).returning();
+        const after = updated as any;
+        const hist: any[] = [];
+        for (const f of ["published","featured","costCents","publishedAt","slug","condicao","estadoConservacao","name"]) {
+          if (f in set) hist.push({ productId: id, actorUserId: actorId, actorLabel, field: f, beforeValue: before[f], afterValue: after[f] });
+        }
+        if (body.archived === true) hist.push({ productId: id, actorUserId: actorId, actorLabel, field: "archived", beforeValue: false, afterValue: true });
+        await appendProductHistory(db, hist);
+        const pubChanged = "published" in set && !!before.published !== !!after.published;
+        await db.insert(auditLogs).values({ actorUserId: actorId, action: pubChanged ? (after.published ? "product.published" : "product.unpublished") : (body.archived ? "product.archived" : "product.updated"), entity: "products", entityId: id } as any);
+        const o:any={...after}; if(!canSeeCost(role)) delete o.costCents; reply.send({ product: o });
+      } catch (err: any) {
+        const msg = String(err?.cause?.message || err?.message || "");
+        if (/unique|duplicate/i.test(msg)) { reply.status(409); reply.send({ error: { code: "conflict", message: "Slug ou SKU j? existe." } }); return; }
+        throw err;
+      }
     },
   );
-
   // ---------------------------------------------------------- Admin estoque
   app.get(
     "/api/admin/inventory",

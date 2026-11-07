@@ -128,6 +128,15 @@ export const productVariantSchema = z.object({
   active: z.boolean().default(true),
 });
 
+export const productVideoSchema = z.object({
+  url: z.string().trim().url().max(500),
+  type: z.enum(["youtube", "vimeo", "mp4", "external"]),
+  title: z.string().trim().max(160).optional().default(""),
+});
+
+export const CONDICAO_VALUES = ["novo", "usado", "seminovo"] as const;
+export type Condicao = (typeof CONDICAO_VALUES)[number];
+
 export const productSchema = z.object({
   name: z.string().trim().min(2).max(160),
   slug: z
@@ -144,6 +153,18 @@ export const productSchema = z.object({
   featured: z.boolean().default(false),
   published: z.boolean().default(false),
   variants: z.array(productVariantSchema).min(1),
+  // FASE 3A (opcionais para compatibilidade; validados no servidor)
+  condicao: z.enum(CONDICAO_VALUES).optional().default("novo"),
+  estadoConservacao: z.string().trim().max(120).optional().default(""),
+  acessoriosIncluidos: z.string().trim().max(1000).optional().default(""),
+  garantiaDias: z.number().int().min(0).max(3650).optional().default(30),
+  tags: z.string().trim().max(500).optional().default(""),
+  seoTitle: z.string().trim().max(200).optional().default(""),
+  seoDescription: z.string().trim().max(320).optional().default(""),
+  shortDescription: z.string().trim().max(500).optional().default(""),
+  costCents: z.number().int().min(0).nullable().optional(),
+  videos: z.array(productVideoSchema).max(12).optional().default([]),
+  technical: z.record(z.string().trim().min(1).max(60), z.string().trim().max(500)).optional().default({}),
 });
 
 // ------------------------------------------------------------- Pagamentos — gateway (admin)

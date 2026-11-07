@@ -46,6 +46,8 @@ type CategoryInput = {
   parentId?: string | null;
   description?: string;
   imageUrl?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
   ageRestricted?: boolean;
   active?: boolean;
   position?: number;
@@ -56,6 +58,8 @@ type BrandInput = {
   slug: string;
   logoUrl?: string | null;
   description?: string;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
   active?: boolean;
   position?: number;
 };
@@ -414,6 +418,8 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
         parentId: body.parentId ?? null,
         description: body.description ?? "",
         imageUrl: body.imageUrl ?? null,
+        seoTitle: body.seoTitle ?? null,
+        seoDescription: body.seoDescription ?? null,
         ageRestricted: body.ageRestricted ?? false,
         active: body.active ?? true,
         position: body.position ?? 0,
@@ -427,6 +433,15 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   app.patch("/api/admin/categories/:id", { preHandler: [A, adminGuard("categories","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as Partial<CategoryInput>;
+    if (body.parentId === id) { reply.status(400); reply.send({ error: { code: "invalid_input", message: "Categoria n?o pode ser pai de si mesma." } }); return; }
+    if (body.parentId) {
+      let cur: string | null = body.parentId;
+      for (let i = 0; i < 20 && cur; i++) {
+        if (cur === id) { reply.status(400); reply.send({ error: { code: "invalid_input", message: "Ciclo de categoria n?o permitido." } }); return; }
+        const [p] = await db.select({ parentId: schema.categories.parentId }).from(schema.categories).where(eq(schema.categories.id, cur)).limit(1);
+        cur = (p?.parentId as string | null) ?? null;
+      }
+    }
     const [row] = await db
       .update(schema.categories)
       .set({
@@ -435,6 +450,8 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
         ...(body.parentId !== undefined ? { parentId: body.parentId } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
         ...(body.imageUrl !== undefined ? { imageUrl: body.imageUrl } : {}),
+        ...(body.seoTitle !== undefined ? { seoTitle: body.seoTitle } : {}),
+        ...(body.seoDescription !== undefined ? { seoDescription: body.seoDescription } : {}),
         ...(body.ageRestricted !== undefined ? { ageRestricted: body.ageRestricted } : {}),
         ...(body.active !== undefined ? { active: body.active } : {}),
         ...(body.position !== undefined ? { position: body.position } : {}),
@@ -466,7 +483,9 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
       });
       return;
     }
-    await db.delete(schema.categories).where(eq(schema.categories.id, id));
+        const used = await db.select({ id: schema.products.id }).from(schema.products).where(eq(schema.products.categoryId, id)).limit(1);
+    if (used.length > 0) { reply.status(409); reply.send({ error: { code: "in_use", message: "A categoria tem produtos vinculados." } }); return; }
+await db.delete(schema.categories).where(eq(schema.categories.id, id));
     await audit(request, "category.deleted", "categories", id);
     reply.send({ ok: true });
   });
@@ -494,6 +513,8 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
         slug: body.slug,
         logoUrl: body.logoUrl ?? null,
         description: body.description ?? "",
+        seoTitle: (body as any).seoTitle ?? null,
+        seoDescription: (body as any).seoDescription ?? null,
         active: body.active ?? true,
         position: body.position ?? 0,
       })
@@ -513,6 +534,8 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
         ...(body.slug !== undefined ? { slug: body.slug } : {}),
         ...(body.logoUrl !== undefined ? { logoUrl: body.logoUrl } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
+        ...((body as any).seoTitle !== undefined ? { seoTitle: (body as any).seoTitle } : {}),
+        ...((body as any).seoDescription !== undefined ? { seoDescription: (body as any).seoDescription } : {}),
         ...(body.active !== undefined ? { active: body.active } : {}),
         ...(body.position !== undefined ? { position: body.position } : {}),
       })
@@ -742,6 +765,45 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     }
     await audit(request, "catalog.import.applied", "products", undefined);
     reply.send(result);
+  });
+
+  // ---------------------------------------------------------------- Compatíveis (3A)
+  app.post("/api/admin/products/:id/compatible", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { compatibleProductId?: string };
+    if (!body?.compatibleProductId) { reply.status(400); reply.send({ error: { code: "invalid_input", message: "compatibleProductId é obrigatório" } }); return; }
+    const existing = await db.select({ id: schema.compatibleProducts.id }).from(schema.compatibleProducts).where(eq(schema.compatibleProducts.productId, id));
+    const [row] = await db.insert(schema.compatibleProducts).values({ productId: id, compatibleProductId: body.compatibleProductId, position: existing.length } as any).onConflictDoNothing().returning();
+    await audit(request, "product.compatible.added", "products", id);
+    reply.status(201); reply.send({ compatible: row ?? null });
+  });
+
+  app.delete("/api/admin/products/:id/compatible/:compatibleId", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
+    const { id, compatibleId } = request.params as { id: string; compatibleId: string };
+    await db.delete(schema.compatibleProducts).where(and(eq(schema.compatibleProducts.productId, id), eq(schema.compatibleProducts.compatibleProductId, compatibleId)));
+    await audit(request, "product.compatible.removed", "products", id);
+    reply.send({ ok: true });
+  });
+
+  // ---------------------------------------------------------------- Histórico (3A, append-only)
+  app.get("/api/admin/products/:id/history", { preHandler: [A, adminGuard("products","read")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const rows = await db.select().from(schema.productChangeHistory).where(eq(schema.productChangeHistory.productId, id)).orderBy(desc(schema.productChangeHistory.createdAt)).limit(200);
+    reply.send({ items: rows });
+  });
+
+  // ---------------------------------------------------------------- Galeria: reordenar
+  app.post("/api/admin/products/:id/images/reorder", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { order?: string[] };
+    const order = Array.isArray(body?.order) ? body.order : [];
+    for (let i = 0; i < order.length; i++) {
+      const imageId = order[i];
+      if (!imageId) continue;
+      await db.update(schema.productImages).set({ position: i } as any).where(and(eq(schema.productImages.id, imageId), eq(schema.productImages.productId, id)));
+    }
+    await audit(request, "product.images.reordered", "products", id);
+    reply.send({ ok: true });
   });
 
   // Compatibilidade: legado n?o aplica (evita aplica??o sem preview/confirma??o).
