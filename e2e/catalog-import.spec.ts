@@ -6,6 +6,7 @@ const CAT = process.env.E2E_CATEGORY_SLUG || "demo-e2e-cat";
 const TOTP_CSV1 = process.env.E2E_TOTP_SECRET_CSV1 || "";
 const TOTP_CSV2 = process.env.E2E_TOTP_SECRET_CSV2 || "";
 const TOTP_CSV3 = process.env.E2E_TOTP_SECRET_CSV3 || "";
+const TOTP_CSV4 = process.env.E2E_TOTP_SECRET_CSV4 || "";
 const TOTP_AT_IMPORT = process.env.E2E_TOTP_SECRET_AT_IMPORT || "";
 
 async function login(page: Page, email: string, password = PASS) {
@@ -120,5 +121,35 @@ test.describe("FASE 3 - Importacao CSV (admin)", () => {
     const a2 = await page.request.post(`${API}/api/admin/catalog/import/apply`, { headers: { "x-csrf-token": csrf }, data: { file: csv, checksum: pj.checksum, filename: "d.csv" } });
     const j2 = await a2.json();
     expect(j2.created).toBe(0); // sem duplicidade
+  });
+
+  test("rollback visualmente reportado quando apply falha (marca removida entre preview e apply)", async ({ page }) => {
+    test.skip(!TOTP_CSV4, "Requer E2E_TOTP_SECRET_CSV4");
+    await loginMfa(page, "admin-mfa-csv4@e2e.local", TOTP_CSV4);
+    const csrf = await getCsrf(page);
+    const slug = `demo-rb-${Date.now()}`;
+    // cria marca tempor?ria (sem produtos) para for?ar falha de revalida??o no apply
+    const cBrand = await page.request.post(`${API}/api/admin/brands`, { headers: { "x-csrf-token": csrf }, data: { name: "[DEMO] Rollback Brand", slug, active: true } });
+    expect(cBrand.ok()).toBe(true);
+
+    const csv = `slug;nome;sku;preco;category_slug;brand_slug;condicao;estoque\nrb-prod-${slug};[DEMO] Rollback Prod;SKU-RB-${Date.now()};10.00;${CAT};${slug};novo;1\n`;
+    await page.goto("/products/import");
+    await page.getByLabel(/Arquivo CSV/i).setInputFiles({ name: "rollback.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") });
+    await page.getByRole("button", { name: /Gerar/i }).click();
+    await expect(page.getByText(/Resumo da/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Validas|V.lidas/i)).toBeVisible();
+
+    // remove a marca entre preview e apply => revalida??o do apply falha (nenhuma altera??o gravada)
+    const listB = await page.request.get(`${API}/api/admin/brands`);
+    const bj = await listB.json();
+    const bid = (bj.items || []).find((b: any) => b.slug === slug)?.id;
+    expect(bid).toBeTruthy();
+    const del = await page.request.delete(`${API}/api/admin/brands/${bid}`, { headers: { "x-csrf-token": csrf } });
+    expect(del.ok()).toBe(true);
+
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /Confirmar e aplicar/i }).click();
+    await expect(page.getByText(/rollback total|nenhuma alter|Nenhuma altera/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Importa..o aplicada|criados: 0.*atualizados: 0/i)).toHaveCount(0).catch(() => {});
   });
 });

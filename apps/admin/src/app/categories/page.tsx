@@ -81,6 +81,20 @@ export default function CategoriesPage() {
     }
   }
 
+  async function remove(c: FlatCategory) {
+    if (!confirm(`Excluir a categoria "${c.name}"? A exclusao e bloqueada se houver subcategorias ou produtos vinculados.`)) return;
+    if (busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await adminJson(`/api/admin/categories/${c.id}`, { method: "DELETE" });
+      setNotice("Categoria excluida.");
+      load();
+    } catch (e) {
+      setFailure(e);
+      setError(messageOf(e, "Falha ao excluir categoria."));
+    } finally { setBusy(false); }
+  }
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -264,10 +278,9 @@ export default function CategoriesPage() {
                     </button>
                   </td>
                   <td className="font-mono text-sm text-[#666]">{c.position}</td>
-                  <td>
-                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#333]">
-                      {c.depth === 0 ? "departamento" : "subcategoria"}
-                    </span>
+                  <td className="flex flex-wrap gap-2 items-center">
+                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#333]">{c.depth === 0 ? "departamento" : "subcategoria"}</span>
+                    <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-2 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => remove(c)} disabled={busy}>Excluir</button>
                   </td>
                 </tr>
               ))}

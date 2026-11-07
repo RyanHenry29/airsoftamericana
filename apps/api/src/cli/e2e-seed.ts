@@ -61,6 +61,11 @@ async function main() {
     email: "admin-mfa-marketing@e2e.local", passwordHash: pass, name: "Marketing E2E", role: "marketing",
     active: true, mfaEnabled: true, totpSecret: totpMkt.encryptedSecret,
   }).onConflictDoNothing({ target: schema.users.email });
+  const totpCsv4 = generateTotpSetup("admin-mfa-csv4@e2e.local");
+  await db.insert(schema.users).values({
+    email: "admin-mfa-csv4@e2e.local", passwordHash: pass, name: "Admin CSV4 E2E", role: "superadmin",
+    active: true, mfaEnabled: true, totpSecret: totpCsv4.encryptedSecret,
+  }).onConflictDoNothing({ target: schema.users.email });
   const totpCatAdm = generateTotpSetup("admin-mfa-catalog@e2e.local");
   await db.insert(schema.users).values({
     email: "admin-mfa-catalog@e2e.local", passwordHash: pass, name: "Admin Catalog E2E", role: "superadmin",
@@ -122,6 +127,7 @@ async function main() {
     E2E_TOTP_SECRET_CSV1: totpCsv1.secretBase32,
     E2E_TOTP_SECRET_CSV2: totpCsv2.secretBase32,
     E2E_TOTP_SECRET_CSV3: totpCsv3.secretBase32,
+    E2E_TOTP_SECRET_CSV4: totpCsv4.secretBase32,
     E2E_TOTP_SECRET_MARKETING: totpMkt.secretBase32,
     E2E_TOTP_SECRET_CATALOG: totpCatAdm.secretBase32,
     E2E_TOTP_SECRET_AT_CATALOG: totpAtCat.secretBase32,

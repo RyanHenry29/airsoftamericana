@@ -84,8 +84,15 @@ export default function ImportCsvPage() {
         if (res.status === 403) { setStage("ready"); setMsg("Sem permissão para aplicar a importação."); setFailure(json); return; }
         if (res.status === 409) { setStage("error"); setMsg("O arquivo mudou desde a pré-visualização (checksum). Gere um novo preview."); setResult(json as ApplyResult); return; }
         if (res.status === 413) { setStage("error"); setMsg("Arquivo acima do limite."); return; }
-        setStage("ready"); setMsg((json as any)?.errors?.[0]?.message || (json as any)?.error?.message || "Falha na aplicação; verifique os erros.");
-        setResult(json as ApplyResult);
+        const ar = json as ApplyResult;
+        setResult(ar);
+        if (ar && ar.created === 0 && ar.updated === 0 && Array.isArray(ar.errors) && ar.errors.length > 0) {
+          setStage("error");
+          setMsg("Aplicacao falhou: nenhuma alteracao gravada (rollback total). Verifique os erros abaixo.");
+        } else {
+          setStage("ready");
+          setMsg(ar?.errors?.[0]?.message || (json as any)?.error?.message || "Falha ao aplicar.");
+        }
         return;
       }
       setResult(json as ApplyResult);
