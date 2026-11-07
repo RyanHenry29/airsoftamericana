@@ -360,7 +360,7 @@ export async function listProducts(db: Db, input: CatalogQuery) {
     };
   });
 
-  // Facetas calculadas sobre o conjunto filtrado (sem paginação).
+  // Facetas calculadas sobre o conjunto filtrado (sem pagina??o), dados reais.
   const facetRows = await db
     .select({
       brandId: schema.products.brandId,
@@ -404,6 +404,46 @@ export async function listProducts(db: Db, input: CatalogQuery) {
     .groupBy(schema.categories.id)
     .orderBy(desc(sql`count(${schema.products.id})`));
 
+  // Condi??o (real): contagem por condicao no escopo filtrado
+  const condRows = await db
+    .select({ condicao: schema.products.condicao, count: sql`count(*)::int` })
+    .from(schema.products)
+    .where(whereSql)
+    .groupBy(schema.products.condicao);
+  const condicaoFacets = condRows
+    .map((r) => ({ key: String(r.condicao ?? "novo"), count: Number(r.count) }))
+    .filter((r) => r.count > 0);
+
+  // Especificações técnicas configuráveis (real): specs distintas no escopo filtrado
+  let specFacets: Array<{ key: string; label: string; values: Array<{ value: string; count: number }> }> = [];
+  try {
+    const specRows = await db
+      .select({
+        key: schema.productSpecs.key,
+        label: schema.productSpecs.label,
+        value: schema.productSpecs.value,
+        count: sql<number>`count(distinct ${schema.productSpecs.productId})::int`,
+      })
+      .from(schema.productSpecs)
+      .innerJoin(schema.products, eq(schema.productSpecs.productId, schema.products.id))
+      .where(whereSql)
+      .groupBy(schema.productSpecs.key, schema.productSpecs.label, schema.productSpecs.value)
+      .orderBy(asc(schema.productSpecs.key), desc(sql`count(distinct ${schema.productSpecs.productId})`), asc(schema.productSpecs.value))
+      .limit(400);
+    const byKey = new Map<string, { key: string; label: string; values: Array<{ value: string; count: number }> }>();
+    for (const r of specRows) {
+      if (!r?.key || !r?.value) continue;
+      const k = String(r.key);
+      const g = byKey.get(k) ?? { key: k, label: String(r.label ?? r.key), values: [] };
+      if (!g.label && r.label) g.label = String(r.label);
+      if (!g.values.some((v) => v.value === String(r.value))) g.values.push({ value: String(r.value), count: Number(r.count ?? 0) });
+      byKey.set(k, g);
+    }
+    specFacets = [...byKey.values()].map((g) => ({ ...g, values: g.values.slice(0, 20) })).slice(0, 12);
+  } catch {
+    specFacets = [];
+  }
+
   return {
     products: items,
     total,
@@ -414,6 +454,8 @@ export async function listProducts(db: Db, input: CatalogQuery) {
         minCents: priceRows[0]?.min ?? 0,
         maxCents: priceRows[0]?.max ?? 0,
       },
+      conditions: condicaoFacets,
+      specs: specFacets,
     },
   };
 }

@@ -154,10 +154,18 @@ export type StoreHome = {
   totals: { products: number };
 };
 
+export type CatalogSpecFacet = {
+  key: string;
+  label: string;
+  values: { value: string; count: number }[];
+};
+
 export type CatalogFacets = {
   brands: { id: string; slug: string; name: string; count: number }[];
   categories: { id: string; slug: string; name: string; count: number }[];
   price: { minCents: number; maxCents: number };
+  conditions?: { key: string; count: number }[];
+  specs?: CatalogSpecFacet[];
 };
 
 export type CatalogResult = {
