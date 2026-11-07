@@ -6,10 +6,14 @@ export default defineConfig({
     environment: "node",
     globals: false,
     setupFiles: ["./vitest.setup.ts"],
-    // O PGlite de teste abre o diretório com trava exclusiva: dois arquivos
-    // de teste em paralelo brigam pelo mesmo cluster. Os arquivos rodam em
-    // sequência, cada um abrindo e fechando o próprio banco.
+    // PGlite usa diretório exclusivo (apps/api/data-test) — execução 100%
+    // sequencial, 1 worker/processo, sem isolamento por arquivo (singleton DB).
     fileParallelism: false,
+    maxWorkers: 1,
+    isolate: false,
+    sequence: { concurrent: false },
+    pool: "forks",
+    poolOptions: { forks: { singleFork: true, minForks: 1, maxForks: 1 } },
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },

@@ -10,6 +10,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest/setup.mts"],
     fileParallelism: false,
+    maxWorkers: 1,
+    sequence: { concurrent: false },
+    pool: "forks",
+    poolOptions: { forks: { singleFork: true, minForks: 1, maxForks: 1 } },
     typecheck: {
       enabled: true,
     },
