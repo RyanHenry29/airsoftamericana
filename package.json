@@ -15,6 +15,7 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "verify": "npx tsc --noEmit -p packages/shared/tsconfig.json && npx tsc --noEmit -p apps/api/tsconfig.json && npx tsc --noEmit -p apps/store/tsconfig.json && npx tsc --noEmit -p apps/admin/tsconfig.json && npm run test --workspaces --if-present",
     "db:generate": "npm run db:generate --workspace @airsoft/api",
     "db:migrate": "npm run db:migrate --workspace @airsoft/api",
     "db:seed": "npm run db:seed --workspace @airsoft/api"
