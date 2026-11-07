@@ -138,6 +138,28 @@ export async function migrate(db: Db) {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "admin_invites_token_hash_idx" ON "admin_invites" ("token_hash");`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "admin_invites_email_idx" ON "admin_invites" ("email");`);
 
+  // B.6: audit_logs imutável — trigger bloqueia UPDATE/DELETE.
+  await db.execute(sql.raw(`
+    CREATE OR REPLACE FUNCTION prevent_audit_logs_mutation() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'audit_logs é append-only: UPDATE/DELETE não permitidos';
+    END;
+    $$ LANGUAGE plpgsql;
+  `));
+  await db.execute(sql.raw(`DROP TRIGGER IF EXISTS audit_logs_immutable ON "audit_logs";`));
+  await db.execute(sql.raw(`
+    CREATE TRIGGER audit_logs_immutable
+    BEFORE UPDATE OR DELETE ON "audit_logs"
+    FOR EACH ROW EXECUTE FUNCTION prevent_audit_logs_mutation();
+  `));
+  // REVOKE privilégios do usuário da aplicação (best-effort; pode falhar sem superuser/PGlite)
+  await db.execute(sql.raw(`
+    DO $$ BEGIN
+      EXECUTE 'REVOKE UPDATE, DELETE ON TABLE "audit_logs" FROM ' || current_user;
+    EXCEPTION WHEN others THEN NULL;
+    END $$;
+  `));
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "auth_lockouts" (
       "key" varchar(320) PRIMARY KEY,
