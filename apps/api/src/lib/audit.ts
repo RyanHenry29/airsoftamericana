@@ -1,6 +1,6 @@
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
-import { eq } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, or, sql, type SQL } from "drizzle-orm";
 
 export interface AuditEntry {
   actorUserId?: string | null;
@@ -31,20 +31,104 @@ export async function audit(db: Db, entry: AuditEntry): Promise<void> {
   });
 }
 
-export async function listAudit(
-  db: Db,
-  opts: { entity?: string; actor?: string; page?: number; limit?: number } = {},
-) {
-  const page = opts.page ?? 1;
-  const limit = opts.limit ?? 50;
-  const where = [] as ReturnType<typeof eq>[];
-  if (opts.entity) where.push(eq(schema.auditLogs.entity, opts.entity));
+export interface AuditListQuery {
+  /** Entidade auditada (ex.: "orders", "users"). */
+  entity?: string;
+  /** Id da entidade auditada. */
+  entityId?: string;
+  /** Usuário que executou a ação. */
+  actorUserId?: string;
+  /** Rótulo textual do autor (e-mail mascarado, "system"). */
+  actorLabel?: string;
+  /** Prefixo da ação (ex.: "auth."). */
+  action?: string;
+  /** Início do período (inclusive). */
+  from?: Date;
+  /** Fim do período (exclusive). */
+  to?: Date;
+  /** Cursor da página anterior (opaco, devolvido em nextCursor). */
+  cursor?: string;
+  /** Tamanho da página. */
+  limit?: number;
+}
+
+export interface AuditListResult {
+  items: (typeof schema.auditLogs.$inferSelect)[];
+  /** Total de registros que atendem ao filtro (contagem no banco). */
+  total: number;
+  limit: number;
+  /** Cursor da próxima página — null quando não há mais. */
+  nextCursor: string | null;
+}
+
+type AuditCursor = { createdAt: Date; id: string };
+
+function encodeCursor(row: { createdAt: Date; id: string }): string {
+  return Buffer.from(`${row.createdAt.toISOString()}|${row.id}`, "utf8").toString("base64url");
+}
+
+/** Cursor inválido é ignorado — a listagem volta para a primeira página. */
+export function decodeCursor(cursor: string | undefined): AuditCursor | null {
+  if (!cursor) return null;
+  try {
+    const raw = Buffer.from(cursor, "base64url").toString("utf8");
+    const separator = raw.lastIndexOf("|");
+    if (separator <= 0) return null;
+    const createdAt = new Date(raw.slice(0, separator));
+    const id = raw.slice(separator + 1);
+    if (Number.isNaN(createdAt.getTime()) || !id) return null;
+    return { createdAt, id };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Consulta da auditoria.
+ *
+ * Ordem decrescente (mais recente primeiro), paginação por cursor — não por
+ * offset, que pule registros quando houver inserção durante a navegação — e
+ * contagem feita no banco (`count(*)`), sem carregar a tabela inteira.
+ */
+export async function listAudit(db: Db, query: AuditListQuery = {}): Promise<AuditListResult> {
+  const limit = Math.min(500, Math.max(1, query.limit ?? 50));
+
+  const conditions: SQL[] = [];
+  if (query.entity) conditions.push(eq(schema.auditLogs.entity, query.entity));
+  if (query.entityId) conditions.push(eq(schema.auditLogs.entityId, query.entityId));
+  if (query.actorUserId) conditions.push(eq(schema.auditLogs.actorUserId, query.actorUserId));
+  if (query.actorLabel) conditions.push(eq(schema.auditLogs.actorLabel, query.actorLabel));
+  if (query.action) conditions.push(sql`${schema.auditLogs.action} LIKE ${`${query.action}%`}`);
+  if (query.from) conditions.push(gte(schema.auditLogs.createdAt, query.from));
+  if (query.to) conditions.push(lt(schema.auditLogs.createdAt, query.to));
+
+  const cursor = decodeCursor(query.cursor);
+  if (cursor) {
+    conditions.push(
+      or(
+        lt(schema.auditLogs.createdAt, cursor.createdAt),
+        and(eq(schema.auditLogs.createdAt, cursor.createdAt), lt(schema.auditLogs.id, cursor.id)),
+      )!,
+    );
+  }
+
+  const where = and(...conditions);
+
   const rows = await db
     .select()
     .from(schema.auditLogs)
-    .orderBy(schema.auditLogs.createdAt)
-    .limit(limit)
-    .offset((page - 1) * limit);
-  const totalRows = await db.select().from(schema.auditLogs);
-  return { items: rows, total: totalRows.length, page, limit };
+    .where(where)
+    .orderBy(desc(schema.auditLogs.createdAt), desc(schema.auditLogs.id))
+    .limit(limit);
+
+  const counted = await db
+    .select({ value: count() })
+    .from(schema.auditLogs)
+    .where(where);
+
+  const total = Number(counted[0]?.value ?? 0);
+  const last = rows[rows.length - 1];
+  const nextCursor = rows.length === limit && last ? encodeCursor(last) : null;
+
+  return { items: rows, total, limit, nextCursor };
 }

@@ -48,10 +48,17 @@ function isUuid(value: string): boolean {
   return UUID_RE.test(value);
 }
 
-/** Resolve slug ou id de categoria para id, já incluindo os filhos na busca. */
+/**
+ * Resolve slug ou id de categoria para os ids da SUBDÁRVORE.
+ *
+ * A taxonomia tem três níveis: um departamento ("airsoft") inclui as
+ * categorias ("airsoft-armas-de-airsoft") e as subcategorias
+ * ("airsoft-armas-de-airsoft-rifle-airsoft-hta"). Filtrar só pelo nível
+ * direto escondia as subcategorias do filtro da vitrine.
+ */
 async function resolveCategoryIds(db: Db, category: string): Promise<string[] | undefined> {
   const found = await db
-    .select({ id: schema.categories.id })
+    .select({ id: schema.categories.id, parentId: schema.categories.parentId })
     .from(schema.categories)
     .where(
       isUuid(category)
@@ -62,11 +69,27 @@ async function resolveCategoryIds(db: Db, category: string): Promise<string[] | 
   const root = found[0];
   if (!root) return ["__nomatch__"];
 
-  const children = await db
-    .select({ id: schema.categories.id })
-    .from(schema.categories)
-    .where(eq(schema.categories.parentId, root.id));
-  return [root.id, ...children.map((c) => c.id)];
+  const all = await db
+    .select({ id: schema.categories.id, parentId: schema.categories.parentId })
+    .from(schema.categories);
+  const childrenOf = new Map<string, string[]>();
+  for (const row of all) {
+    if (!row.parentId) continue;
+    const list = childrenOf.get(row.parentId) ?? [];
+    list.push(row.id);
+    childrenOf.set(row.parentId, list);
+  }
+
+  const ids = [root.id];
+  const queue = [root.id];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const childId of childrenOf.get(current) ?? []) {
+      ids.push(childId);
+      queue.push(childId);
+    }
+  }
+  return ids;
 }
 
 async function resolveBrandId(db: Db, brand: string): Promise<string | undefined> {

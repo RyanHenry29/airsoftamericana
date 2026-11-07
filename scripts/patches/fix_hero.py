@@ -26,7 +26,7 @@ old_hero = '''           {/* Placa industrial de especificacao */}
                <div className="plate-bottom">
                  <div>
                    <b>Origem</b>
-                   <span>Campinas</span>
+                   <span>Americana</span>
                  </div>
                  <div>
                    <b>Entrega</b>
@@ -65,7 +65,7 @@ new_hero = '''           {/* Placa industrial de especificacao - Produto em dest
                  </div>
                </div>
                <div className="relative flex items-center justify-between font-mono-t text-[0.7rem] uppercase tracking-[0.14em] text-[#929890]">
-                 <span>EST. Campinas</span>
+                 <span>EST. Americana</span>
                  <span className="text-[var(--primary)]">TATICAL /// PREMIUM</span>
                </div>
              </div>

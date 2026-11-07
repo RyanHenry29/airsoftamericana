@@ -54,7 +54,7 @@ export default async function InstitucionalPage() {
       <section className="inst-hero">
         <span className="sec-kicker">A loja</span>
         <h1 className="inst-hero__title">
-          Airsoft Americana, {s.address.city || "Campinas"}/{s.address.state || "SP"}
+          Airsoft Americana, {s.address.city || "Americana"}/{s.address.state || "SP"}
         </h1>
         <p className="inst-hero__lead">
           Equipamento de airsoft, tiro esportivo e loadout com o que o time de campo realmente usa.
@@ -95,7 +95,7 @@ export default async function InstitucionalPage() {
             </li>
             <li>
               <strong>Retire na loja</strong>
-              <span>Quem mora em {s.address.city || "Campinas"} pode retirar no balcão.</span>
+              <span>Quem mora em {s.address.city || "Americana"} pode retirar no balcão.</span>
             </li>
           </ol>
         </div>

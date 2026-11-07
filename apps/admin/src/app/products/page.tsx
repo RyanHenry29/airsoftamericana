@@ -29,10 +29,8 @@ export default function ProductsPage() {
 
   async function load() {
     setLoading(true);
-    const token = localStorage.getItem("aa_admin_token");
     try {
       const res = await fetch(`${API_URL}/api/admin/products`, {
-        headers: token ? { authorization: `Bearer ${token}` } : {},
         credentials: "include",
       });
       const json = (await res.json().catch(() => ({}))) as { items?: Product[]; error?: { message?: string } };
@@ -58,10 +56,9 @@ export default function ProductsPage() {
   }, []);
 
   async function toggle(id: string, field: "published" | "featured", value: boolean) {
-    const token = localStorage.getItem("aa_admin_token");
     await fetch(`${API_URL}/api/admin/products/${id}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      headers: { "content-type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ [field]: !value }),
     });

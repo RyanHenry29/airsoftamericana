@@ -25,6 +25,7 @@ type Department = {
   description: string;
   imageUrl: string | null;
   ageRestricted: boolean;
+  parent: { id: string; name: string; slug: string; imageUrl: string | null } | null;
   children: {
     id: string;
     name: string;
@@ -124,6 +125,12 @@ export default async function DepartmentPage({
         <Link href="/">Início</Link>
         <ChevronRight size={12} />
         <Link href="/catalogo">Catálogo</Link>
+        {dept.parent && (
+          <>
+            <ChevronRight size={12} />
+            <Link href={`/departamento/${dept.parent.slug}`}>{dept.parent.name}</Link>
+          </>
+        )}
         <ChevronRight size={12} />
         <span>{dept.name}</span>
       </nav>

@@ -10,7 +10,7 @@ async function boot(){const{j}=await api('/home');H=j;$('#mm').innerHTML=j.categ
 if(j.config.whatsapp)$('#wa').innerHTML=`<a class="wa" href="https://wa.me/${esc(j.config.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>`;cart();route()}
 function home(){let i=0;const b=H.banners;setTimeout(()=>{const a=[...document.querySelectorAll('.ban a')];if(a.length>1)window.bt=setInterval(()=>{a[i].classList.remove('on');i=(i+1)%a.length;a[i].classList.add('on')},5000)});
 return `${b.length?`<div class="ban">${b.map((x,k)=>`<a class="${k?'':'on'}" href="${esc(x.link||'#/')}"><img src="${esc(x.image)}" alt=""><b>${esc(x.title)}</b></a>`).join('')}</div>`:'<div style="height:24px"></div>'}
-<div class="ben"><div><b>Troca em 7 dias</b>Direito de arrependimento</div><div><b>Loja física</b>Campinas, SP</div><div><b>Entrega nacional</b>Frete calculado por CEP</div><div><b>Compra segura</b>Preço e estoque validados</div></div>
+<div class="ben"><div><b>Troca em 7 dias</b>Direito de arrependimento</div><div><b>Loja física</b>Americana, SP</div><div><b>Entrega nacional</b>Frete calculado por CEP</div><div><b>Compra segura</b>Preço e estoque validados</div></div>
 ${H.categories.length?`<h2>Departamentos</h2><div class="cats">${H.categories.map(c=>`<a href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join('')}</div>`:''}
 ${sec('Novidades',H.novidades,'#/lista')}${sec('Destaques',H.destaques)}${sec('Mais vendidos',H.maisVendidos)}${sec('Promoções',H.promocoes,'#/c/promocoes')}
 ${H.brands.length?`<h2>Marcas</h2><div class="brands">${H.brands.map(x=>`<a href="#/lista?brand=${esc(x.slug)}">${esc(x.name)}</a>`).join('')}</div>`:''}
@@ -47,7 +47,7 @@ const D=document.createElement('aside');D.className='dr';D.innerHTML='<div class
 const O=Object.assign(document.createElement('div'),{className:'ov'});document.body.append(up,T,O,D);
 addEventListener('scroll',()=>{hd.classList.toggle('sm',scrollY>40);up.classList.toggle('show',scrollY>600)},{passive:true});
 // Topbar: mensagens rotativas
-const tp=document.querySelector('.top .w span'),msgs=['Entrega para todo o Brasil','Troca em até 7 dias corridos','Loja física em Campinas, SP'];let mi=0;
+const tp=document.querySelector('.top .w span'),msgs=['Entrega para todo o Brasil','Troca em até 7 dias corridos','Loja física em Americana, SP'];let mi=0;
 setInterval(()=>{tp.classList.add('out');setTimeout(()=>{mi=(mi+1)%msgs.length;tp.textContent=msgs[mi];tp.classList.remove('out')},350)},4000);
 // Menu mobile + mega menu com "hover intent"
 const hb=Object.assign(document.createElement('button'),{className:'hb',textContent:'☰',ariaLabel:'Abrir menu'});hd.querySelector('.w').prepend(hb);

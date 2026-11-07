@@ -23,12 +23,12 @@ export function AdminLoginForm() {
         credentials: "include",
         body: JSON.stringify({ email: data.email.trim().toLowerCase(), password: data.password }),
       });
-      const json = (await res.json().catch(() => ({}))) as { error?: { message?: string }; token?: string };
+      const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       if (!res.ok) {
         setError(json.error?.message ?? "E-mail ou senha incorretos.");
         return;
       }
-      if (json.token) localStorage.setItem("aa_admin_token", json.token);
+      // A sessão vive num cookie HttpOnly: não há token para guardar aqui.
       router.push("/dashboard");
       router.refresh();
     } catch {

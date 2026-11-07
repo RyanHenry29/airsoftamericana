@@ -49,11 +49,10 @@ export default function NewProductPage() {
     e.preventDefault();
     setError("");
     setBusy(true);
-    const token = localStorage.getItem("aa_admin_token");
     try {
       const res = await fetch(`${API_URL}/api/admin/products`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        headers: { "content-type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           name: data.name.trim(),

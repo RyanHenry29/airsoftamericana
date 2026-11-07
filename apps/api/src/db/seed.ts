@@ -402,7 +402,7 @@ export async function seed(db: Db) {
           { kind: "bestsellers", title: "Mais vendidos", subtitle: "Ordenado por vendas reais", position: 5, active: true, config: { limit: 8 } },
           { kind: "promo", title: "Promoções", subtitle: "Preços promocionais ativos", position: 6, active: true, config: { limit: 8 } },
           { kind: "brands", title: "Melhores marcas", subtitle: "Fabricantes que trabalham com a gente", position: 7, active: true, config: { limit: 24 } },
-          { kind: "institutional", title: "Sobre a Airsoft Americana", subtitle: "Loja física em Campinas, entrega para todo o Brasil", position: 8, active: true, config: {} },
+          { kind: "institutional", title: "Sobre a Airsoft Americana", subtitle: "Loja física em Americana, entrega para todo o Brasil", position: 8, active: true, config: {} },
           { kind: "newsletter", title: "Receba novidades", subtitle: "Drops, reposição e ofertas", position: 9, active: true, config: {} },
         ]);
       }
@@ -432,8 +432,8 @@ export async function seed(db: Db) {
     const existingSettings = await db.select().from(systemSettings);
     if (existingSettings.length === 0) {
       await db.insert(systemSettings).values([
-        { key: "default_currency", value: JSON.stringify({ cents: true }) },
-        { key: "lgpd_consent_default", value: JSON.stringify({ required: true, age_min: 18 }) },
+        { key: "default_currency", value: { cents: true } },
+        { key: "lgpd_consent_default", value: { required: true, age_min: 18 } },
         {
           key: "commercial",
           value: JSON.stringify({
@@ -448,7 +448,7 @@ export async function seed(db: Db) {
             address: {
               street: "R. Alfredo da Costa Figo, 190",
               district: "Fazenda Santa Cândida",
-              city: "Campinas",
+              city: "Americana",
               state: "SP",
               zip: "13087-534",
             },
@@ -456,6 +456,21 @@ export async function seed(db: Db) {
             social: { instagram: "airsoftamericana", whatsapp: "5519999999999" },
             announcement: "ENTREGA PARA TODO O BRASIL",
           }),
+          // Dados da empresa (identificação comercial)
+          { key: "empresa_dados", value: JSON.stringify({
+            nome_fantasia: "Airsoft Americana",
+            razao_social: "Welyngton Codogno",
+            natureza_juridica: "Empresário Individual",
+            cnpj: "27.019.653/0001-79",
+            fundacao: "02/02/2017",
+            endereco: "Rua Celinda Antônia Quaino Santa Rosa, 157, Jardim Luciane, Americana-SP, CEP 13477-225",
+            email_contato: "contato@airsoftamericana.com.br",
+            telefone_principal_whatsapp: "(19) 98450-4992",
+            telefone_secundario: "(19) 99150-4992",
+            horario: "seg a sex 09h às 18h, sáb 09h às 12h, dom fechado",
+            site: "airsoftamericana.com.br",
+            instagram: "@airsoft_americana",
+          })],
         },
       ]);
       console.log("✅ Default system settings seeded");

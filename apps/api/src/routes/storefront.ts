@@ -4,6 +4,13 @@ import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { listProducts, getProductBySlug, type SortKey } from "../services/catalog.js";
 import { buildHome, getCommercialSettings, searchSuggestions } from "../services/homepage.js";
+import {
+  childrenOf,
+  countProductsByCategory,
+  findBySlug,
+  loadTaxonomy,
+  subtreeOf,
+} from "../services/taxonomy.js";
 
 const SORTS: SortKey[] = [
   "featured_first",
@@ -142,39 +149,59 @@ export function registerStorefrontRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Departamento
+  //
+  // O menu navega por departamento, categoria E subcategoria (o slug é
+  // hierárquico). A rota resolve qualquer nível e devolve a subárvore
+  // inteira — resolver só a raiz dava 404 em todo link de subcategoria.
   app.get("/api/store/departments/:slug", async (request, reply) => {
     const { slug } = request.params as { slug: string };
-    const rows = await db
-      .select()
-      .from(schema.categories)
-      .where(eq(schema.categories.active, true))
-      .orderBy(asc(schema.categories.position), asc(schema.categories.name));
-
-    const root = rows.find((c) => c.slug === slug && !c.parentId);
-    if (!root) {
+    const nodes = await loadTaxonomy(db);
+    const node = findBySlug(nodes, slug);
+    if (!node) {
       reply.status(404);
       reply.send({ error: { code: "not_found", message: "Departamento não encontrado" } });
       return;
     }
 
-    const children = rows.filter((c) => c.parentId === root.id);
-    const products = await listProducts(db, { category: root.slug, page: 1, limit: 12, sort: "featured_first" });
+    const parent = node.parentId ? nodes.find((n) => n.id === node.parentId) : undefined;
+    const subtree = subtreeOf(nodes, node);
+    const products = await listProducts(db, {
+      category: node.slug,
+      page: 1,
+      limit: 12,
+      sort: "featured_first",
+    });
+
+    const counts = await countProductsByCategory(db, subtree.map((n) => n.id));
+    const children = childrenOf(nodes, node.id).map((child) => {
+      const childSubtree = subtreeOf(nodes, child);
+      const productCount = childSubtree.reduce(
+        (sum, descendant) => sum + (counts.get(descendant.id) ?? 0),
+        0,
+      );
+      return {
+        id: child.id,
+        name: child.name,
+        slug: child.slug,
+        imageUrl: child.imageUrl,
+        ageRestricted: child.ageRestricted,
+        productCount,
+      };
+    });
 
     reply.send({
-      id: root.id,
-      name: root.name,
-      slug: root.slug,
-      description: root.description,
-      imageUrl: root.imageUrl,
-      ageRestricted: root.ageRestricted,
-      children: children.map((c) => ({
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-        imageUrl: c.imageUrl,
-        ageRestricted: c.ageRestricted,
-        productCount: products.facets.categories.find((f) => f.id === c.id)?.count ?? 0,
-      })),
+      id: node.id,
+      name: node.name,
+      slug: node.slug,
+      description: node.description,
+      // Sem foto própria, a subcategoria herda a do departamento — página sem
+      // imagem parece página quebrada.
+      imageUrl: node.imageUrl ?? parent?.imageUrl ?? null,
+      ageRestricted: node.ageRestricted,
+      parent: parent
+        ? { id: parent.id, name: parent.name, slug: parent.slug, imageUrl: parent.imageUrl }
+        : null,
+      children,
       products: products.products,
       total: products.total,
     });

@@ -2,6 +2,25 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { config } from "../config.js";
 
+/**
+ * Falha ao decifrar um segredo guardado (credencial de gateway, segredo TOTP).
+ *
+ * Erro TIPADO e não engolido: chave divergente ou dado corrompido é
+ * "gateway indisponível" — nunca "não configurado". A diferença importa:
+ * "não configurado" manda o lojista preencher o formulário; "indisponível"
+ * manda ele chamar o suporte.
+ */
+export class CredentialDecryptionError extends Error {
+  readonly code = "gateway_unavailable";
+  readonly status = 503;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = "CredentialDecryptionError";
+    if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
+  }
+}
+
 export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, 12);
 }
@@ -28,10 +47,21 @@ export function encryptSecret(plain: string): string {
 
 export function decryptSecret(payload: string): string {
   const [ivB64, dataB64, tagB64] = payload.split(".");
-  if (!ivB64 || !dataB64 || !tagB64) throw new Error("Payload cifrado inválido");
-  const decipher = crypto.createDecipheriv("aes-256-gcm", gatewayKey(), Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(dataB64, "base64")), decipher.final()]).toString("utf8");
+  if (!ivB64 || !dataB64 || !tagB64) {
+    throw new CredentialDecryptionError(
+      "Segredo cifrado inválido — o conteúdo guardado não tem o formato iv.dados.tag.",
+    );
+  }
+  try {
+    const decipher = crypto.createDecipheriv("aes-256-gcm", gatewayKey(), Buffer.from(ivB64, "base64"));
+    decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+    return Buffer.concat([decipher.update(Buffer.from(dataB64, "base64")), decipher.final()]).toString("utf8");
+  } catch (error) {
+    throw new CredentialDecryptionError(
+      "Falha ao decifrar segredo protegido — chave de criptografia divergente ou dado corrompido.",
+      error,
+    );
+  }
 }
 
 export function randomToken(bytes = 48): string {

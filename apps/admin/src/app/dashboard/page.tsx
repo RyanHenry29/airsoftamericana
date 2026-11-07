@@ -29,10 +29,8 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const token = localStorage.getItem("aa_admin_token");
       try {
         const res = await fetch(`${API_URL}/api/admin/metrics`, {
-          headers: token ? { authorization: `Bearer ${token}` } : {},
           credentials: "include",
         });
         if (res.status === 401) {

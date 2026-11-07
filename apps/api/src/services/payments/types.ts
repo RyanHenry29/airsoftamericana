@@ -1,4 +1,4 @@
-import { decryptSecret, encryptSecret } from "../../lib/crypto.js";
+import { CredentialDecryptionError, decryptSecret, encryptSecret } from "../../lib/crypto.js";
 import type { PaymentMethod } from "@airsoft/shared";
 import type { Db } from "../../db/index.js";
 import { schema } from "../../db/index.js";
@@ -89,13 +89,43 @@ export async function loadGatewayConfig(
   return row as unknown as GatewayRow;
 }
 
+/**
+ * Credenciais cifradas que não puderam ser lidas.
+ *
+ * Provider → motivo. O registro sobrevive à reinicialização do processo
+ * porque a falha é detected de novo no boot (initAdapters), mas entre uma
+ * leitura e outra o mapa evita reprocessar o mesmo erro.
+ */
+const credentialFailures = new Map<string, string>();
+
+export function markCredentialFailure(provider: string, reason: string): void {
+  credentialFailures.set(provider, reason);
+}
+
+export function clearCredentialFailure(provider: string): void {
+  credentialFailures.delete(provider);
+}
+
+export function getCredentialFailure(provider: string): string | undefined {
+  return credentialFailures.get(provider);
+}
+
+/**
+ * Decifra as credenciais do gateway.
+ *
+ * NÃO engole erro: credencial ilegível é "gateway indisponível" (503) e
+ * precisa aparecer na auditoria — devolveu {} em silêncio, o lojista via
+ * "gateway não configurado" e nenhuma pista do que aconteceu.
+ */
 export function decryptCredentials(row: GatewayRow): Record<string, string> {
   if (!row.credentialsEncrypted) return {};
-  try {
-    return JSON.parse(decryptSecret(row.credentialsEncrypted)) as Record<string, string>;
-  } catch {
-    return {};
+  const parsed = JSON.parse(decryptSecret(row.credentialsEncrypted)) as Record<string, string>;
+  if (!parsed || typeof parsed !== "object") {
+    throw new CredentialDecryptionError(
+      `Credenciais do gateway ${row.provider} não são um objeto de chave/valor.`,
+    );
   }
+  return parsed;
 }
 
 export function encryptCredentials(creds: Record<string, string>): string {
@@ -109,5 +139,16 @@ export async function resolveActiveAdapter(db: Db): Promise<PaymentAdapter | und
     rows.find((r) => r.enabled && r.provider === process.env.GATEWAY_ACTIVE) ??
     rows.find((r) => r.enabled);
   if (!def) return registry.get("sandbox");
+
+  // Credencial ilegível no provedor escolhido = gateway indisponível.
+  // "Não configurado" (sem credencial nenhuma) é outro caso: o adapter
+  // simplesmente não existe e o checkout diz que falta configuração.
+  const failure = credentialFailures.get(def.provider);
+  if (failure) {
+    throw new CredentialDecryptionError(
+      `Gateway indisponível: as credenciais de ${def.provider} não puderam ser lidas (${failure}).`,
+    );
+  }
+
   return registry.get(def.provider);
 }

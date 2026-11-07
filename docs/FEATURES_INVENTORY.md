@@ -12,7 +12,7 @@ Mapeado a partir do HTML salvo. Status = o que a nova plataforma entrega.
 | Clientes | Login, cadastro, acompanhamento | Auth de cliente + pedidos rastreados + LGPD no admin |
 | Pedidos | Compra e rastreamento | Máquina de estados completa + histórico imutável + expedição/rastreio |
 | Marketing | Cupons, newsletter, ofertas | Cupons por valor/percentual/frete, banners, destaques, promoções |
-| Atendimento | WhatsApp, loja física Campinas, páginas informativas | WhatsApp configurável, `/quem-somos`, `/atendimento`, blog placeholder |
+| Atendimento | WhatsApp, loja física Americana, páginas informativas | WhatsApp configurável, `/quem-somos`, `/atendimento`, blog placeholder |
 | Estoque | Indisponível/esgotado | Físico/reservado/disponível, movimentos com motivo, alertas, reservas transacionais |
 | Chargeback | Reclamação: banco aceitava disputa fácil | Score de risco pré-captura, 3 faixas, 3DS, captura posterior, central de disputas, evidências em PDF, listas de monitoramento |
 

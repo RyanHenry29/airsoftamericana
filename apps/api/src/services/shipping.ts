@@ -1,4 +1,11 @@
-import { config } from "../config.js";
+// language: TS, file: apps/api/src/services/shipping.ts, target: Fastify 5
+/**
+ * Cálculo de frete.
+ *
+ * A regra de frete grátis tem UMA fonte: settings.free_shipping_from_cents no
+ * banco. Quem chama (checkout, /api/shipping/quote) lê o settings e passa o
+ * limite — esta função não lê ambiente nem table nada.
+ */
 
 export interface ShippingOption {
   carrier: string;
@@ -12,14 +19,17 @@ export interface ShippingInput {
   zip: string;
   subtotalCents: number;
   totalWeightGrams: number;
+  freeShippingFromCents: number;
 }
 
 /**
  * Frete simplificado por faixa de CEP + peso (Correios como referência).
  * Produção: trocar por integração Melhor Envio/Correios sem mudar a interface.
+ * A regra de frete grátis tem UMA fonte: settings.free_shipping_from_cents no
+ * banco — quem chama lê o settings e passa o limite (nunca env, nunca aqui).
  */
 export function calculateShipping(input: ShippingInput): ShippingOption[] {
-  const { zip, subtotalCents, totalWeightGrams } = input;
+  const { zip, freeShippingFromCents } = input;
   const firstDigit = zip[0] ?? "0";
 
   const zone: Record<string, number> = {
@@ -27,11 +37,10 @@ export function calculateShipping(input: ShippingInput): ShippingOption[] {
   };
   const zoneIndex = zone[firstDigit] ?? 2;
 
-  const weightKg = Math.max(1, Math.ceil(totalWeightGrams / 1000));
+  const weightKg = Math.max(1, Math.ceil(input.totalWeightGrams / 1000));
   const base = 1490 + zoneIndex * 400 + (weightKg - 1) * 600;
 
-  const freeThreshold = config.FRETE_GRATIS_APARTIR_DE;
-  const isFree = freeThreshold > 0 && subtotalCents >= freeThreshold;
+  const isFree = freeShippingFromCents > 0 && input.subtotalCents >= freeShippingFromCents;
 
   const pacPrice = isFree ? 0 : base;
   const sedexPrice = isFree ? 0 : base + 1800;

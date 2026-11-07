@@ -3,60 +3,11 @@ import { and, asc, count, desc, eq, ilike, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { listProducts, type SortKey } from "./catalog.js";
+import { getCommercialSettings, type CommercialSettings, DEFAULT_COMMERCIAL } from "./settings.js";
 
-type SettingsRow = { key: string; value: unknown };
-
-export type CommercialSettings = {
-  pix_discount_percent: number;
-  installments: number;
-  installment_interest_free: boolean;
-  min_installment_cents: number;
-  free_shipping_from_cents: number;
-  shipping_carriers: string[];
-  whatsapp: string;
-  email: string;
-  address: {
-    street: string;
-    district: string;
-    city: string;
-    state: string;
-    zip: string;
-  };
-  service_hours: string;
-  social: { instagram: string; whatsapp: string };
-  announcement: string;
-};
-
-const DEFAULT_COMMERCIAL: CommercialSettings = {
-  pix_discount_percent: 0,
-  installments: 1,
-  installment_interest_free: false,
-  min_installment_cents: 0,
-  free_shipping_from_cents: 0,
-  shipping_carriers: [],
-  whatsapp: "",
-  email: "",
-  address: { street: "", district: "", city: "", state: "", zip: "" },
-  service_hours: "",
-  social: { instagram: "", whatsapp: "" },
-  announcement: "",
-};
-
-/** Condições comerciais vêm do banco — o admin edita, a loja nunca inventa. */
-export async function getCommercialSettings(db: Db): Promise<CommercialSettings> {
-  const rows = await db.select().from(schema.systemSettings);
-  const commercial = rows.find((r) => r.key === "commercial");
-  if (!commercial) return DEFAULT_COMMERCIAL;
-  const value = commercial.value;
-  if (!value || typeof value !== "object") return DEFAULT_COMMERCIAL;
-  const parsed = value as Partial<CommercialSettings>;
-  return {
-    ...DEFAULT_COMMERCIAL,
-    ...parsed,
-    address: { ...DEFAULT_COMMERCIAL.address, ...(parsed.address ?? {}) },
-    social: { ...DEFAULT_COMMERCIAL.social, ...(parsed.social ?? {}) },
-  };
-}
+// Re-exporta a fonte única — quem importava daqui continua compilando, mas a
+// regra comercial mora em settings.ts e em lugar nenhum mais.
+export { DEFAULT_COMMERCIAL, getCommercialSettings, type CommercialSettings };
 
 async function hydrate(db: Db, ids: string[]) {
   if (ids.length === 0) return [];

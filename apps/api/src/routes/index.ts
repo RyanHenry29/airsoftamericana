@@ -12,6 +12,7 @@ import { handleCheckout } from "../services/checkout.js";
 import { transitionOrder } from "../services/orders.js";
 import { validateCoupon } from "../services/coupons.js";
 import { calculateShipping } from "../services/shipping.js";
+import { getFreeShippingFromCents } from "../services/settings.js";
 import { canTransition, type OrderStatus } from "@airsoft/shared";
 import { registerAdapter, type NormalizedWebhookEvent } from "../services/payments/types.js";
 import { getAdapter } from "../services/payments/types.js";
@@ -301,7 +302,12 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         }
       }
     }
-    reply.send({ options: calculateShipping({ zip, subtotalCents, totalWeightGrams: weight }) });
+    // Regra de frete grátis: uma fonte só — settings.free_shipping_from_cents.
+    const freeShippingFromCents = await getFreeShippingFromCents(db);
+    reply.send({
+      options: calculateShipping({ zip, subtotalCents, totalWeightGrams: weight, freeShippingFromCents }),
+      freeShippingFromCents,
+    });
   });
 
   app.get("/api/coupons/validate", async (request, reply) => {
@@ -546,6 +552,10 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   });
 
   // ---------------------------------------------------------- Auth admin (users)
+  //
+  // Sessão do painel: cookie HttpOnly e NADA no corpo da resposta. Token no
+  // corpo vira accessible ao JavaScript da página (superfície de XSS) sem
+  // ganhar nada — o cookie HttpOnly não é lido por script.
   app.post(
     "/api/auth/admin-login",
     { preHandler: authRateLimit(adminLoginRateLimitRule(config)) },
@@ -560,6 +570,12 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     const found = await db.select().from(users).where(eq(users.email, email)).limit(1);
     const user = found[0];
     if (!user || !user.active || !(await bcrypt.compare(password, user.passwordHash))) {
+      await writeAudit(db, request, {
+        action: "auth.admin.login.failed",
+        entity: "user",
+        entityId: user?.id ?? null,
+        actorLabel: maskEmail(email),
+      });
       reply.status(401);
       reply.send({ error: { code: "unauthorized", message: "E-mail ou senha incorretos" } });
       return;
@@ -570,9 +586,16 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       path: "/",
       httpOnly: true,
       sameSite: "lax",
+      secure: config.NODE_ENV === "production",
       maxAge: 60 * 60 * 12,
     });
-    reply.send({ user: { id: user.id, name: user.name, email: user.email, role: user.role }, token });
+    await writeAudit(db, request, {
+      action: "auth.admin.login",
+      entity: "user",
+      entityId: user.id,
+      actorLabel: maskEmail(email),
+    });
+    reply.send({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   });
 
   // ---------------------------------------------------------- Admin clientes

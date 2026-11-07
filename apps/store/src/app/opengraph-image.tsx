@@ -25,7 +25,7 @@ export default function OpengraphImage() {
       >
         {/* Trilho superior — mono, localização e operação */}
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 22, color: "#929890", letterSpacing: 4, textTransform: "uppercase" }}>
-          <span>Campinas / SP</span>
+          <span>Americana / SP</span>
           <span>Loja física · Envio nacional</span>
         </div>
 

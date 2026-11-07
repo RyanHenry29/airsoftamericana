@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { authMiddleware, requireRole } from "../middleware/auth.js";
+import { listAudit } from "../lib/audit.js";
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
 type AdminRequest = FastifyRequest & { user?: { sub?: string; role?: string } };
@@ -702,12 +703,25 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   app.get("/api/admin/audit", admin, async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
     const limit = Math.min(300, Math.max(1, Number(q.limit ?? 100) || 100));
-    const rows = await db
-      .select()
-      .from(schema.auditLogs)
-      .orderBy(desc(schema.auditLogs.createdAt))
-      .limit(limit);
-    reply.send({ items: rows });
+    const from = q.from ? new Date(q.from) : undefined;
+    const to = q.to ? new Date(q.to) : undefined;
+    const result = await listAudit(db, {
+      entity: q.entity?.trim() || undefined,
+      entityId: q.entityId?.trim() || undefined,
+      actorUserId: q.actorUserId?.trim() || undefined,
+      actorLabel: q.actorLabel?.trim() || undefined,
+      action: q.action?.trim() || undefined,
+      from: from && !Number.isNaN(from.getTime()) ? from : undefined,
+      to: to && !Number.isNaN(to.getTime()) ? to : undefined,
+      cursor: q.cursor?.trim() || undefined,
+      limit,
+    });
+    reply.send({
+      items: result.items,
+      total: result.total,
+      limit: result.limit,
+      nextCursor: result.nextCursor,
+    });
   });
 
   app.get("/api/admin/reports", admin, async (_request, reply) => {

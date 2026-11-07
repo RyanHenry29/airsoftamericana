@@ -1,15 +1,16 @@
 import { eq, sql, and, gte, lt, count } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
-import { badRequest, conflict, notFound } from "../lib/errors.js";
+import { badRequest, conflict, notFound, serviceUnavailable } from "../lib/errors.js";
 import { checkOrderVolume, nextOrderNumber, transitionOrder } from "./orders.js";
 import { reserveStock } from "./inventory.js";
 import { assessRisk, saveAssessment } from "./fraud.js";
 import { validateCoupon, incrementCouponUsage } from "./coupons.js";
 import { calculateShipping, getCheapestOption, type ShippingOption } from "./shipping.js";
+import { getFreeShippingFromCents } from "./settings.js";
 import { resolveActiveAdapter, loadGatewayConfig } from "./payments/types.js";
 import { initAdapters } from "./payments/index.js";
-import { sha256 } from "../lib/crypto.js";
+import { sha256, CredentialDecryptionError } from "../lib/crypto.js";
 import { audit } from "../lib/audit.js";
 import type { CheckoutInput, OrderStatus, PaymentMethod } from "@airsoft/shared";
 
@@ -104,10 +105,13 @@ export async function handleCheckout(
     couponId = validation.couponId;
   }
 
+  // Frete grátis: o limite vem do settings (banco), nunca do ambiente.
+  const freeShippingFromCents = await getFreeShippingFromCents(db);
   const shippingOptions = calculateShipping({
     zip: input.address.zip,
     subtotalCents,
     totalWeightGrams,
+    freeShippingFromCents,
   });
   const shippingOption =
     shippingOptions.find((o) => o.service === input.shippingService) ??
@@ -276,7 +280,20 @@ export async function handleCheckout(
   }
 
   await initAdapters(db);
-  const adapter = await resolveActiveAdapter(db);
+  let adapter;
+  try {
+    adapter = await resolveActiveAdapter(db);
+  } catch (error) {
+    // Credencial ilegível é indisponibilidade, não falta de configuração.
+    // O detalhe técnico fica na auditoria; o cliente vê a orientação.
+    if (error instanceof CredentialDecryptionError) {
+      throw serviceUnavailable(
+        "gateway_unavailable",
+        "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
+      );
+    }
+    throw error;
+  }
   if (!adapter) throw conflict("no_payment_gateway", "Nenhum gateway configurado");
 
   const gatewayConfig = await loadGatewayConfig(db, adapter.provider);

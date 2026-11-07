@@ -113,7 +113,7 @@ export default async function HomePage() {
     },
     {
       icon: Headphones,
-      title: "Loja física em Campinas",
+      title: "Loja física em Americana",
       sub: "Retirada com equipe de campo",
     },
   ];
@@ -252,7 +252,7 @@ export default async function HomePage() {
                 <div className="inst__copy">
                   <span className="sec-kicker">Desde 2012</span>
                   <h2 className="sec-title">
-                    Loja física em {settings.address.city || "Campinas"}/{settings.address.state || "SP"}
+                    Loja física em {settings.address.city || "Americana"}/{settings.address.state || "SP"}
                   </h2>
                   <p>
                     {settings.address.street}

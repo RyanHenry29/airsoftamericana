@@ -18,12 +18,10 @@ export default function CustomersPage() {
   async function load(term = "") {
     setLoading(true);
     setError("");
-    const token = localStorage.getItem("aa_admin_token");
     try {
       const url = new URL(`${API_URL}/api/admin/customers`);
       if (term.trim()) url.searchParams.set("q", term.trim());
       const res = await fetch(url, {
-        headers: token ? { authorization: `Bearer ${token}` } : {},
         credentials: "include",
       });
       const json = (await res.json().catch(() => ({}))) as { items?: Customer[]; error?: { message?: string } };

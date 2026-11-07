@@ -18,11 +18,11 @@ type TopbarSettings = {
 const STATIC_FACTS: Record<"entrar" | "cadastro", { k: string; v: string }[]> = {
   entrar: [
     { k: "Envio", v: "Correios PAC/SEDEX" },
-    { k: "Loja física", v: "Campinas SP" },
+    { k: "Loja física", v: "Americana SP" },
   ],
   cadastro: [
     { k: "Envio", v: "Correios PAC/SEDEX" },
-    { k: "Loja física", v: "Campinas SP" },
+    { k: "Loja física", v: "Americana SP" },
   ],
 };
 

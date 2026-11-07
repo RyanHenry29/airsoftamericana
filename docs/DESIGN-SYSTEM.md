@@ -30,7 +30,7 @@ Nunca vermelho como identidade. Azul não é decorativo. Verde não vira fundo i
 
 ## Componentes-âncora
 - **Header**: topbar institucional mono + barra preta com logo sem moldura + busca + carrinho com badge + CTA verde.
-- **Hero**: composição 2 colunas — texto comercial à esquerda, **placa industrial de especificação** à direita (logo, LED, cruz de mira, dados técnicos reais: loja física em Campinas, Correios, PIX −5%).
+- **Hero**: composição 2 colunas — texto comercial à esquerda, **placa industrial de especificação** à direita (logo, LED, cruz de mira, dados técnicos reais: loja física em Americana, Correios, PIX −5%).
 - **Faixa de benefícios**: lista horizontal mono, sem cards grandes.
 - **Departamentos**: rail sticky à esquerda + fichas técnicas por linha (número, nome, sublinha de família de produtos, seta que desliza no hover).
 - **Vitrine**: frame neutro por produto com sigla técnica, SKU, preço + PIX −5%, estado de esgotado/18+/estoque.

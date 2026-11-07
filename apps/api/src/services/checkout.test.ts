@@ -31,6 +31,16 @@ async function ensureTables() {
   await db.execute(`DROP TABLE IF EXISTS "products" CASCADE`);
   await db.execute(`DROP TABLE IF EXISTS "brands" CASCADE`);
   await db.execute(`DROP TABLE IF EXISTS "categories" CASCADE`);
+  await db.execute(`DROP TABLE IF EXISTS "system_settings" CASCADE`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS "system_settings" (
+      "key" varchar(60) PRIMARY KEY,
+      "value" jsonb NOT NULL,
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   await db.execute(`DROP TABLE IF EXISTS "customers" CASCADE`);
 
   await db.execute(`
@@ -414,7 +424,7 @@ function addr(number: string) {
     number,
     complement: "",
     neighborhood: "Centro",
-    city: "Campinas",
+    city: "Americana",
     state: "SP",
     country: "BR",
   };
@@ -508,6 +518,7 @@ describe("checkout service", () => {
       zip: "13000000",
       subtotalCents: unitPrice,
       totalWeightGrams: variant.weightGrams,
+      freeShippingFromCents: 0,
     });
     const shippingCents = shippingOptions[0]?.priceCents ?? 0;
     const expectedTotal = Math.floor(unitPrice * 0.95) + shippingCents;

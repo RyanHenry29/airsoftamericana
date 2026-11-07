@@ -30,10 +30,8 @@ export default function OrdersPage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const token = localStorage.getItem("aa_admin_token");
       try {
         const res = await fetch(`${API_URL}/api/admin/orders`, {
-          headers: token ? { authorization: `Bearer ${token}` } : {},
           credentials: "include",
         });
         if (res.status === 401) {
@@ -56,10 +54,9 @@ export default function OrdersPage() {
   }, []);
 
   async function transition(id: string, to: string) {
-    const token = localStorage.getItem("aa_admin_token");
     const res = await fetch(`${API_URL}/api/admin/orders/${id}/transition`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      headers: { "content-type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ status: to }),
     });

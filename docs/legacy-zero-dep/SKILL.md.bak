@@ -28,7 +28,7 @@ Os arquivos fornecidos **não são o código-fonte do sistema**. São um **espel
 - Departamentos: Airsoft (rifles HTA/GBBR/sniper, pistolas AEP), Tiro Esportivo (pistolas airgun), Upgrades, Loadout, Life Style, Aventura, Promoções, Oficina do Airsoft.
 - Pagamentos: PIX (com desconto), boleto, cartão (Visa, Mastercard, Elo, Amex, Hipercard), parcelamento com e sem juros.
 - Frete: Correios, "Grátis" (frete grátis condicionado), consulta de CEP no carrinho.
-- Seções home: NOVIDADES, DESTAQUES, PROMOÇÕES, trustbar de benefícios, carrinho lateral, quickshop com variações, produtos esgotados, blog, newsletter, WhatsApp, loja física Campinas, redes sociais.
+- Seções home: NOVIDADES, DESTAQUES, PROMOÇÕES, trustbar de benefícios, carrinho lateral, quickshop com variações, produtos esgotados, blog, newsletter, WhatsApp, loja física Americana, redes sociais.
 - Restrição **18+** para réplicas de airsoft e armas de pressão.
 
 **Proibido copiar do espelho:** credenciais, tokens, scripts de analytics de terceiros, dados pessoais embutidos, vulnerabilidades.
