@@ -18,12 +18,16 @@
     "verify": "npx tsc --noEmit -p packages/shared/tsconfig.json && npx tsc --noEmit -p apps/api/tsconfig.json && npx tsc --noEmit -p apps/store/tsconfig.json && npx tsc --noEmit -p apps/admin/tsconfig.json && npm run test --workspace=@airsoft/shared --if-present && npm run test --workspace=@airsoft/api --if-present && npx vitest run --config vitest/config.mts && node scripts/check-test-locks.mjs",
     "db:generate": "npm run db:generate --workspace @airsoft/api",
     "db:migrate": "npm run db:migrate --workspace @airsoft/api",
-    "db:seed": "npm run db:seed --workspace @airsoft/api"
+    "db:seed": "npm run db:seed --workspace @airsoft/api",
+    "admin:reset-mfa": "npm run admin:reset-mfa --workspace @airsoft/api --",
+    "test:e2e": "playwright test --config playwright.config.ts"
   },
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
-    "@types/pg": "^8.23.1"
+    "@playwright/test": "^1.52.0",
+    "@types/pg": "^8.23.1",
+    "otpauth": "^9.4.1"
   }
 }
