@@ -8,6 +8,7 @@ import { API_URL, clearCsrfToken } from "../lib/api";
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/products", label: "Produtos" },
+  { href: "/products/import", label: "Importar CSV" },
   { href: "/orders", label: "Pedidos" },
   { href: "/customers", label: "Clientes" },
   { href: "/categories", label: "Categorias" },

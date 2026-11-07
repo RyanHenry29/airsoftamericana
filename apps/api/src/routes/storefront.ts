@@ -81,15 +81,19 @@ export function registerStorefrontRoutes(app: FastifyInstance, db: Db): void {
       return;
     }
 
-    // Relacionados saem completos (preço, foto, estoque) para o card da vitrine.
+    // Relacionados/compatíveis completos (preço, foto, estoque) para vitrine.
     const relatedIds = found.related.map((r) => r.id);
-    const relatedFull = relatedIds.length
-      ? (await listProducts(db, { ids: relatedIds, page: 1, limit: relatedIds.length })).products
-      : [];
-    const order = new Map(relatedIds.map((id, index) => [id, index]));
-    relatedFull.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    const compatibleIds = (found.compatibleIds ?? []) as string[];
+    const [relatedFull, compatibleFull] = await Promise.all([
+      relatedIds.length ? (await listProducts(db, { ids: relatedIds, page: 1, limit: relatedIds.length })).products : Promise.resolve([]),
+      compatibleIds.length ? (await listProducts(db, { ids: compatibleIds, page: 1, limit: compatibleIds.length })).products : Promise.resolve([]),
+    ]);
+    const orderR = new Map(relatedIds.map((id, index) => [id, index]));
+    relatedFull.sort((a, b) => (orderR.get(a.id) ?? 0) - (orderR.get(b.id) ?? 0));
+    const orderC = new Map(compatibleIds.map((id, index) => [id, index]));
+    compatibleFull.sort((a, b) => (orderC.get(a.id) ?? 0) - (orderC.get(b.id) ?? 0));
 
-    reply.send({ ...found.product, related: relatedFull });
+    reply.send({ ...found.product, related: relatedFull, compatible: compatibleFull });
   });
 
   // ---------------------------------------------------------------- Taxonomia

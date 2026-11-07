@@ -60,6 +60,10 @@ async function main() {
   const invExp = await createInvite(db, { email: `expirado-${Date.now()}@e2e.local`, role: "atendimento", createdBy: mfaAdminId });
   await db.update(schema.adminInvites).set({ expiresAt: new Date(Date.now() - 60_000) }).where(eq(schema.adminInvites.id, invExp.id));
 
+  // DEMO catálogo (FASE 3 E2E) — dados próprios marcados DEMO
+  await db.insert(schema.categories).values({ name: "[DEMO] E2E Categoria", slug: "demo-e2e-cat", description: "", ageRestricted: false, active: true, position: 0 } as any).onConflictDoNothing({ target: schema.categories.slug } as any);
+  await db.insert(schema.brands).values({ name: "[DEMO] E2E Marca", slug: "demo-e2e-brand", description: "", active: true, position: 0 } as any).onConflictDoNothing({ target: schema.brands.slug } as any);
+
   // imprime APENAS identificadores/tokens de convite e secrets de TOTP de TESTE (ambiente isolado E2E)
   // — necessário para os testes determinísticos; não usar em produção.
   console.log(JSON.stringify({
@@ -71,6 +75,8 @@ async function main() {
     E2E_RECOVERY_CODE: recoveryRec[0],
     E2E_INVITE_TOKEN: inv.token,
     E2E_INVITE_EXPIRED_TOKEN: invExp.token,
+    E2E_CATEGORY_SLUG: "demo-e2e-cat",
+    E2E_BRAND_SLUG: "demo-e2e-brand",
   }, null, 2));
 
   await closeDb();

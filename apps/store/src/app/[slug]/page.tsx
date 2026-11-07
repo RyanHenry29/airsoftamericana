@@ -287,11 +287,27 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <div className="sec-head">
             <div>
               <span className="sec-kicker">Da mesma categoria</span>
-              <h2 className="sec-title">Quem comprou, comprou também</h2>
+              <h2 className="sec-title">Produtos relacionados</h2>
             </div>
           </div>
           <ul className="product-grid">
             {product.related.map((rel) => (
+              <ProductCard key={rel.id} product={rel} settings={settings} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {product.compatible && product.compatible.length > 0 && (
+        <section className="block">
+          <div className="sec-head">
+            <div>
+              <span className="sec-kicker">Compatibilidade</span>
+              <h2 className="sec-title">Produtos compatíveis</h2>
+            </div>
+          </div>
+          <ul className="product-grid">
+            {product.compatible.map((rel) => (
               <ProductCard key={rel.id} product={rel} settings={settings} />
             ))}
           </ul>

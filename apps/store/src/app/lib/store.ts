@@ -56,6 +56,7 @@ export type StoreProduct = {
   promoPriceCents: number | null;
   available: number;
   related?: StoreProduct[];
+  compatible?: StoreProduct[];
   compatibleIds?: string[];
 };
 

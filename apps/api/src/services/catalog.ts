@@ -225,16 +225,32 @@ export async function listProducts(db: Db, input: CatalogQuery) {
     .from(schema.products)
     .where(whereSql);
 
+  const minEffPrice = sql`(select min(coalesce(pv.promo_price_cents, pv.price_cents)) from ${schema.productVariants} pv where pv.product_id = ${schema.products.id} and pv.active = true)`;
+  const sortExpr = (() => {
+    switch (input.sort) {
+      case "price_asc": return asc(minEffPrice);
+      case "price_desc": return desc(minEffPrice);
+      case "name_asc": return asc(schema.products.name);
+      case "news": return desc(schema.products.createdAt);
+      case "bestsellers": return desc(schema.products.featured);
+      case "featured_first":
+      default: return desc(schema.products.featured);
+    }
+  })();
+  const sortExpr2 = input.sort === "featured_first" || input.sort === "bestsellers" ? desc(schema.products.createdAt) : asc(schema.products.id);
+
   const rows = await (async () => {
     if (!variantWhere) {
-      return baseQuery.limit(input.limit).offset(offset);
+      return baseQuery.orderBy(sortExpr, sortExpr2).limit(input.limit).offset(offset);
     }
+    // com DISTINCT, expressões de order devem ser compatíveis; price sort usa subquery escalar (ok)
     return db
       .selectDistinct(publicProductCols)
       .from(schema.products)
       .innerJoin(schema.productVariants, eq(schema.productVariants.productId, schema.products.id))
       .leftJoin(schema.inventory, eq(schema.inventory.variantId, schema.productVariants.id))
       .where(and(whereSql, variantWhere))
+      .orderBy(sortExpr, sortExpr2)
       .limit(input.limit)
       .offset(offset);
   })();
