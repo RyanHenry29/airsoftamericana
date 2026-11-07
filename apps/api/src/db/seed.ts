@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
+import { cleanText } from "./text.js";
 import {
   users, customers, categories, brands, products, productVariants, productImages,
   productSpecs, inventory, banners, homepageSections, relatedProducts,
@@ -164,8 +165,36 @@ export async function seed(db: Db) {
       console.log(`✅ Taxonomy seeded: ${deptRows.length} departamentos, ${pending.length} categorias`);
     }
 
+    // ---------------------------------------------------------------- Higiene de texto
+    //
+    // O espelho é HTML: nomes e posts chegam escapados ("Muni&ccedil;&atilde;o").
+    // Esta passa roda em todo seed de dev e limpa o que já está no banco.
+    const categoriasComEntidade = await db
+      .select({ id: categories.id, name: categories.name, description: categories.description })
+      .from(categories)
+      .where(sql`${categories.name} like '%&%' or ${categories.description} like '%&%'`);
+    for (const row of categoriasComEntidade) {
+      await db
+        .update(categories)
+        .set({ name: cleanText(row.name), description: cleanText(row.description) })
+        .where(sql`${categories.id} = ${row.id}`);
+    }
+
     const cats = await db.select().from(categories);
     const catBySlug = new Map(cats.map((c) => [c.slug, c.id]));
+
+    // Nomes das categorias vêm do arquivo de taxonomia — fonte da importação.
+    // O espelho trouxe HTML escapado e caracteres quebrados ("Bon&s" por
+    // "Bonês"); o arquivo é a versão limpa, então ela manda.
+    for (const cat of taxonomy.categories) {
+      const slug = `${cat.parent}-${cat.slug}`.replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
+      const id = catBySlug.get(slug);
+      if (!id) continue;
+      await db
+        .update(categories)
+        .set({ name: cleanText(cat.name) })
+        .where(sql`${categories.id} = ${id}`);
+    }
     // O slug da categoria carrega o path inteiro com "/" trocado por "-".
     const catIdForPath = (path: string): string | undefined =>
       catBySlug.get(path.replace(/\//g, "-"));
@@ -469,7 +498,8 @@ export async function seed(db: Db) {
             fundacao: "02/02/2017",
             endereco: "Rua Celinda Antônia Quaino Santa Rosa, 157, Jardim Luciane, Americana-SP, CEP 13477-225",
             email_contato: "contato@airsoftamericana.com.br",
-            telefone_principal_whatsapp: "(19) 98450-4992",
+            telefone_principal: "(19) 98450-4992",
+            whatsapp: "5519984504992",
             telefone_secundario: "(19) 99150-4992",
           }),
         },
