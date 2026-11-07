@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
 import * as schema from "./schema.js";
+import { benchLogger } from "../lib/query-bench.js";
 
 /**
  * Raiz do pacote (apps/api) — resolvida a partir do próprio arquivo, nunca a
@@ -111,9 +112,11 @@ function acquirePgliteLock(dir: string): () => void {
 export async function getDb(): Promise<Db> {
   if (db) return db;
 
+  // Em teste, logger no-op ativa contagem só quando benchStart() é chamado (benchmark/N+1).
+  const bench = process.env.NODE_ENV === "test" ? { logger: benchLogger } : {};
   if (config.DATABASE_URL) {
     poolInstance = new Pool({ connectionString: config.DATABASE_URL, max: 10 });
-    db = drizzlePg(poolInstance, { schema });
+    db = drizzlePg(poolInstance, { schema, ...bench });
   } else {
     const configured = process.env.PGLITE_DIR;
     const dir = configured
@@ -124,7 +127,7 @@ export async function getDb(): Promise<Db> {
     fs.mkdirSync(dir, { recursive: true });
     releaseLock = acquirePgliteLock(dir);
     pgliteInstance = new PGlite(path.join(dir, "airsoft.db"));
-    db = drizzlePglite(pgliteInstance, { schema });
+    db = drizzlePglite(pgliteInstance, { schema, ...bench });
   }
   return db;
 }

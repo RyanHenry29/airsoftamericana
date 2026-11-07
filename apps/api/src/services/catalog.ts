@@ -138,12 +138,14 @@ export async function listProducts(db: Db, input: CatalogQuery) {
 
   if (input.category) {
     const ids = await resolveCategoryIds(db, input.category);
-    if (ids) conditions.push(inArray(schema.products.categoryId, ids));
+    if (ids && ids[0] === "__nomatch__") conditions.push(sql`false`);
+    else if (ids) conditions.push(inArray(schema.products.categoryId, ids));
   }
 
   if (input.brand) {
     const brandId = await resolveBrandId(db, input.brand);
-    if (brandId) conditions.push(eq(schema.products.brandId, brandId));
+    if (brandId === "__nomatch__") conditions.push(sql`false`);
+    else if (brandId) conditions.push(eq(schema.products.brandId, brandId));
   }
 
   if (input.q) {
@@ -233,85 +235,107 @@ export async function listProducts(db: Db, input: CatalogQuery) {
   const totalResult = await db.select({ count: sql`count(*)` }).from(schema.products).where(whereSql);
   const total = Number(totalResult[0]?.count ?? 0);
 
-  // Enriquecimento: variantes, estoque, imagens, marca e categoria.
-  const items = await Promise.all(
-    rows.map(async (product) => {
-      const variants = await db
-        .select({
-          id: schema.productVariants.id,
-          sku: schema.productVariants.sku,
-          name: schema.productVariants.name,
-          priceCents: schema.productVariants.priceCents,
-          promoPriceCents: schema.productVariants.promoPriceCents,
-          weightGrams: schema.productVariants.weightGrams,
-          active: schema.productVariants.active,
-        })
-        .from(schema.productVariants)
-        .where(eq(schema.productVariants.productId, product.id));
+  // Enriquecimento em lote (evita N+1 por produto): variantes, estoque, imagens, marcas, categorias.
+  const productIds = rows.map((p) => p.id);
+  const [allVariants, allImages, allBrands, allCategories] = await Promise.all([
+    productIds.length
+      ? db
+          .select({
+            id: schema.productVariants.id,
+            productId: schema.productVariants.productId,
+            sku: schema.productVariants.sku,
+            name: schema.productVariants.name,
+            priceCents: schema.productVariants.priceCents,
+            promoPriceCents: schema.productVariants.promoPriceCents,
+            weightGrams: schema.productVariants.weightGrams,
+            active: schema.productVariants.active,
+          })
+          .from(schema.productVariants)
+          .where(inArray(schema.productVariants.productId, productIds))
+      : Promise.resolve([] as Array<VariantRow & { productId: string }>),
+    productIds.length
+      ? db
+          .select({
+            id: schema.productImages.id,
+            productId: schema.productImages.productId,
+            url: schema.productImages.url,
+            alt: schema.productImages.alt,
+            kind: schema.productImages.kind,
+            position: schema.productImages.position,
+          })
+          .from(schema.productImages)
+          .where(inArray(schema.productImages.productId, productIds))
+          .orderBy(asc(schema.productImages.position))
+      : Promise.resolve([] as Array<{ id: string; productId: string; url: string; alt: string | null; kind: string; position: number }>),
+    (() => {
+      const ids = [...new Set(rows.map((p) => p.brandId).filter((x): x is string => !!x))];
+      return ids.length
+        ? db.select({ id: schema.brands.id, name: schema.brands.name, slug: schema.brands.slug }).from(schema.brands).where(inArray(schema.brands.id, ids))
+        : Promise.resolve([] as Array<{ id: string; name: string; slug: string }>);
+    })(),
+    (() => {
+      const ids = [...new Set(rows.map((p) => p.categoryId).filter((x): x is string => !!x))];
+      return ids.length
+        ? db.select({ id: schema.categories.id, name: schema.categories.name, slug: schema.categories.slug }).from(schema.categories).where(inArray(schema.categories.id, ids))
+        : Promise.resolve([] as Array<{ id: string; name: string; slug: string }>);
+    })(),
+  ]);
 
-      const stockRows = variants.length
-        ? await db
-            .select({
-              variantId: schema.inventory.variantId,
-              physical: schema.inventory.physical,
-              reserved: schema.inventory.reserved,
-            })
-            .from(schema.inventory)
-            .where(
-              inArray(
-                schema.inventory.variantId,
-                variants.map((v) => v.id),
-              ),
-            )
-        : [];
+  const variantIds = allVariants.map((v) => v.id);
+  const allStock = variantIds.length
+    ? await db
+        .select({ variantId: schema.inventory.variantId, physical: schema.inventory.physical, reserved: schema.inventory.reserved })
+        .from(schema.inventory)
+        .where(inArray(schema.inventory.variantId, variantIds))
+    : [];
 
-      const images = await db
-        .select({
-          id: schema.productImages.id,
-          url: schema.productImages.url,
-          alt: schema.productImages.alt,
-          kind: schema.productImages.kind,
-          position: schema.productImages.position,
-        })
-        .from(schema.productImages)
-        .where(eq(schema.productImages.productId, product.id))
-        .orderBy(asc(schema.productImages.position));
+  const variantsByProduct = new Map<string, Array<VariantRow & { productId: string }>>();
+  for (const v of allVariants) {
+    const list = variantsByProduct.get(v.productId) ?? [];
+    list.push(v);
+    variantsByProduct.set(v.productId, list);
+  }
+  const stockByVariant = new Map(allStock.map((s) => [s.variantId, s]));
+  const imagesByProduct = new Map<string, typeof allImages>();
+  for (const img of allImages) {
+    const list = imagesByProduct.get(img.productId) ?? [];
+    list.push(img);
+    imagesByProduct.set(img.productId, list);
+  }
+  for (const list of imagesByProduct.values()) list.sort((a, b) => a.position - b.position);
+  const brandById = new Map(allBrands.map((b) => [b.id, b]));
+  const categoryById = new Map(allCategories.map((c) => [c.id, c]));
 
-      const brand = product.brandId
-        ? (await db.select().from(schema.brands).where(eq(schema.brands.id, product.brandId)).limit(1))[0]
-        : undefined;
-
-      const category = (
-        await db.select().from(schema.categories).where(eq(schema.categories.id, product.categoryId)).limit(1)
-      )[0];
-
-      const viewVariants: (VariantRow & { available: number })[] = variants.map((v) => {
-        const stock = stockRows.find((s) => s.variantId === v.id);
-        return { ...v, available: stock ? stock.physical - stock.reserved : 0 };
-      });
-
-      const cheapest = viewVariants
-        .filter((v) => v.active)
-        .reduce<VariantRow | null>(
-          (acc, v) => (acc === null || effectivePrice(v) < effectivePrice(acc) ? v : acc),
-          null,
-        );
-
-      return {
-        ...product,
-        variants: viewVariants,
-        images,
-        brandName: brand?.name ?? null,
-        brandSlug: brand?.slug ?? null,
-        categoryName: category?.name ?? null,
-        categorySlug: category?.slug ?? null,
-        priceCents: cheapest ? effectivePrice(cheapest) : 0,
-        listPriceCents: cheapest?.priceCents ?? 0,
-        promoPriceCents: cheapest?.promoPriceCents ?? null,
-        available: viewVariants.reduce((a, v) => a + v.available, 0),
-      };
-    }),
-  );
+  const items = rows.map((product) => {
+    const variants = variantsByProduct.get(product.id) ?? [];
+    const images = (imagesByProduct.get(product.id) ?? []).map(({ productId: _pid, ...rest }) => rest);
+    const brand = product.brandId ? brandById.get(product.brandId) : undefined;
+    const category = categoryById.get(product.categoryId);
+    const viewVariants: (VariantRow & { available: number })[] = variants.map((v) => {
+      const stock = stockByVariant.get(v.id);
+      const { productId: _pid, ...rest } = v as VariantRow & { productId: string };
+      return { ...rest, available: stock ? stock.physical - stock.reserved : 0 };
+    });
+    const cheapest = viewVariants
+      .filter((v) => v.active)
+      .reduce<VariantRow | null>(
+        (acc, v) => (acc === null || effectivePrice(v) < effectivePrice(acc) ? v : acc),
+        null,
+      );
+    return {
+      ...product,
+      variants: viewVariants,
+      images,
+      brandName: brand?.name ?? null,
+      brandSlug: brand?.slug ?? null,
+      categoryName: category?.name ?? null,
+      categorySlug: category?.slug ?? null,
+      priceCents: cheapest ? effectivePrice(cheapest) : 0,
+      listPriceCents: cheapest?.priceCents ?? 0,
+      promoPriceCents: cheapest?.promoPriceCents ?? null,
+      available: viewVariants.reduce((a, v) => a + v.available, 0),
+    };
+  });
 
   // Facetas calculadas sobre o conjunto filtrado (sem paginação).
   const facetRows = await db
@@ -323,14 +347,17 @@ export async function listProducts(db: Db, input: CatalogQuery) {
     .where(whereSql)
     .groupBy(schema.products.brandId);
 
-  const brandFacets = await Promise.all(
-    facetRows
-      .filter((f) => f.brandId)
-      .map(async (f) => {
-        const brand = (await db.select().from(schema.brands).where(eq(schema.brands.id, f.brandId!)).limit(1))[0];
-        return brand ? { id: brand.id, slug: brand.slug, name: brand.name, count: Number(f.count) } : null;
-      }),
-  );
+  const facetBrandIds = facetRows.map((f) => f.brandId).filter((x): x is string => !!x);
+  const facetBrands = facetBrandIds.length
+    ? await db.select({ id: schema.brands.id, slug: schema.brands.slug, name: schema.brands.name }).from(schema.brands).where(inArray(schema.brands.id, facetBrandIds))
+    : [];
+  const facetBrandById = new Map(facetBrands.map((b) => [b.id, b]));
+  const brandFacets = facetRows
+    .filter((f) => f.brandId)
+    .map((f) => {
+      const brand = facetBrandById.get(f.brandId!);
+      return brand ? { id: brand.id, slug: brand.slug, name: brand.name, count: Number(f.count) } : null;
+    });
 
   const priceRows = await db
     .select({

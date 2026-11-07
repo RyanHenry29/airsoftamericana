@@ -129,22 +129,24 @@ export function registerStorefrontRoutes(app: FastifyInstance, db: Db): void {
       .where(eq(schema.brands.active, true))
       .orderBy(asc(schema.brands.position), asc(schema.brands.name));
 
-    const items = await Promise.all(
-      rows.map(async (brand) => {
-        const products = await db
-          .select({ count: sql`count(*)::int` })
+    // Contagem em lote (evita N+1 por marca).
+    const counts = rows.length
+      ? await db
+          .select({ brandId: schema.products.brandId, count: sql`count(*)::int` })
           .from(schema.products)
-          .where(and(eq(schema.products.brandId, brand.id), eq(schema.products.published, true)));
-        return {
-          id: brand.id,
-          name: brand.name,
-          slug: brand.slug,
-          logoUrl: brand.logoUrl,
-          description: brand.description,
-          productCount: Number(products[0]?.count ?? 0),
-        };
-      }),
-    );
+          .where(and(eq(schema.products.published, true), sql`${schema.products.brandId} is not null`))
+          .groupBy(schema.products.brandId)
+      : [];
+    const countByBrand = new Map(counts.map((c) => [c.brandId, Number(c.count)]));
+
+    const items = rows.map((brand) => ({
+      id: brand.id,
+      name: brand.name,
+      slug: brand.slug,
+      logoUrl: brand.logoUrl,
+      description: brand.description,
+      productCount: countByBrand.get(brand.id) ?? 0,
+    }));
     reply.send(items);
   });
 

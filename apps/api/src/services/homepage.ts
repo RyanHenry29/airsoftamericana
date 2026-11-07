@@ -104,22 +104,23 @@ export async function buildHome(db: Db) {
   const bestIds = (bestRows as unknown as { rows: { id: string }[] }).rows.map((r) => r.id);
   const bestsellers = await hydrate(db, bestIds);
 
-  const brandViews = await Promise.all(
-    brands.map(async (brand) => {
-      const products = await db
-        .select({ count: count() })
+  // Contagem em lote (evita N+1 por marca).
+  const brandCounts = brands.length
+    ? await db
+        .select({ brandId: schema.products.brandId, count: sql`count(*)::int` })
         .from(schema.products)
-        .where(and(eq(schema.products.brandId, brand.id), eq(schema.products.published, true)));
-      return {
-        id: brand.id,
-        name: brand.name,
-        slug: brand.slug,
-        logoUrl: brand.logoUrl,
-        description: brand.description,
-        productCount: Number(products[0]?.count ?? 0),
-      };
-    }),
-  );
+        .where(and(eq(schema.products.published, true), sql`${schema.products.brandId} is not null`))
+        .groupBy(schema.products.brandId)
+    : [];
+  const countByBrand = new Map(brandCounts.map((c) => [c.brandId, Number(c.count)]));
+  const brandViews = brands.map((brand) => ({
+    id: brand.id,
+    name: brand.name,
+    slug: brand.slug,
+    logoUrl: brand.logoUrl,
+    description: brand.description,
+    productCount: countByBrand.get(brand.id) ?? 0,
+  }));
 
   return {
     banners,
