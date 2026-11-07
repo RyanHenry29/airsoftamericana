@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { getDb } from "../db/index.js";
 import { migrate } from "../db/migrate.js";
 import { schema } from "../db/index.js";
+import { hashPassword } from "./crypto.js";
 import { listAudit, decodeCursor, assertAuditLogsAppendOnly, checkAuditLogsPrivileges } from "./audit.js";
 
 let db: any;
@@ -13,9 +14,11 @@ const base = new Date("2026-01-01T12:00:00.000Z");
 beforeAll(async () => {
   db = await getDb();
   await migrate(db);
-  // insere 5 registros controlados (append-only)
-  const u1 = crypto.randomUUID();
-  const u2 = crypto.randomUUID();
+  // usuários reais (FK audit_logs.actor_user_id -> users)
+  const [a] = await db.insert(schema.users).values({ email: `audit-a-${Date.now()}@t.local`, passwordHash: await hashPassword("Senha123!"), name: "A", role: "superadmin", active: true }).returning();
+  const [b] = await db.insert(schema.users).values({ email: `audit-b-${Date.now()}@t.local`, passwordHash: await hashPassword("Senha123!"), name: "B", role: "atendimento", active: true }).returning();
+  const u1 = a.id;
+  const u2 = b.id;
   const rows = [
     { id: crypto.randomUUID(), action: "x.one", entity: ENTITY, actorUserId: u1, actorLabel: "a@t.com", createdAt: new Date(base.getTime() + 1000) },
     { id: crypto.randomUUID(), action: "x.two", entity: ENTITY, actorUserId: u1, actorLabel: "a@t.com", createdAt: new Date(base.getTime() + 2000) },

@@ -239,7 +239,7 @@ describe("checkout service", () => {
       kind: "email",
       value: customerEmail,
       reason: "teste watchlist",
-      addedByUserId: customerId,
+      addedByUserId: null, // FK -> users (nullable); customerId é de customers
     });
 
     const result = await handleCheckout(
@@ -310,7 +310,7 @@ describe("estoque transacional", () => {
     const physicalBefore = invBefore[0]!.physical;
     const reservedBefore = invBefore[0]!.reserved;
 
-    await consumeStock(db, { variantId: variant.id, quantity: 2, orderId: crypto.randomUUID(), userId: crypto.randomUUID(), reason: "Baixa teste" });
+    await consumeStock(db, { variantId: variant.id, quantity: 2, orderId: crypto.randomUUID(), userId: undefined, reason: "Baixa teste" });
 
     const invAfter = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
     expect(invAfter[0]!.physical).toBe(physicalBefore - 2);
@@ -326,7 +326,7 @@ describe("estoque transacional", () => {
       type: "entrada",
       quantity: 50,
       reason: "Entrada teste",
-      userId: crypto.randomUUID(),
+      userId: undefined,
     });
     const after = await getAvailable(db, variant.id);
     expect(after).toBe(before + 50);
