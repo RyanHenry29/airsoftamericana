@@ -742,6 +742,7 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
     const fileText = String(body.file ?? "");
     const preview = await validateAndPreview(db, { file: fileText, filename: body.filename, mime: body.mime, sizeBytes: Buffer.byteLength(fileText, "utf8") });
     await audit(request, "catalog.import.preview", "products", undefined);
+    if (preview.errors?.some((e) => e.code === "file_too_large")) reply.status(413);
     reply.send(preview);
   });
 

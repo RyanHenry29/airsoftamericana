@@ -5,6 +5,7 @@ const PASS = "Senha123!";
 const CAT = process.env.E2E_CATEGORY_SLUG || "demo-e2e-cat";
 const TOTP_CSV1 = process.env.E2E_TOTP_SECRET_CSV1 || "";
 const TOTP_CSV2 = process.env.E2E_TOTP_SECRET_CSV2 || "";
+const TOTP_CSV3 = process.env.E2E_TOTP_SECRET_CSV3 || "";
 const TOTP_AT_IMPORT = process.env.E2E_TOTP_SECRET_AT_IMPORT || "";
 
 async function login(page: Page, email: string, password = PASS) {
@@ -96,5 +97,28 @@ test.describe("FASE 3 - Importacao CSV (admin)", () => {
     const file = `slug;nome;sku;preco;category_slug\nx;x;SKU-NOPERM-${Date.now()};1;${CAT}\n`;
     const res = await page.request.post(`${API}/api/admin/catalog/import/preview`, { headers: { "x-csrf-token": csrf }, data: { file, filename: "x.csv" } });
     expect(res.status()).toBe(403);
+  });
+
+  test("arquivo acima do limite retorna 413; dupla submissao (mesmo payload) nao cria duplicidade", async ({ page }) => {
+    test.skip(!TOTP_CSV3, "Requer E2E_TOTP_SECRET_CSV3");
+    await loginMfa(page, "admin-mfa-csv3@e2e.local", TOTP_CSV3);
+    const csrf = await getCsrf(page);
+    // 413: payload > 2 MiB
+    const big = "slug;nome;sku;preco;category_slug\n" + "a".repeat(2_200_000);
+    const r413 = await page.request.post(`${API}/api/admin/catalog/import/preview`, { headers: { "x-csrf-token": csrf }, data: { file: big, filename: "big.csv" } });
+    expect(r413.status()).toBe(413);
+
+    // dupla submissão: mesmo file+checksum => segunda aplicação não cria duplicidade
+    const sku = `SKU-DUP-${Date.now()}`;
+    const csv = `slug;nome;sku;preco;category_slug\ndup-e2e-${sku.toLowerCase()};[DEMO] Dup;${sku};10.00;${CAT}\n`;
+    const prev = await page.request.post(`${API}/api/admin/catalog/import/preview`, { headers: { "x-csrf-token": csrf }, data: { file: csv, filename: "d.csv" } });
+    expect(prev.ok()).toBe(true);
+    const pj = await prev.json();
+    const a1 = await page.request.post(`${API}/api/admin/catalog/import/apply`, { headers: { "x-csrf-token": csrf }, data: { file: csv, checksum: pj.checksum, filename: "d.csv" } });
+    const j1 = await a1.json();
+    expect(j1.created).toBe(1);
+    const a2 = await page.request.post(`${API}/api/admin/catalog/import/apply`, { headers: { "x-csrf-token": csrf }, data: { file: csv, checksum: pj.checksum, filename: "d.csv" } });
+    const j2 = await a2.json();
+    expect(j2.created).toBe(0); // sem duplicidade
   });
 });
