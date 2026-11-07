@@ -14,6 +14,7 @@ export default function NewProductPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [meRole, setMeRole] = useState<string|null>(null);
   const [data, setData] = useState({
     name: "",
     slug: "",
@@ -28,10 +29,20 @@ export default function NewProductPage() {
     featured: false,
     ageRestricted: false,
     description: "",
+    condicao: "novo",
+    estadoConservacao: "",
+    acessoriosIncluidos: "",
+    garantiaDias: "30",
+    tags: "",
+    seoTitle: "",
+    seoDescription: "",
+    costCents: "",
   });
+  const canCost = meRole!=null && ["superadmin","gerente","financeiro"].includes(meRole);
 
   useEffect(() => {
     async function load() {
+      fetch(`${API_URL}/api/admin/me`, { credentials: "include" }).then(r=>r.json()).then(j=>setMeRole(j?.user?.role??null)).catch(()=>{});
       const [c, b] = await Promise.all([
         fetch(`${API_URL}/api/store/categories`, { credentials: "include" }).then((r) => r.json().catch(() => [])),
         fetch(`${API_URL}/api/store/brands`, { credentials: "include" }).then((r) => r.json().catch(() => [])),
@@ -46,6 +57,7 @@ export default function NewProductPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if ((data.condicao==="usado"||data.condicao==="seminovo") && !data.estadoConservacao.trim()) { setError("Produtos usados/seminovos exigem estado de conserva??o."); return; }
     setBusy(true);
     try {
       const res = await adminFetch("/api/admin/products", {
@@ -59,6 +71,14 @@ export default function NewProductPage() {
           ageRestricted: data.ageRestricted,
           featured: data.featured,
           published: data.published,
+          condicao: data.condicao,
+          estadoConservacao: data.estadoConservacao,
+          acessoriosIncluidos: data.acessoriosIncluidos,
+          garantiaDias: Number(data.garantiaDias)||0,
+          tags: data.tags,
+          seoTitle: data.seoTitle,
+          seoDescription: data.seoDescription,
+          ...(canCost && data.costCents!=="" ? { costCents: Math.round(Number(data.costCents)) } : {}),
           variants: [
             {
               sku: data.sku.trim(),
@@ -162,6 +182,21 @@ export default function NewProductPage() {
           <label className="flex items-center gap-3">
             <input type="checkbox" checked={data.ageRestricted} onChange={(e) => setData({ ...data, ageRestricted: e.target.checked })} className="accent-[#8bcf16]" /> 18+
           </label>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="field"><label htmlFor="condicao">Condi??o</label><select id="condicao" className="select" value={data.condicao} onChange={e=>setData({...data,condicao:e.target.value})}><option value="novo">Novo</option><option value="usado">Usado</option><option value="seminovo">Seminovo</option></select></div>
+          <div className="field"><label htmlFor="conserv">Conserva??o {(data.condicao!=="novo") && <span className="text-[#dc2626]">*</span>}</label><input id="conserv" className="input" value={data.estadoConservacao} onChange={e=>setData({...data,estadoConservacao:e.target.value})} aria-required={data.condicao!=="novo"} /></div>
+          <div className="field"><label htmlFor="garantia">Garantia (dias)</label><input id="garantia" className="input" type="number" min={0} value={data.garantiaDias} onChange={e=>setData({...data,garantiaDias:e.target.value})} /></div>
+        </div>
+        <div className="field"><label htmlFor="acess">Acess?rios inclu?dos</label><input id="acess" className="input" value={data.acessoriosIncluidos} onChange={e=>setData({...data,acessoriosIncluidos:e.target.value})} /></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="field"><label htmlFor="tags">Tags (v?rgula)</label><input id="tags" className="input" value={data.tags} onChange={e=>setData({...data,tags:e.target.value})} /></div>
+          {canCost ? <div className="field"><label htmlFor="cost">Custo interno (R$)</label><input id="cost" className="input" inputMode="decimal" value={data.costCents} onChange={e=>setData({...data,costCents:e.target.value})} /><p className="font-mono text-[0.6rem] text-[#666] mt-1">Apenas pap?is autorizados; nunca p?blico.</p></div> : <p className="font-mono text-[0.6rem] text-[#666] self-end">Custo interno oculto (papel sem permiss?o).</p>}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="field"><label htmlFor="seot">SEO title</label><input id="seot" className="input" value={data.seoTitle} onChange={e=>setData({...data,seoTitle:e.target.value})} /></div>
+          <div className="field"><label htmlFor="seod">SEO description</label><input id="seod" className="input" value={data.seoDescription} onChange={e=>setData({...data,seoDescription:e.target.value})} /></div>
         </div>
         <div className="field">
           <label htmlFor="description">Descrição</label>

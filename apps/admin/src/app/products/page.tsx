@@ -149,11 +149,12 @@ export default function ProductsPage() {
                         {p.ageRestricted ? "Sim" : "Não"}
                       </span>
                     </td>
-                    <td className="flex gap-3">
+                    <td className="flex flex-wrap gap-2">
+                      <Link href={`/products/${p.id}`} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors">Editar</Link>
                       <button
                         type="button"
                         className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors"
-                        onClick={() => toggle(p.id, "published", p.published)}
+                        onClick={() => { if (p.published && !confirm("Despublicar este produto?")) return; toggle(p.id, "published", p.published); }}
                       >
                         {p.published ? "Despublicar" : "Publicar"}
                       </button>
