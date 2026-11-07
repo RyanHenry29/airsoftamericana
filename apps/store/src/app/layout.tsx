@@ -91,10 +91,10 @@ const orgJsonLd = async () => {
     logo: `${SITE_URL}/logo.png`,
     address: {
       "@type": "PostalAddress",
-      streetAddress: addr?.street ?? "R. Alfredo da Costa Figo, 190",
+      streetAddress: addr?.street ?? "Rua Celinda Antônia Quaino Santa Rosa, 157, Jardim Luciane",
       addressLocality: addr?.city ?? "Americana",
       addressRegion: addr?.state ?? "SP",
-      postalCode: addr?.zip ?? "13087-534",
+      postalCode: addr?.zip ?? "13477-225",
       addressCountry: "BR",
     },
     ...(s?.service_hours ? { openingHours: s.service_hours } : null),

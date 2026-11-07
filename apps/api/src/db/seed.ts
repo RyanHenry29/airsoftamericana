@@ -443,45 +443,34 @@ export async function seed(db: Db) {
             min_installment_cents: 9000,
             free_shipping_from_cents: 79900,
             shipping_carriers: ["Correios - PAC", "Correios - SEDEX"],
-            whatsapp: "5519999999999",
+            whatsapp: "5519984504992",
             email: "contato@airsoftamericana.com.br",
             address: {
-              street: "R. Alfredo da Costa Figo, 190",
-              district: "Fazenda Santa Cândida",
+              street: "Rua Celinda Antônia Quaino Santa Rosa, 157",
+              district: "Jardim Luciane",
               city: "Americana",
               state: "SP",
-              zip: "13087-534",
+              zip: "13477-225",
             },
-            service_hours: "Segunda a sexta das 08:45 às 18:00 — sábado das 09:00 às 12:00",
-            social: { instagram: "airsoftamericana", whatsapp: "5519999999999" },
+            service_hours: "Segunda a sexta 09h às 18h · Sábado 09h às 12h · Domingo fechado",
+            social: { instagram: "airsoft_americana", whatsapp: "5519984504992" },
             announcement: "ENTREGA PARA TODO O BRASIL",
           }),
-          // Dados da empresa (identificação comercial)
-          { key: "empresa_dados", value: JSON.stringify({
+        },
+        {
+          key: "empresa_dados",
+          value: JSON.stringify({
             nome_fantasia: "Airsoft Americana",
             razao_social: "Welyngton Codogno",
             natureza_juridica: "Empresário Individual",
+            porte: "Microempresa (ME)",
+            regime_tributario: "Simples Nacional",
             cnpj: "27.019.653/0001-79",
             fundacao: "02/02/2017",
             endereco: "Rua Celinda Antônia Quaino Santa Rosa, 157, Jardim Luciane, Americana-SP, CEP 13477-225",
             email_contato: "contato@airsoftamericana.com.br",
             telefone_principal_whatsapp: "(19) 98450-4992",
             telefone_secundario: "(19) 99150-4992",
-            horario: "seg a sex 09h às 18h, sáb 09h às 12h, dom fechado",
-            site: "airsoftamericana.com.br",
-            instagram: "@airsoft_americana",
-          })],
-        },
-      ]);
-      console.log("✅ Default system settings seeded");
-    }
-
-    // ---------------------------------------------------------------- Cliente demo
-    const existingCustomers = await db.select().from(customers);
-    if (existingCustomers.length === 0) {
-      await db.insert(customers).values([
-        {
-          name: "Cliente Demo",
           email: "cliente@demo.com",
           passwordHash: await bcrypt.hash("Cliente123!", 10),
           cpf: "12345678901",
