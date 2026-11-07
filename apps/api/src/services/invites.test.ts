@@ -38,14 +38,14 @@ describe("B.3 — convites", () => {
     const [u] = await db.select().from(schema.users).where(eq(schema.users.id, res.userId)).limit(1);
     expect(u.mfaEnabled).toBe(false);
     expect(u.role).toBe("atendimento");
-    // reutilização
-    await expect(acceptInvite(db, { token: inv.token, password: "Outra12345!" })).rejects.toMatchObject({ code: "invite_invalid" });
+    // reutilização — anti-reuso
+    await expect(acceptInvite(db, { token: inv.token, password: "Outra12345!" })).rejects.toMatchObject({ code: "invite_used" });
   });
 
   it("rejeita convite expirado", async () => {
     const email = `c-${Date.now()}@t.local`;
     const inv = await createInvite(db, { email, role: "marketing", createdBy: superId });
     await db.update(schema.adminInvites).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(schema.adminInvites.id, inv.id));
-    await expect(acceptInvite(db, { token: inv.token, password: "SenhaForte123!" })).rejects.toMatchObject({ code: "invite_invalid" });
+    await expect(acceptInvite(db, { token: inv.token, password: "SenhaForte123!" })).rejects.toMatchObject({ code: "invite_expired" });
   });
 });

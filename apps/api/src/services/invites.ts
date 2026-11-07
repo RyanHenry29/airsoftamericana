@@ -1,5 +1,5 @@
 // language: TS, file: apps/api/src/services/invites.ts, target: Fastify 5
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { randomToken, sha256, hashPassword } from "../lib/crypto.js";
@@ -34,6 +34,34 @@ export async function createInvite(
   return { id: row!.id, token, expiresAt };
 }
 
+export async function listInvites(db: Db) {
+  const rows = await db
+    .select({
+      id: schema.adminInvites.id,
+      email: schema.adminInvites.email,
+      role: schema.adminInvites.role,
+      expiresAt: schema.adminInvites.expiresAt,
+      usedAt: schema.adminInvites.usedAt,
+      createdAt: schema.adminInvites.createdAt,
+      createdBy: schema.adminInvites.createdBy,
+    })
+    .from(schema.adminInvites)
+    .orderBy(desc(schema.adminInvites.createdAt));
+  const now = new Date();
+  return rows.map((r) => ({
+    ...r,
+    status: r.usedAt ? "used" : r.expiresAt <= now ? "expired" : "active",
+  }));
+}
+
+export async function revokeInvite(db: Db, inviteId: string): Promise<boolean> {
+  const res = await db
+    .delete(schema.adminInvites)
+    .where(and(eq(schema.adminInvites.id, inviteId), isNull(schema.adminInvites.usedAt)))
+    .returning();
+  return res.length > 0;
+}
+
 export async function acceptInvite(
   db: Db,
   input: { token: string; password: string; name?: string },
@@ -43,12 +71,20 @@ export async function acceptInvite(
   const rows = await db
     .select()
     .from(schema.adminInvites)
-    .where(and(eq(schema.adminInvites.tokenHash, tokenHash), isNull(schema.adminInvites.usedAt), gt(schema.adminInvites.expiresAt, now)));
+    .where(eq(schema.adminInvites.tokenHash, tokenHash));
   const invite = rows[0];
-  if (!invite) throw Object.assign(new Error("Convite inválido, expirado ou já utilizado"), { status: 400, code: "invite_invalid" });
+  if (!invite) {
+    throw Object.assign(new Error("Convite inválido."), { status: 400, code: "invite_invalid" });
+  }
+  if (invite.usedAt) {
+    throw Object.assign(new Error("Este convite já foi utilizado."), { status: 400, code: "invite_used" });
+  }
+  if (invite.expiresAt <= now) {
+    throw Object.assign(new Error("Este convite expirou."), { status: 400, code: "invite_expired" });
+  }
 
   const existing = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, invite.email)).limit(1);
-  if (existing[0]) throw Object.assign(new Error("Já existe um usuário com este e-mail"), { status: 409, code: "email_taken" });
+  if (existing[0]) throw Object.assign(new Error("Já existe uma conta com este e-mail."), { status: 409, code: "email_taken" });
 
   const passwordHash = await hashPassword(input.password);
   const [user] = await db
@@ -63,11 +99,15 @@ export async function acceptInvite(
     })
     .returning();
 
-  // marca uso único (condicional evita corrida)
-  await db
+  // marca uso único (condicional evita corrida/reutilização)
+  const used = await db
     .update(schema.adminInvites)
     .set({ usedAt: now })
-    .where(and(eq(schema.adminInvites.id, invite.id), isNull(schema.adminInvites.usedAt)));
+    .where(and(eq(schema.adminInvites.id, invite.id), isNull(schema.adminInvites.usedAt)))
+    .returning();
+  if (!used.length) {
+    throw Object.assign(new Error("Este convite já foi utilizado."), { status: 400, code: "invite_used" });
+  }
 
   return { userId: user!.id, email: invite.email };
 }

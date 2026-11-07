@@ -12,7 +12,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:reset": "node -e \"require('fs').rmSync('data',{recursive:true,force:true})\" && tsx src/db/seed.ts"
+    "db:reset": "node -e \"require('fs').rmSync('data',{recursive:true,force:true})\" && tsx src/db/seed.ts",
+    "admin:reset-mfa": "tsx src/cli/admin-reset-mfa.ts",
+    "e2e:seed": "tsx src/cli/e2e-seed.ts"
   },
   "dependencies": {
     "@airsoft/shared": "*",

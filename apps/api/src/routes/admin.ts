@@ -6,9 +6,9 @@ import { schema } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { adminGuard } from "../lib/rbac.js";
 import { csrfTokenFor } from "../lib/csrf.js";
-import { listActiveSessions, revokeSession } from "../services/sessions.js";
+import { listActiveSessions, revokeAllUserSessions, revokeSession } from "../services/sessions.js";
 import { normalizeRole, type Role } from "../lib/rbac.js";
-import { createInvite } from "../services/invites.js";
+import { createInvite, listInvites, revokeInvite } from "../services/invites.js";
 import { outboxNotify, roleChangedBody, bulkPriceBody } from "../services/outbox.js";
 import { listAudit } from "../lib/audit.js";
 
@@ -96,14 +96,14 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Sessões (B.1)
-  app.get("/api/admin/sessions", { preHandler: [A, adminGuard("users", "read")] }, async (request, reply) => {
+  app.get("/api/admin/sessions", { preHandler: [A, adminGuard("dashboard", "read")] }, async (request, reply) => {
     const user = (request as any).user as { sub: string };
     const session = (request as any).session as { id: string };
     const items = await listActiveSessions(db, user.sub);
     reply.send({ items: items.map((s) => ({ ...s, current: s.id === session.id })) });
   });
 
-  app.delete("/api/admin/sessions/:id", { preHandler: [A, adminGuard("users", "update")] }, async (request, reply) => {
+  app.delete("/api/admin/sessions/:id", { preHandler: [A, adminGuard("dashboard", "read")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const actor = (request as any).user as { sub: string; role: string };
     const actorSession = (request as any).session as { id: string };
@@ -114,7 +114,20 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     }
     const ok = await revokeSession(db, id);
     if (!ok) return reply.status(404).send({ error: { code: "not_found", message: "Sessão não encontrada ou já revogada" } });
+    await audit(request, "session.revoked", "sessions", id);
     reply.send({ revoked: true });
+  });
+
+  app.post("/api/admin/sessions/revoke-others", { preHandler: [A, adminGuard("dashboard", "read")] }, async (request, reply) => {
+    const body = (request.body ?? {}) as { confirm?: boolean };
+    if (body.confirm !== true) {
+      return reply.status(400).send({ error: { code: "invalid_input", message: "Confirme a revogação das outras sessões" } });
+    }
+    const actor = (request as any).user as { sub: string };
+    const actorSession = (request as any).session as { id: string };
+    const n = await revokeAllUserSessions(db, actor.sub, actorSession.id);
+    await audit(request, "session.revoked_others", "sessions", actor.sub);
+    reply.send({ revoked: n });
   });
 
   // ---------------------------------------------------------------- Usuários (B.7: mudança de papel → outbox na mesma transação)
@@ -149,15 +162,30 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
       return reply.status(403).send({ error: { code: "forbidden", message: "Só superadmin altera papéis" } });
     }
     const { id } = request.params as { id: string };
-    const body = (request.body ?? {}) as { role?: string };
+    const body = (request.body ?? {}) as { role?: string; confirm?: boolean };
     const newRole = body.role ? String(body.role) : "";
     if (!normalizeRole(newRole)) return reply.status(400).send({ error: { code: "invalid_input", message: "Papel inválido" } });
+    if (id === actor.sub) {
+      return reply.status(403).send({ error: { code: "forbidden", message: "Não é permitido alterar o próprio papel (autoelevação/bloqueio de segurança)" } });
+    }
     const [target] = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
     if (!target) return reply.status(404).send({ error: { code: "not_found", message: "Usuário não encontrado" } });
     const from = target.role;
     if (from === newRole) return reply.send({ user: { id, role: newRole } });
+
+    const fromNorm = normalizeRole(from);
+    const toNorm = normalizeRole(newRole);
+    if (fromNorm === "superadmin" && toNorm !== "superadmin") {
+      const supers = await db.select({ id: schema.users.id }).from(schema.users).where(and(eq(schema.users.active, true), eq(schema.users.role, "superadmin")));
+      // also count legacy-mapped? roles stored as new names mostly; be safe
+      const countActiveSupers = supers.length;
+      if (countActiveSupers <= 1) {
+        return reply.status(409).send({ error: { code: "last_superadmin", message: "Não é possível alterar o papel do último superadmin ativo" } });
+      }
+    }
+
     await (db as any).transaction(async (tx: any) => {
-      await tx.update(schema.users).set({ role: newRole }).where(eq(schema.users.id, id));
+      await tx.update(schema.users).set({ role: newRole, needsRoleReview: false }).where(eq(schema.users.id, id));
       await tx.insert(schema.auditLogs).values({ action: "user.role_changed", entity: "users", entityId: id, actorUserId: actor.sub, after: { from, to: newRole } });
       await outboxNotify(tx, roleChangedBody({ targetEmail: target.email, from, to: newRole, by: actor.email ?? actor.sub }));
     });
@@ -165,6 +193,15 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   });
 
   // ---------------------------------------------------------------- Convites (B.3) — só superadmin
+  app.get("/api/admin/invites", { preHandler: [A, adminGuard("users", "read")] }, async (request, reply) => {
+    const actor = (request as any).user as { role: string };
+    if (normalizeRole(actor.role) !== "superadmin") {
+      return reply.status(403).send({ error: { code: "forbidden", message: "Só superadmin lista convites" } });
+    }
+    const items = await listInvites(db);
+    reply.send({ items });
+  });
+
   app.post("/api/admin/invites", { preHandler: [A, adminGuard("users", "create")] }, async (request, reply) => {
     const actor = (request as any).user as { sub: string; role: string };
     if (normalizeRole(actor.role) !== "superadmin") {
@@ -178,12 +215,24 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     }
     try {
       const invite = await createInvite(db, { email, role, createdBy: actor.sub });
-      await db.insert(schema.auditLogs).values({ action: "invite.created", entity: "admin_invites", entityId: invite.id, actorLabel: email });
+      await db.insert(schema.auditLogs).values({ action: "invite.created", entity: "admin_invites", entityId: invite.id, actorLabel: email, actorUserId: actor.sub });
       // token cru retornado uma única vez
       reply.status(201).send({ invite: { id: invite.id, email, role, expiresAt: invite.expiresAt, token: invite.token } });
     } catch (e: any) {
       reply.status(e?.status ?? 400).send({ error: { code: e?.code ?? "invalid_input", message: e?.message || "Falha ao criar convite" } });
     }
+  });
+
+  app.delete("/api/admin/invites/:id", { preHandler: [A, adminGuard("users", "delete")] }, async (request, reply) => {
+    const actor = (request as any).user as { sub: string; role: string };
+    if (normalizeRole(actor.role) !== "superadmin") {
+      return reply.status(403).send({ error: { code: "forbidden", message: "Só superadmin revoga convites" } });
+    }
+    const { id } = request.params as { id: string };
+    const ok = await revokeInvite(db, id);
+    if (!ok) return reply.status(404).send({ error: { code: "not_found", message: "Convite não encontrado, já usado ou já removido" } });
+    await audit(request, "invite.revoked", "admin_invites", id);
+    reply.send({ revoked: true });
   });
   app.get("/api/admin/banners", { preHandler: [A, adminGuard("banners","read")] }, async (_request, reply) => {
     const rows = await db.select().from(schema.banners).orderBy(asc(schema.banners.position));
