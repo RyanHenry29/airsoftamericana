@@ -628,76 +628,68 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     await db
       .delete(schema.relatedProducts)
       .where(and(eq(schema.relatedProducts.productId, id), eq(schema.relatedProducts.relatedProductId, relatedId)));
+    await audit(request, "product.related.removed", "products", id);
+    reply.send({ ok: true });
+  });
 
   // ---------------------------------------------------------------- Importação CSV do catálogo
-  app.post("/api/admin/catalog/import", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
-    const body = request.body as { file: string };
-    const lines = body.file.trim().split("\n");
+  // Formato: slug;nome;sku;preco;categorySlug (cabeçalho opcional ignorado se não bater)
+  app.post("/api/admin/catalog/import", { preHandler: [A, adminGuard("products", "update")] }, async (request, reply) => {
+    const body = (request.body ?? {}) as { file?: string };
+    const file = String(body.file ?? "");
+    const lines = file.replace(/\r\n/g, "\n").split("\n");
     const errors: Array<{ line: number; message: string }> = [];
     let created = 0;
     let updated = 0;
-    
+    const seenSkus = new Set<string>();
+
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!.trim();
+      const raw = lines[i] ?? "";
+      const line = raw.trim();
       if (!line) continue;
-      const fields = line.split(";");
+      const fields = line.split(";").map((f) => f.trim());
+      // ignora cabeçalho comum
+      if (i === 0 && /slug/i.test(fields[0] ?? "") && /sku/i.test(fields[2] ?? "")) continue;
       if (fields.length < 5) {
-        errors.push({ line: i + 1, message: "Linha inválida: esperava pelo menos 5 campos separados por ponto-e-vírgula" });
+        errors.push({ line: i + 1, message: "Linha inválida: esperava pelo menos 5 campos (slug;nome;sku;preco;categorySlug)" });
         continue;
       }
-      const [slug, name, sku, priceStr, categorySlug] = fields.slice(0, 5);
-      const priceCents = Math.round(Number(priceStr) * 100);
-      
-      // Find category ID
-      const categoryRow = await db.select().from(schema.categories).where(eq(schema.categories.slug, categorySlug ?? "")).limit(1);
-      const categoryId = categoryRow[0]?.id;
-      
-      if (!categoryId) {
-        errors.push({ line: i + 1, message: "Categoria não encontrada: " + (categorySlug ?? "") });
-        continue;
-      }
-      
-      // Check if product exists by SKU
-      const existingVariant = await db.select().from(schema.productVariants).where(eq(schema.productVariants.sku, sku ?? "")).limit(1);
-      
-      if (existingVariant.length > 0) {
-        // Update existing product variant
-        const variant = existingVariant[0]!;
-        await db.update(schema.productVariants).set({
-          priceCents,
-          name,
-        }).where(eq(schema.productVariants.id, variant.id));
+      const [slug, name, sku, priceStr, categorySlug] = fields;
+      if (!sku) { errors.push({ line: i + 1, message: "SKU ausente" }); continue; }
+      if (seenSkus.has(sku)) { errors.push({ line: i + 1, message: `SKU duplicado no arquivo: ${sku}` }); continue; }
+      seenSkus.add(sku);
+      if (!slug || !name) { errors.push({ line: i + 1, message: "slug e nome são obrigatórios" }); continue; }
+      const price = Number(priceStr);
+      if (!Number.isFinite(price) || price < 0) { errors.push({ line: i + 1, message: "Preço inválido" }); continue; }
+      const priceCents = Math.round(price * 100);
+
+      const catRows = await db.select().from(schema.categories).where(eq(schema.categories.slug, categorySlug ?? "")).limit(1);
+      const category = catRows[0];
+      if (!category) { errors.push({ line: i + 1, message: `Categoria não encontrada: ${categorySlug ?? ""}` }); continue; }
+
+      const existingVariant = await db.select().from(schema.productVariants).where(eq(schema.productVariants.sku, sku)).limit(1);
+      if (existingVariant[0]) {
+        await db.update(schema.productVariants).set({ priceCents, name }).where(eq(schema.productVariants.id, existingVariant[0].id));
         updated++;
       } else {
-        // Create category if not exists (simple)
-        const [newCategory] = await db.insert(schema.categories).values({
-          name: categorySlug ?? "Sem Categoria",
-          slug: categorySlug ?? "sem-categoria",
-          parentId: undefined,
-          ageRestricted: false,
-          active: true,
-          position: 0,
-          description: "",
-        }).returning();
-        
-        // Create product variant
+        // garante produto (por slug)
+        let product = (await db.select().from(schema.products).where(eq(schema.products.slug, slug)).limit(1))[0];
+        if (!product) {
+          product = (await db.insert(schema.products).values({
+            name, slug, description: "", categoryId: category.id, ageRestricted: false, featured: false, published: false,
+          }).returning())[0];
+        }
         await db.insert(schema.productVariants).values({
-          productId: "00000000-0000-0000-0000-000000000000",
-          sku,
-          name,
-          priceCents,
-          promoPriceCents: null,
-          weightGrams: 0,
-          active: true,
+          productId: product!.id, sku, name, priceCents, promoPriceCents: null, weightGrams: 0, active: true,
         } as any);
+        const inv = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, (await db.select().from(schema.productVariants).where(eq(schema.productVariants.sku, sku)).limit(1))[0]!.id)).limit(1);
+        // inventory criado sob demanda em outros fluxos; aqui mantemos simples
         created++;
       }
     }
-    
+
+    await audit(request, "catalog.imported", "products", undefined);
     reply.send({ created, updated, errors });
-  });
-await audit(request, "product.related.removed", "products", id);
-    reply.send({ ok: true });
   });
 
   // ---------------------------------------------------------------- Preço e estoque da variante
