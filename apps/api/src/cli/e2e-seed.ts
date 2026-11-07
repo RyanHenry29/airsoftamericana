@@ -13,14 +13,22 @@ async function main() {
   await migrate(db);
   const pass = await hashPassword("Senha123!");
 
-  // superadmin com MFA ativo (TOTP conhecido)
+  // superadmin com MFA ativo (TOTP conhecido) — usado por convites; testes TOTP usam usuários dedicados (evita replay guard)
   const totp = generateTotpSetup("admin-mfa@e2e.local");
   const [mfaAdmin] = await db.insert(schema.users).values({
     email: "admin-mfa@e2e.local", passwordHash: pass, name: "Admin MFA E2E", role: "superadmin",
     active: true, mfaEnabled: true, totpSecret: totp.encryptedSecret,
   }).onConflictDoNothing({ target: schema.users.email }).returning();
   const mfaAdminId = mfaAdmin?.id || (await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, "admin-mfa@e2e.local")).limit(1))[0]!.id;
-  const recovery = await replaceRecoveryCodes(db, mfaAdminId);
+  await replaceRecoveryCodes(db, mfaAdminId);
+
+  // usuários dedicados por fluxo (mesmo secret TOTP para determinismo; IDs distintos evitam replay entre testes)
+  for (const email of ["admin-mfa-logout@e2e.local", "admin-mfa-verify@e2e.local", "admin-mfa-passkey@e2e.local", "admin-mfa-sessions@e2e.local"]) {
+    await db.insert(schema.users).values({
+      email, passwordHash: pass, name: `E2E ${email}`, role: "superadmin",
+      active: true, mfaEnabled: true, totpSecret: totp.encryptedSecret,
+    }).onConflictDoNothing({ target: schema.users.email });
+  }
 
   // operador atendimento com MFA ativo
   const totpAt = generateTotpSetup("operador-atendimento@e2e.local");

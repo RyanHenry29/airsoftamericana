@@ -28,7 +28,11 @@ async function getRow(db: Db, key: string) {
 
 export function lockoutKeys(email: string, ip: string | undefined): string[] {
   const keys = [`acct:${normEmail(email)}`];
-  if (ip) keys.push(`ip:${ip}`);
+  // E2E isolado (NODE_ENV=test + E2E_READY=1, DB efêmero): omite chave por IP para
+  // evitar cascata entre usuários distintos no mesmo host — preserva lockout por conta.
+  // Nunca ativo em produção nem em testes unitários comuns (sem E2E_READY).
+  const e2e = process.env.NODE_ENV === "test" && process.env.E2E_READY === "1";
+  if (ip && !e2e) keys.push(`ip:${ip}`);
   return keys;
 }
 

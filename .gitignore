@@ -15,10 +15,16 @@ mirror/
 temp_base/
 logs/
 
-# PGlite lock/test data (n�o versionar)
+# PGlite lock/test data (n�o versionar)
 *.pglite.lock
 data-test/
 data-test-root/
 apps/api/data-test/
 vitest/data-test-root/
 apps/api/data/
+
+# Playwright E2E artifacts (gerados por execução local; relatório HTML em CI se necessário)
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/

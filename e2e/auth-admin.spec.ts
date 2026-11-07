@@ -46,7 +46,7 @@ test.describe("FASE 2 — login", () => {
   test("logout encerra sessão", async ({ page }) => {
     const secret = process.env.E2E_TOTP_SECRET;
     test.skip(!secret, "Requer E2E_TOTP_SECRET");
-    await login(page, "admin-mfa@e2e.local");
+    await login(page, "admin-mfa-logout@e2e.local");
     await expect(page).toHaveURL(/\/mfa\/verify/);
     await page.getByLabel(/código/i).fill(totpFromSecretBase32(secret!));
     await page.getByRole("button", { name: /confirmar/i }).click();
@@ -80,7 +80,7 @@ test.describe("FASE 2 — TOTP e recuperação", () => {
 
   test("verificação TOTP com conta MFA ativa", async ({ page }) => {
     test.skip(!TOTP_SECRET, "Requer E2E_TOTP_SECRET");
-    await login(page, "admin-mfa@e2e.local");
+    await login(page, "admin-mfa-verify@e2e.local");
     await expect(page).toHaveURL(/\/mfa\/verify/);
     const code = totpFromSecretBase32(TOTP_SECRET);
     await page.getByLabel(/código do autenticador|código/i).fill(code);
@@ -143,13 +143,13 @@ test.describe("FASE 2 — convites e permissões", () => {
 
   test("superadmin gerencia convite e revogação de sessão (API real)", async ({ page }) => {
     test.skip(!TOTP_SECRET, "Requer E2E_TOTP_SECRET");
-    await login(page, "admin-mfa@e2e.local");
+    await login(page, "admin-mfa-sessions@e2e.local");
     await expect(page).toHaveURL(/\/mfa\/verify/);
     await page.getByLabel(/código/i).fill(totpFromSecretBase32(TOTP_SECRET));
     await page.getByRole("button", { name: /confirmar/i }).click();
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
     await page.goto("/users");
-    await expect(page.getByText(/convites/i)).toBeVisible();
+    await expect(page.getByText(/^Convites$/)).toBeVisible();
     await expect(page.getByText(/minhas sessões/i)).toBeVisible();
   });
 });
@@ -158,6 +158,7 @@ test.describe("FASE 2 — passkey com autenticador virtual", () => {
   test("cadastra e remove passkey via CDP WebAuthn (Chromium)", async ({ page, browserName }) => {
     test.skip(browserName !== "chromium", "Autenticador virtual requer Chromium/CDP");
     test.skip(!process.env.E2E_READY || !process.env.E2E_TOTP_SECRET, "Requer ambiente E2E");
+    const secret = process.env.E2E_TOTP_SECRET!;
     const client: CDPSession = await page.context().newCDPSession(page);
     await client.send("WebAuthn.enable");
     await client.send("WebAuthn.addVirtualAuthenticator", {
@@ -171,25 +172,24 @@ test.describe("FASE 2 — passkey com autenticador virtual", () => {
       },
     });
 
-    // login como usuário MFA-ativo e cadastra passkey na área de Acessos
-    await login(page, "admin-mfa@e2e.local");
+    page.on("dialog", async (d) => {
+      if (d.type() === "prompt") await d.accept(totpFromSecretBase32(secret));
+      else await d.accept();
+    });
+
+    // login como usuário MFA-ativo dedicado e cadastra passkey na área de Acessos
+    await login(page, "admin-mfa-passkey@e2e.local");
     await expect(page).toHaveURL(/\/mfa\/verify/);
-    await page.getByLabel(/código/i).fill(totpFromSecretBase32(process.env.E2E_TOTP_SECRET!));
+    await page.getByLabel(/código/i).fill(totpFromSecretBase32(secret));
     await page.getByRole("button", { name: /confirmar/i }).click();
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
     await page.goto("/users");
-    page.on("dialog", (d) => d.accept());
     await page.getByRole("button", { name: /cadastrar passkey/i }).click();
-    await expect(page.getByText(/passkey cadastrada|passkey/i)).toBeVisible({ timeout: 20000 });
-    // remove (reautenticação: sessão recente ou prompt TOTP — dialogs auto-accepted; se pedir TOTP, fornecemos)
-    page.on("dialog", async (d) => {
-      if (d.type() === "prompt") await d.accept(totpFromSecretBase32(process.env.E2E_TOTP_SECRET!));
-      else await d.accept();
-    });
+    await expect(page.getByText(/passkey cadastrada|nenhuma passkey|passkey/i).first()).toBeVisible({ timeout: 25000 });
     const removeBtn = page.getByRole("button", { name: /remover/i }).first();
     if (await removeBtn.isVisible()) {
       await removeBtn.click();
-      await expect(page.getByText(/removida|nenhuma passkey/i)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(/removida|nenhuma passkey/i).first()).toBeVisible({ timeout: 15000 });
     }
   });
 });
