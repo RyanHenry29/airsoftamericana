@@ -326,7 +326,7 @@ describe("estoque transacional", () => {
       type: "entrada",
       quantity: 50,
       reason: "Entrada teste",
-      userId: undefined,
+      userId: null,
     });
     const after = await getAvailable(db, variant.id);
     expect(after).toBe(before + 50);

@@ -173,7 +173,7 @@ export async function adjustStock(
     type: Extract<InventoryMovementType, "entrada" | "saida" | "ajuste" | "transferencia">;
     quantity: number;
     reason: string;
-    userId: string;
+    userId?: string | null;
   },
 ): Promise<Snapshot> {
   if (input.quantity <= 0) throw badRequest("invalid_quantity", "Quantidade deve ser > 0");
