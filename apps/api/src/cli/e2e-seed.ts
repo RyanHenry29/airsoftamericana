@@ -38,6 +38,15 @@ async function main() {
     active: true, mfaEnabled: false, totpSecret: setupTotp.encryptedSecret,
   }).onConflictDoNothing({ target: schema.users.email });
 
+  // usuário dedicado ao teste de recovery (uso único)
+  const totpRec = generateTotpSetup("admin-recovery@e2e.local");
+  const [recUser] = await db.insert(schema.users).values({
+    email: "admin-recovery@e2e.local", passwordHash: pass, name: "Admin Recovery E2E", role: "superadmin",
+    active: true, mfaEnabled: true, totpSecret: totpRec.encryptedSecret,
+  }).onConflictDoNothing({ target: schema.users.email }).returning();
+  const recId = recUser?.id || (await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, "admin-recovery@e2e.local")).limit(1))[0]!.id;
+  const recoveryRec = await replaceRecoveryCodes(db, recId);
+
   // convites
   const inv = await createInvite(db, { email: `convidado-${Date.now()}@e2e.local`, role: "atendimento", createdBy: mfaAdminId });
   const invExp = await createInvite(db, { email: `expirado-${Date.now()}@e2e.local`, role: "atendimento", createdBy: mfaAdminId });
@@ -49,8 +58,9 @@ async function main() {
     E2E_READY: "1",
     E2E_TOTP_SECRET: totp.secretBase32,
     E2E_TOTP_SECRET_AT: totpAt.secretBase32,
-    E2E_TOTP_SETUP_SECRET: setupTotp.secretBase32,
-    E2E_RECOVERY_CODE: recovery[0],
+    E2E_TOTP_SECRET_RECOVERY: totpRec.secretBase32,
+    E2E_RECOVERY_USER: "admin-recovery@e2e.local",
+    E2E_RECOVERY_CODE: recoveryRec[0],
     E2E_INVITE_TOKEN: inv.token,
     E2E_INVITE_EXPIRED_TOKEN: invExp.token,
   }, null, 2));

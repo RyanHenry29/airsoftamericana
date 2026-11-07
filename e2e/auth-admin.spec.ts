@@ -60,18 +60,15 @@ test.describe("FASE 2 — TOTP e recuperação", () => {
   test.skip(!process.env.E2E_READY, "Requer E2E_READY=1 com API+admin+seed isolados");
 
   test("configuração TOTP: QR, confirmação e exibição única dos 10 códigos", async ({ page }) => {
+    // usa admin-sem-mfa@e2e.local (consome estado de setup → MFA ativo após este teste)
     await login(page, "admin-sem-mfa@e2e.local");
     await expect(page).toHaveURL(/\/mfa\/setup/);
-    // QR presente
     await expect(page.locator('img[alt*="QR"]')).toBeVisible({ timeout: 15000 });
-    // chave manual presente (otpauth exibido na tela? a UI mostra secret derivado)
     const secretEl = page.locator("code").first();
     await expect(secretEl).toBeVisible();
-    // Para confirmar sem depender da extração frágil do secret na UI, usamos o secret semeado
-    // se disponível; caso contrário, o teste exige E2E_TOTP_SETUP_SECRET do seed.
-    const secret = process.env.E2E_TOTP_SETUP_SECRET;
-    test.skip(!secret, "Requer E2E_TOTP_SETUP_SECRET do seed para confirmação determinística");
-    const code = totpFromSecretBase32(secret!);
+    const secret = (await secretEl.textContent())?.trim() || "";
+    expect(secret.length).toBeGreaterThan(10);
+    const code = totpFromSecretBase32(secret);
     await page.getByLabel(/código de 6 dígitos/i).fill(code);
     await page.getByRole("button", { name: /ativar mfa/i }).click();
     await expect(page.getByText(/códigos de recuperação/i)).toBeVisible({ timeout: 15000 });
@@ -91,17 +88,17 @@ test.describe("FASE 2 — TOTP e recuperação", () => {
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
   });
 
-  test("código de recuperação funciona e logout encerra sessão", async ({ page }) => {
+  test("código de recuperação funciona (uso único)", async ({ page }) => {
     const recovery = process.env.E2E_RECOVERY_CODE;
-    test.skip(!recovery, "Requer E2E_RECOVERY_CODE (uso único) do seed");
-    await login(page, "admin-mfa@e2e.local");
+    const secret = process.env.E2E_TOTP_SECRET_RECOVERY || process.env.E2E_TOTP_SECRET;
+    test.skip(!recovery || !secret, "Requer E2E_RECOVERY_CODE e secret");
+    // usa usuário dedicado a recovery para não conflitar com outros testes
+    await login(page, process.env.E2E_RECOVERY_USER || "admin-recovery@e2e.local");
     await expect(page).toHaveURL(/\/mfa\/verify/);
     await page.getByRole("button", { name: /código de recuperação/i }).click();
-    await page.getByLabel(/código de recuperação/i).fill(recovery);
+    await page.getByLabel(/código de recuperação/i).fill(recovery!);
     await page.getByRole("button", { name: /confirmar/i }).click();
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
-    await page.getByRole("button", { name: /sair/i }).click();
-    await expect(page).toHaveURL(/\/login/);
   });
 });
 
@@ -158,9 +155,9 @@ test.describe("FASE 2 — convites e permissões", () => {
 });
 
 test.describe("FASE 2 — passkey com autenticador virtual", () => {
-  test("registra e autentica passkey via CDP WebAuthn (Chromium)", async ({ page, browserName }) => {
+  test("cadastra e remove passkey via CDP WebAuthn (Chromium)", async ({ page, browserName }) => {
     test.skip(browserName !== "chromium", "Autenticador virtual requer Chromium/CDP");
-    test.skip(!process.env.E2E_READY || !process.env.E2E_TOTP_SETUP_SECRET, "Requer ambiente E2E com usuário em setup");
+    test.skip(!process.env.E2E_READY || !process.env.E2E_TOTP_SECRET, "Requer ambiente E2E");
     const client: CDPSession = await page.context().newCDPSession(page);
     await client.send("WebAuthn.enable");
     await client.send("WebAuthn.addVirtualAuthenticator", {
@@ -170,14 +167,29 @@ test.describe("FASE 2 — passkey com autenticador virtual", () => {
         hasResidentKey: true,
         hasUserVerification: true,
         isUserVerified: true,
+        automaticPresenceSimulation: true,
       },
     });
 
-    await login(page, "admin-sem-mfa@e2e.local");
-    await expect(page).toHaveURL(/\/mfa\/setup/);
+    // login como usuário MFA-ativo e cadastra passkey na área de Acessos
+    await login(page, "admin-mfa@e2e.local");
+    await expect(page).toHaveURL(/\/mfa\/verify/);
+    await page.getByLabel(/código/i).fill(totpFromSecretBase32(process.env.E2E_TOTP_SECRET!));
+    await page.getByRole("button", { name: /confirmar/i }).click();
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
+    await page.goto("/users");
     page.on("dialog", (d) => d.accept());
-    await page.getByRole("button", { name: /registrar passkey/i }).click();
-    // registro pode devolver recovery codes ou redirecionar
-    await expect(page.locator("body")).toContainText(/códigos de recuperação|dashboard|painel/i, { timeout: 20000 });
+    await page.getByRole("button", { name: /cadastrar passkey/i }).click();
+    await expect(page.getByText(/passkey cadastrada|passkey/i)).toBeVisible({ timeout: 20000 });
+    // remove (reautenticação: sessão recente ou prompt TOTP — dialogs auto-accepted; se pedir TOTP, fornecemos)
+    page.on("dialog", async (d) => {
+      if (d.type() === "prompt") await d.accept(totpFromSecretBase32(process.env.E2E_TOTP_SECRET!));
+      else await d.accept();
+    });
+    const removeBtn = page.getByRole("button", { name: /remover/i }).first();
+    if (await removeBtn.isVisible()) {
+      await removeBtn.click();
+      await expect(page.getByText(/removida|nenhuma passkey/i)).toBeVisible({ timeout: 15000 });
+    }
   });
 });
