@@ -54,15 +54,7 @@ if defined NEED_INSTALL (
 )
 
 rem ------------------------------------------------------------
-rem 3) Arquivo .env (criado na primeira execucao)
-rem ------------------------------------------------------------
-if not exist ".env" if exist ".env.example" (
-    copy /y ".env.example" ".env" >nul
-    echo [OK] Arquivo .env criado a partir de .env.example.
-)
-
-rem ------------------------------------------------------------
-rem 4) Portas livres?
+rem 3) Portas livres?
 rem ------------------------------------------------------------
 set /a PORTS_BUSY=0
 
@@ -88,7 +80,7 @@ rem Apenas parte no ar: evita conflito.
 if not "%PORTS_BUSY%"=="0" goto :port_busy
 
 rem ------------------------------------------------------------
-rem 5) Inicia os tres servicos
+rem 4) Inicia os tres servicos
 rem ------------------------------------------------------------
 echo.
 echo [..] Iniciando a API na porta %API_PORT%...
@@ -141,6 +133,9 @@ echo [OK] O sistema ja esta em execucao.
 echo      Loja:  http://localhost:%STORE_PORT%
 echo      Admin: http://localhost:%ADMIN_PORT%
 echo      API:   http://localhost:%API_PORT%
+echo.
+echo      Para reiniciar, feche as janelas abertas e execute
+echo      este arquivo novamente.
 echo.
 start "" "http://localhost:%STORE_PORT%"
 start "" "http://localhost:%ADMIN_PORT%"

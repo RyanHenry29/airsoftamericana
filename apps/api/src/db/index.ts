@@ -28,11 +28,38 @@ const LOCK_FILE = ".pglite.lock";
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
+    aliveBySignal = true;
     return true;
   } catch (error) {
     // EPERM = existe, mas sem permissão (no Windows acontece com PID de outro
     // usuário) — do ponto de vista do lock, o processo está vivo.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    if ((error as NodeJS.ErrnoException).code === "EPERM") return true;
+    aliveBySignal = false;
+    return false;
+  }
+}
+
+let aliveBySignal = false;
+
+/**
+ * No Windows o PID é reciclado agressivamente: o dono original do lock morre,
+ * outro processo (qualquer coisa do desktop) herda o número e o sinal
+ * `kill(pid, 0)` reporta "vivo" para um processo que nada tem a ver com o
+ * banco. Antes de bloquear, exige que o holder seja realmente um Node.
+ */
+function isNodeProcess(pid: number): boolean {
+  if (process.platform !== "win32") return true; // reciclagem de PID é rara em Unix
+  try {
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    const out = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], {
+      timeout: 5000,
+      windowsHide: true,
+    }).toString();
+    const name = out.split('"')[1]?.toLowerCase() ?? "";
+    return /(node|tsx|vitest|electron)/.test(name);
+  } catch {
+    // tasklist falhou (raro) — conservador: considera vivo para não corromper o cluster.
+    return true;
   }
 }
 
@@ -65,7 +92,13 @@ function acquirePgliteLock(dir: string): () => void {
 
       const raw = fs.readFileSync(lockPath, "utf8").trim();
       const holder = Number(raw);
-      if (Number.isFinite(holder) && holder > 0 && holder !== process.pid && isProcessAlive(holder)) {
+      if (
+        Number.isFinite(holder) &&
+        holder > 0 &&
+        holder !== process.pid &&
+        isProcessAlive(holder) &&
+        isNodeProcess(holder)
+      ) {
         throw new Error(
           `O banco PGlite em ${dir} já está aberto pelo processo ${holder}. ` +
             "Feche a outra instância da API antes de subir outra — dois processos " +
