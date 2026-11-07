@@ -39,6 +39,15 @@ async function main() {
   const atId = at?.id || (await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, "operador-atendimento@e2e.local")).limit(1))[0]!.id;
   await replaceRecoveryCodes(db, atId);
 
+  // operador atendimento dedicado ao teste de import 403 (evita lockout/colisão com outros specs)
+  const totpAtImport = generateTotpSetup("operador-atendimento-import@e2e.local");
+  const [atImp] = await db.insert(schema.users).values({
+    email: "operador-atendimento-import@e2e.local", passwordHash: pass, name: "Atendimento Import E2E", role: "atendimento",
+    active: true, mfaEnabled: true, totpSecret: totpAtImport.encryptedSecret,
+  }).onConflictDoNothing({ target: schema.users.email }).returning();
+  const atImpId = atImp?.id || (await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, "operador-atendimento-import@e2e.local")).limit(1))[0]!.id;
+  await replaceRecoveryCodes(db, atImpId);
+
   // admin sem MFA (para fluxo de setup)
   const setupTotp = generateTotpSetup("admin-sem-mfa@e2e.local");
   await db.insert(schema.users).values({
@@ -70,6 +79,7 @@ async function main() {
     E2E_READY: "1",
     E2E_TOTP_SECRET: totp.secretBase32,
     E2E_TOTP_SECRET_AT: totpAt.secretBase32,
+    E2E_TOTP_SECRET_AT_IMPORT: totpAtImport.secretBase32,
     E2E_TOTP_SECRET_RECOVERY: totpRec.secretBase32,
     E2E_RECOVERY_USER: "admin-recovery@e2e.local",
     E2E_RECOVERY_CODE: recoveryRec[0],

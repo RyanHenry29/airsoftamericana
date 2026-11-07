@@ -4,7 +4,7 @@ import { API, totpFromSecretBase32 } from "./helpers";
 const PASS = "Senha123!";
 const TOTP_SECRET = process.env.E2E_TOTP_SECRET || "";
 const CAT = process.env.E2E_CATEGORY_SLUG || "demo-e2e-cat";
-const TOTP_AT = process.env.E2E_TOTP_SECRET_AT || process.env.E2E_TOTP_SECRET || "";
+const TOTP_AT_IMPORT = process.env.E2E_TOTP_SECRET_AT_IMPORT || process.env.E2E_TOTP_SECRET_AT || "";
 
 async function login(page: Page, email: string, password = PASS) {
   await page.goto("/login");
@@ -89,8 +89,8 @@ test.describe("FASE 3 — Importação CSV (admin)", () => {
   });
 
   test("usuário sem permissão recebe 403", async ({ page }) => {
-    test.skip(!TOTP_AT, "Requer E2E_TOTP_SECRET_AT");
-    await loginMfa(page, "operador-atendimento@e2e.local", TOTP_AT);
+    test.skip(!TOTP_AT_IMPORT, "Requer E2E_TOTP_SECRET_AT_IMPORT");
+    await loginMfa(page, "operador-atendimento-import@e2e.local", TOTP_AT_IMPORT);
     const csrf = await getCsrf(page);
     const file = `slug;nome;sku;preco;category_slug\nx;x;SKU-NOPERM-${Date.now()};1;${CAT}\n`;
     const res = await page.request.post(`${API}/api/admin/catalog/import/preview`, { headers: { "x-csrf-token": csrf }, data: { file, filename: "x.csv" } });
