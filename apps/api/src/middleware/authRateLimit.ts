@@ -46,6 +46,8 @@ pruneTimer.unref?.();
 
 export function authRateLimit(rule: AuthRateLimitRule) {
   return async function limit(request: FastifyRequest, reply: FastifyReply) {
+    // E2E isolado: evita colisão de balde IP entre specs; lockout de conta (DB) permanece ativo.
+    if (process.env.NODE_ENV === "test" && process.env.E2E_READY === "1") return;
     const now = Date.now();
     const key = `${rule.scope}:${request.ip}`;
     const bucket = buckets.get(key) ?? {
