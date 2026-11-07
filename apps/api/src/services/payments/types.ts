@@ -41,14 +41,25 @@ export interface NormalizedWebhookEvent {
   raw: unknown;
 }
 
+/** Estado real do pagamento no provedor (consulta de reconciliação). */
+export interface QueryPaymentResult {
+  status: "pendente" | "autorizado" | "aprovado" | "recusado" | "expirado" | "estornado";
+  amountCents?: number;
+  raw?: unknown;
+}
+
 export interface PaymentAdapter {
   readonly provider: string;
+  /** Cabeçalho HTTP que carrega a assinatura do webhook deste provedor. */
+  readonly signatureHeader: string;
   isConfigured(): boolean;
   createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult>;
   capture(providerTransactionId: string, amountCents: number): Promise<CaptureResult>;
   refund(providerTransactionId: string, amountCents: number): Promise<RefundResult>;
   verifyWebhookSignature(rawBody: string, signature: string | undefined): boolean;
   parseWebhook(rawBody: string): NormalizedWebhookEvent;
+  /** Consulta o estado no provedor — base da reconciliação de pagamentos. */
+  queryPayment?(providerTransactionId: string): Promise<QueryPaymentResult>;
 }
 
 const registry = new Map<string, PaymentAdapter>();
