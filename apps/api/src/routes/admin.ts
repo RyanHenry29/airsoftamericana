@@ -822,52 +822,42 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
 // ---------------------------------------------------------------- Preço e estoque da variante
   app.patch("/api/admin/variants/:id", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const body = request.body as {
-      priceCents?: number;
-      promoPriceCents?: number | null;
-      weightGrams?: number;
-      active?: boolean;
-      stockPhysical?: number;
-      stockMin?: number;
-    };
+    const body = request.body as { priceCents?: number; promoPriceCents?: number | null; weightGrams?: number; active?: boolean; stockPhysical?: number; stockMin?: number };
+    const badNum = (v: unknown) => typeof v === "number" && (!Number.isFinite(v) || v < 0);
+    if (badNum(body.priceCents) || badNum(body.promoPriceCents as any) || badNum(body.weightGrams) || badNum(body.stockPhysical) || badNum(body.stockMin)) {
+      return reply.status(400).send({ error: { code: "invalid_input", message: "Pre?o, estoque e peso n?o podem ser negativos." } });
+    }
     const [row] = await db
       .update(schema.productVariants)
       .set({
-        ...(body.priceCents !== undefined ? { priceCents: body.priceCents } : {}),
-        ...(body.promoPriceCents !== undefined ? { promoPriceCents: body.promoPriceCents } : {}),
-        ...(body.weightGrams !== undefined ? { weightGrams: body.weightGrams } : {}),
+        ...(body.priceCents !== undefined ? { priceCents: body.priceCents | 0 } : {}),
+        ...(body.promoPriceCents !== undefined ? { promoPriceCents: body.promoPriceCents == null ? null : (body.promoPriceCents | 0) } : {}),
+        ...(body.weightGrams !== undefined ? { weightGrams: body.weightGrams | 0 } : {}),
         ...(body.active !== undefined ? { active: body.active } : {}),
       })
       .where(eq(schema.productVariants.id, id))
       .returning();
-    if (!row) {
-      reply.status(404);
-      reply.send({ error: { code: "not_found", message: "Variante não encontrada" } });
-      return;
-    }
+    if (!row) return reply.status(404).send({ error: { code: "not_found", message: "Variante n?o encontrada" } });
     if (body.stockPhysical !== undefined || body.stockMin !== undefined) {
-      const current = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, id)).limit(1);
-      const physical = body.stockPhysical ?? current[0]?.physical ?? 0;
-      const min = body.stockMin ?? current[0]?.minQuantity ?? 0;
-      if (current[0]) {
-        await db
-          .update(schema.inventory)
-          .set({ physical, minQuantity: min, updatedAt: new Date() })
-          .where(eq(schema.inventory.variantId, id));
-      } else {
-        await db.insert(schema.inventory).values({ variantId: id, physical, reserved: 0, minQuantity: min });
-      }
-      await db.insert(schema.inventoryMovements).values({
-        id: randomUUID(),
-        variantId: id,
-        type: "ajuste",
-        quantity: Math.abs(physical - (current[0]?.physical ?? 0)),
-        physicalBefore: current[0]?.physical ?? 0,
-        physicalAfter: physical,
-        reservedBefore: current[0]?.reserved ?? 0,
-        reservedAfter: current[0]?.reserved ?? 0,
-        reason: "Ajuste pelo painel",
-        userId: actorOf(request),
+      await (db as any).transaction(async (tx: any) => {
+        const current = await tx.select().from(schema.inventory).where(eq(schema.inventory.variantId, id)).limit(1);
+        const physical = body.stockPhysical !== undefined ? (body.stockPhysical | 0) : (current[0]?.physical ?? 0);
+        const min = body.stockMin !== undefined ? (body.stockMin | 0) : (current[0]?.minQuantity ?? 0);
+        const reserved = current[0]?.reserved ?? 0;
+        if (physical < 0 || min < 0) throw Object.assign(new Error("negative"), { statusCode: 400 });
+        if (current[0]) {
+          await tx.update(schema.inventory).set({ physical, minQuantity: min, updatedAt: new Date() }).where(eq(schema.inventory.variantId, id));
+        } else {
+          await tx.insert(schema.inventory).values({ variantId: id, physical, reserved: 0, minQuantity: min });
+        }
+        await tx.insert(schema.inventoryMovements).values({
+          id: randomUUID(), variantId: id, type: "ajuste",
+          quantity: Math.abs(physical - (current[0]?.physical ?? 0)),
+          physicalBefore: current[0]?.physical ?? 0, physicalAfter: physical,
+          reservedBefore: reserved, reservedAfter: reserved,
+          reason: "Ajuste pelo painel", userId: actorOf(request),
+        });
+        await tx.insert(schema.auditLogs).values({ actorUserId: actorOf(request), action: "inventory.adjusted", entity: "product_variants", entityId: id } as any);
       });
     }
     await audit(request, "variant.updated", "product_variants", id);
