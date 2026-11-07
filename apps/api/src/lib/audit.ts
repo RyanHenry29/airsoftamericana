@@ -132,3 +132,34 @@ export async function listAudit(db: Db, query: AuditListQuery = {}): Promise<Aud
 
   return { items: rows, total, limit, nextCursor };
 }
+
+export type AuditPrivilegeCheck = (db: Db) => Promise<{ canUpdate: boolean; canDelete: boolean }>;
+
+export async function checkAuditLogsPrivileges(db: Db): Promise<{ canUpdate: boolean; canDelete: boolean }> {
+  try {
+    const res: any = await db.execute(sql`SELECT has_table_privilege(current_user, 'audit_logs', 'UPDATE') AS can_update, has_table_privilege(current_user, 'audit_logs', 'DELETE') AS can_delete`);
+    const row = (res?.rows ?? res)?.[0] ?? {};
+    const canUpdate = row.can_update === true || row.can_update === "t" || row.can_update === 1;
+    const canDelete = row.can_delete === true || row.can_delete === "t" || row.can_delete === 1;
+    return { canUpdate, canDelete };
+  } catch {
+    // PGlite/ambientes sem has_table_privilege: não aferível por privilégio;
+    // o trigger BEFORE UPDATE/DELETE continua protegendo em nível de operação.
+    return { canUpdate: false, canDelete: false };
+  }
+}
+
+/** Em produção, recusa subir se o usuário DB consegue UPDATE/DELETE em audit_logs. */
+export async function assertAuditLogsAppendOnly(
+  db: Db,
+  nodeEnv: string,
+  check: AuditPrivilegeCheck = checkAuditLogsPrivileges,
+): Promise<void> {
+  if (nodeEnv !== "production") return;
+  const { canUpdate, canDelete } = await check(db);
+  if (canUpdate || canDelete) {
+    throw new Error(
+      "Refusing to start in production: database user has UPDATE/DELETE privileges on audit_logs (append-only). Use a least-privilege DB role.",
+    );
+  }
+}

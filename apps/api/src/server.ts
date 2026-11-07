@@ -13,6 +13,7 @@ import { registerBlogRoutes } from "./routes/blog.js";
 import { registerMfaRoutes } from "./routes/mfa.js";
 import { config } from "./config.js";
 import { cloudflareAccessGuard } from "./lib/cloudflareAccess.js";
+import { assertAuditLogsAppendOnly } from "./lib/audit.js";
 
 /**
  * Rotas de acesso com limite dedicado (`authRateLimit`) — a guarda global de
@@ -97,6 +98,8 @@ export async function createServer() {
 
   if (config.NODE_ENV !== "test") {
     await migrate(db);
+    // B.6/B.8: em produção, recusa subir se o usuário DB pode mutar audit_logs.
+    await assertAuditLogsAppendOnly(db, config.NODE_ENV);
     // Only seed in development, not in test (tests have their own seed)
     if (config.NODE_ENV === "development") {
       await seed(db);

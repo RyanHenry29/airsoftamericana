@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import { getDb } from "../db/index.js";
 import { migrate } from "../db/migrate.js";
 import { schema } from "../db/index.js";
-import { listAudit, decodeCursor } from "./audit.js";
+import { listAudit, decodeCursor, assertAuditLogsAppendOnly, checkAuditLogsPrivileges } from "./audit.js";
 
 let db: any;
 const ENTITY = `test-audit-b10-${Date.now()}`;
@@ -68,5 +68,30 @@ describe("B.10 — listAudit (banco povoado)", () => {
     // mantém ordem global desc
     const times = [...p1.items, ...p2.items, ...p3.items].map((r) => r.createdAt.getTime());
     expect(times).toEqual([...times].sort((a, b) => b - a));
+  });
+});
+
+describe("item 8 — audit_logs append-only: recusa subir em produção se DB user pode mutar", () => {
+  it("fora de produção não verifica/não recusa", async () => {
+    await expect(assertAuditLogsAppendOnly(db, "development")).resolves.toBeUndefined();
+    await expect(assertAuditLogsAppendOnly(db, "test")).resolves.toBeUndefined();
+  });
+
+  it("em produção RECUSA se o usuário tem UPDATE ou DELETE (simulado)", async () => {
+    const privileged = async () => ({ canUpdate: true, canDelete: false });
+    await expect(assertAuditLogsAppendOnly(db, "production", privileged)).rejects.toThrow(/audit_logs/);
+    const privilegedDel = async () => ({ canUpdate: false, canDelete: true });
+    await expect(assertAuditLogsAppendOnly(db, "production", privilegedDel)).rejects.toThrow(/Refusing to start/);
+  });
+
+  it("em produção NÃO recusa com usuário sem privilégios de UPDATE/DELETE", async () => {
+    const unpriv = async () => ({ canUpdate: false, canDelete: false });
+    await expect(assertAuditLogsAppendOnly(db, "production", unpriv)).resolves.toBeUndefined();
+  });
+
+  it("checkAuditLogsPrivileges retorna shape válido (PGlite/best-effort)", async () => {
+    const p = await checkAuditLogsPrivileges(db);
+    expect(typeof p.canUpdate).toBe("boolean");
+    expect(typeof p.canDelete).toBe("boolean");
   });
 });
