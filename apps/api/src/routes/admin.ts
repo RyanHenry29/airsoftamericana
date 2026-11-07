@@ -7,7 +7,8 @@ import { authMiddleware } from "../middleware/auth.js";
 import { adminGuard } from "../lib/rbac.js";
 import { csrfTokenFor, csrfTokenForSession } from "../lib/csrf.js";
 import { listActiveSessions, revokeSession } from "../services/sessions.js";
-import { normalizeRole } from "../lib/rbac.js";
+import { normalizeRole, type Role } from "../lib/rbac.js";
+import { createInvite } from "../services/invites.js";
 import { listAudit } from "../lib/audit.js";
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
@@ -110,13 +111,32 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!isSelf) {
       const role = normalizeRole(actor.role);
       if (role !== "superadmin") return reply.status(403).send({ error: { code: "forbidden", message: "Só superadmin revoga sessões de outros usuários" } });
-      // revogar sessão de outro: verificar que pertence a alguém (poderíamos checar ownership) - revoga pelo id
-    } else {
-      // revogar própria: ok
     }
     const ok = await revokeSession(db, id);
     if (!ok) return reply.status(404).send({ error: { code: "not_found", message: "Sessão não encontrada ou já revogada" } });
     reply.send({ revoked: true });
+  });
+
+  // ---------------------------------------------------------------- Convites (B.3) — só superadmin
+  app.post("/api/admin/invites", { preHandler: [A, adminGuard("users", "create")] }, async (request, reply) => {
+    const actor = (request as any).user as { sub: string; role: string };
+    if (normalizeRole(actor.role) !== "superadmin") {
+      return reply.status(403).send({ error: { code: "forbidden", message: "Só superadmin cria convites" } });
+    }
+    const body = (request.body ?? {}) as { email?: string; role?: string };
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const role = body.role as Role;
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) {
+      return reply.status(400).send({ error: { code: "invalid_input", message: "E-mail inválido" } });
+    }
+    try {
+      const invite = await createInvite(db, { email, role, createdBy: actor.sub });
+      await db.insert(schema.auditLogs).values({ action: "invite.created", entity: "admin_invites", entityId: invite.id, actorLabel: email });
+      // token cru retornado uma única vez
+      reply.status(201).send({ invite: { id: invite.id, email, role, expiresAt: invite.expiresAt, token: invite.token } });
+    } catch (e: any) {
+      reply.status(e?.status ?? 400).send({ error: { code: e?.code ?? "invalid_input", message: e?.message || "Falha ao criar convite" } });
+    }
   });
   app.get("/api/admin/banners", { preHandler: [A, adminGuard("banners","read")] }, async (_request, reply) => {
     const rows = await db.select().from(schema.banners).orderBy(asc(schema.banners.position));

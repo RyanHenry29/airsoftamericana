@@ -124,6 +124,21 @@ export async function migrate(db: Db) {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "webauthn_credentials_cred_idx" ON "webauthn_credentials" ("credential_id");`);
 
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "admin_invites" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "email" varchar(254) NOT NULL,
+      "role" varchar(32) NOT NULL,
+      "token_hash" text NOT NULL,
+      "expires_at" timestamptz NOT NULL,
+      "used_at" timestamptz,
+      "created_by" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "admin_invites_token_hash_idx" ON "admin_invites" ("token_hash");`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "admin_invites_email_idx" ON "admin_invites" ("email");`);
+
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "customers" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "name" varchar(120) NOT NULL,

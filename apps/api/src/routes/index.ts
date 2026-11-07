@@ -7,6 +7,7 @@ import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, 
 import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
 import { adminGuard } from "../lib/rbac.js";
 import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
+import { acceptInvite } from "../services/invites.js";
 import { schema } from "../db/index.js";
 import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule } from "../middleware/authRateLimit.js";
 import type { Config } from "../config.js";
@@ -545,6 +546,27 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       reply.send({ error: { code: "unauthorized", message: "Token inválido ou expirado" } });
     }
   });
+
+  // Convite de admin (B.3): aceite público controlado por token — NÃO cria admin sem convite.
+  app.post(
+    "/api/auth/invite/accept",
+    { preHandler: authRateLimit(registerRateLimitRule(config)) },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as { token?: string; password?: string; name?: string };
+      const token = String(body.token ?? "");
+      const password = String(body.password ?? "");
+      if (!token || password.length < 8) {
+        return reply.status(400).send({ error: { code: "invalid_input", message: "Token e senha (mín. 8 caracteres) são obrigatórios" } });
+      }
+      try {
+        const result = await acceptInvite(db, { token, password, name: body.name });
+        await writeAudit(db, request, { action: "invite.accepted", entity: "user", entityId: result.userId, actorLabel: maskEmail(result.email) });
+        reply.status(201).send({ ok: true, userId: result.userId, mfaSetupRequired: true });
+      } catch (e: any) {
+        reply.status(e?.status ?? 400).send({ error: { code: e?.code ?? "invite_invalid", message: e?.message || "Convite inválido" } });
+      }
+    },
+  );
 
   app.post("/api/auth/admin-logout", async (request, reply) => {
     const presented = (request.cookies as any)?.[ADMIN_SESSION_COOKIE];

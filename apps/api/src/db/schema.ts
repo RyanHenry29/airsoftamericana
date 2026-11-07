@@ -137,6 +137,24 @@ export const webauthnCredentials = pgTable(
   ],
 );
 
+export const adminInvites = pgTable(
+  "admin_invites",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: varchar("email", { length: 254 }).notNull(),
+    role: varchar("role", { length: 32 }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [
+    uniqueIndex("admin_invites_token_hash_idx").on(t.tokenHash),
+    index("admin_invites_email_idx").on(t.email),
+  ],
+);
+
 export const customers = pgTable(
   "customers",
   {
