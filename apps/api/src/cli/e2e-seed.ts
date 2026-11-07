@@ -39,7 +39,17 @@ async function main() {
   const atId = at?.id || (await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, "operador-atendimento@e2e.local")).limit(1))[0]!.id;
   await replaceRecoveryCodes(db, atId);
 
-  // operador atendimento dedicado ao teste de import 403 (evita lockout/colisão com outros specs)
+  // usuários dedicados aos testes de import CSV (evita replay/lockout entre specs)
+  const totpCsv1 = generateTotpSetup("admin-mfa-csv1@e2e.local");
+  await db.insert(schema.users).values({
+    email: "admin-mfa-csv1@e2e.local", passwordHash: pass, name: "Admin CSV1 E2E", role: "superadmin",
+    active: true, mfaEnabled: true, totpSecret: totpCsv1.encryptedSecret,
+  }).onConflictDoNothing({ target: schema.users.email });
+  const totpCsv2 = generateTotpSetup("admin-mfa-csv2@e2e.local");
+  await db.insert(schema.users).values({
+    email: "admin-mfa-csv2@e2e.local", passwordHash: pass, name: "Admin CSV2 E2E", role: "superadmin",
+    active: true, mfaEnabled: true, totpSecret: totpCsv2.encryptedSecret,
+  }).onConflictDoNothing({ target: schema.users.email });
   const totpAtImport = generateTotpSetup("operador-atendimento-import@e2e.local");
   const [atImp] = await db.insert(schema.users).values({
     email: "operador-atendimento-import@e2e.local", passwordHash: pass, name: "Atendimento Import E2E", role: "atendimento",
@@ -80,6 +90,8 @@ async function main() {
     E2E_TOTP_SECRET: totp.secretBase32,
     E2E_TOTP_SECRET_AT: totpAt.secretBase32,
     E2E_TOTP_SECRET_AT_IMPORT: totpAtImport.secretBase32,
+    E2E_TOTP_SECRET_CSV1: totpCsv1.secretBase32,
+    E2E_TOTP_SECRET_CSV2: totpCsv2.secretBase32,
     E2E_TOTP_SECRET_RECOVERY: totpRec.secretBase32,
     E2E_RECOVERY_USER: "admin-recovery@e2e.local",
     E2E_RECOVERY_CODE: recoveryRec[0],
