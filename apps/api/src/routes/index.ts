@@ -1,0 +1,877 @@
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { asc, and, count, desc, eq, sql } from "drizzle-orm";
+import bcrypt from "bcryptjs";
+import { randomUUID } from "node:crypto";
+import type { Db } from "../db/index.js";
+import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customers, inventory, inventoryMovements, newsletterSubscribers, orderItems, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
+import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
+import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule } from "../middleware/authRateLimit.js";
+import type { Config } from "../config.js";
+import { registerSchema, loginSchema, adminCustomerSchema, checkoutSchema, cartItemSchema, orderStatusSchema, stockMovementSchema, productSchema, orderVolumeLimitsSchema, gatewayConfigSchema, chargebackStatusSchema } from "@airsoft/shared";
+import { handleCheckout } from "../services/checkout.js";
+import { transitionOrder } from "../services/orders.js";
+import { validateCoupon } from "../services/coupons.js";
+import { calculateShipping } from "../services/shipping.js";
+import { canTransition, type OrderStatus } from "@airsoft/shared";
+import { registerAdapter, type NormalizedWebhookEvent } from "../services/payments/types.js";
+import { getAdapter } from "../services/payments/types.js";
+import { adjustStock } from "../services/inventory.js";
+import { registerStorefrontRoutes } from "./storefront.js";
+import { registerAdminRoutes } from "./admin.js";
+
+export interface ApiRoutesOptions {
+  config: Config;
+}
+
+function publicCustomer(row: typeof customers.$inferSelect) {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    cpf: row.cpf,
+    phone: row.phone,
+    createdAt: row.createdAt,
+  };
+}
+
+function customerToken(req: {
+  headers: Record<string, string | undefined>;
+  cookies?: Record<string, string>;
+}): string | undefined {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith("Bearer ")) return auth.slice(7);
+  const cookies = (req as { cookies?: Record<string, string> }).cookies;
+  if (cookies?.["aa_customer"]) return String(cookies["aa_customer"]);
+  return undefined;
+}
+
+async function requireCustomer(req: {
+  headers: Record<string, string | undefined>;
+  cookies?: Record<string, string>;
+}): Promise<{ id: string } | null> {
+  const token = customerToken(req);
+  if (!token) return null;
+  try {
+    const payload = await verifyJwt(token);
+    if (payload.type !== "customer") return null;
+    return { id: payload.sub };
+  } catch {
+    return null;
+  }
+}
+
+async function getCart(db: Db, req: {
+  cookies?: Record<string, string>;
+  headers: Record<string, string | undefined>;
+}) {
+  const customer = await requireCustomer(req as never);
+  let sessionKey = (req as { cookies?: Record<string, string> }).cookies?.["aa_cart"];
+  if (customer) {
+    const found = await db.select().from(carts).where(eq(carts.customerId, customer.id)).limit(1);
+    if (found[0]) return { cart: found[0], customer };
+  }
+  if (sessionKey) {
+    const found = await db.select().from(carts).where(eq(carts.sessionKey, sessionKey)).limit(1);
+    if (found[0]) return { cart: found[0], customer };
+  }
+  sessionKey = randomUUID().replace(/-/g, "").slice(0, 32);
+  const inserted = await db.insert(carts).values({ sessionKey, customerId: customer?.id ?? null }).returning();
+  const cart = inserted[0]!;
+  return { cart, customer, sessionKey };
+}
+
+async function cartView(db: Db, cartId: string) {
+  const items = await db.select().from(cartItems).where(eq(cartItems.cartId, cartId));
+  const view = [];
+  let subtotalCents = 0;
+  for (const item of items) {
+    const variants = await db.select().from(productVariants).where(eq(productVariants.id, item.variantId)).limit(1);
+    const variant = variants[0];
+    if (!variant) continue;
+    const availRows = await db.select().from(inventory).where(eq(inventory.variantId, variant.id)).limit(1);
+    const inv = availRows[0];
+    const available = inv ? inv.physical - inv.reserved : 0;
+    const unitPriceCents = variant.promoPriceCents ?? variant.priceCents;
+    subtotalCents += unitPriceCents * item.quantity;
+    view.push({
+      variantId: variant.id,
+      sku: variant.sku,
+      name: variant.name,
+      quantity: item.quantity,
+      unitPriceCents,
+      totalCents: unitPriceCents * item.quantity,
+      available,
+    });
+  }
+  return { items: view, subtotalCents };
+}
+
+// Minimal routes — avoids Fastify method type issues by using reply.send() generically
+
+/** E-mail mascarado — o log de auditoria nunca guarda o endereço completo. */
+function maskEmail(email: string): string {
+  const [user, domain] = email.split("@");
+  if (!user || !domain) return "cliente";
+  return `${user.slice(0, 1)}${"*".repeat(Math.max(3, user.length - 1))}@${domain}`;
+}
+
+type AuditEntry = {
+  action: string;
+  entity: string;
+  entityId?: string | null;
+  actorLabel?: string | null;
+};
+
+/**
+ * Log de auditoria append-only (retensão 90 dias).
+ * Falha de auditoria não derruba o acesso — mas precisa aparecer no log do servidor.
+ */
+/**
+ * Mapeia eventos de webhook para o status do pedido. Eventos de disputa
+ * não movem o pedido diretamente — a central de chargebacks cuida disso.
+ */
+function webhookTargetStatus(type: NormalizedWebhookEvent["type"]): OrderStatus | null {
+  switch (type) {
+    case "payment.approved": return "pagamento_aprovado";
+    case "payment.recused": return "cancelado";
+    case "payment.expired": return "cancelado";
+    case "payment.refunded": return "reembolsado";
+    default: return null;
+  }
+}
+
+/**
+ * Log de auditoria append-only (retensão 90 dias).
+ * Falha de auditoria não derruba o acesso — mas precisa aparecer no log do servidor.
+ */
+async function writeAudit(
+  db: Db,
+  request: FastifyRequest,
+  entry: AuditEntry,
+): Promise<void> {
+  try {
+    await db.insert(auditLogs).values({
+      action: entry.action,
+      entity: entry.entity,
+      entityId: entry.entityId ?? null,
+      actorLabel: entry.actorLabel ?? null,
+      ip: request.ip,
+      correlationId: randomUUID(),
+    });
+  } catch (error) {
+    request.log.warn(
+      { err: error, action: entry.action },
+      "falha ao gravar log de auditoria",
+    );
+  }
+}
+
+export async function routes(app: FastifyInstance, config: Config, db: Db) {
+  // Simple GET route
+  app.get("/api/test", async (request, reply) => {
+    reply.send({ ok: true });
+  });
+
+  registerStorefrontRoutes(app, db);
+  registerAdminRoutes(app, db);
+
+  // ---------------------------------------------------------- Carrinho (cookie aa_cart)
+  function setCartCookie(reply: { setCookie: (n: string, v: string, o: object) => void }, sessionKey: string) {
+    reply.setCookie("aa_cart", sessionKey, { path: "/", httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
+  }
+
+  app.get("/api/cart", async (request, reply) => {
+    const { cart, sessionKey } = await getCart(db, request as never);
+    if (sessionKey) setCartCookie(reply as never, sessionKey);
+    const view = await cartView(db, cart.id);
+    const cartRow = await db.select().from(carts).where(eq(carts.id, cart.id)).limit(1);
+    reply.send({ ...view, coupon: cartRow[0]?.couponCode ?? null });
+  });
+
+  app.post("/api/cart/items", async (request, reply) => {
+    const parsed = cartItemSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+      return;
+    }
+    const { cart, sessionKey } = await getCart(db, request as never);
+    const variants = await db.select().from(productVariants).where(eq(productVariants.id, parsed.data.variantId)).limit(1);
+    if (!variants[0]) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Variante não encontrada" } });
+      return;
+    }
+    const invRows = await db.select().from(inventory).where(eq(inventory.variantId, parsed.data.variantId)).limit(1);
+    const inv = invRows[0];
+    if (inv && inv.physical - inv.reserved < parsed.data.quantity) {
+      reply.status(409);
+      reply.send({ error: { code: "insufficient_stock", message: "Estoque insuficiente", available: inv.physical - inv.reserved } });
+      return;
+    }
+    const existing = await db.select().from(cartItems).where(eq(cartItems.cartId, cart.id));
+    const line = existing.find((i) => i.variantId === parsed.data.variantId);
+    if (line) {
+      await db.update(cartItems).set({ quantity: parsed.data.quantity }).where(eq(cartItems.id, line.id));
+    } else {
+      await db.insert(cartItems).values({ id: randomUUID(), cartId: cart.id, variantId: parsed.data.variantId, quantity: parsed.data.quantity });
+    }
+    if (sessionKey) setCartCookie(reply as never, sessionKey);
+    reply.send(await cartView(db, cart.id));
+  });
+
+  app.patch("/api/cart/items/:variantId", async (request, reply) => {
+    const { variantId } = request.params as { variantId: string };
+    const body = request.body as { quantity: number };
+    const quantity = Number(body.quantity);
+    if (!Number.isInteger(quantity) || quantity < 0 || quantity > 999) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Quantidade inválida" } });
+      return;
+    }
+    const { cart, sessionKey } = await getCart(db, request as never);
+    const existing = await db.select().from(cartItems).where(eq(cartItems.cartId, cart.id));
+    const line = existing.find((i) => i.variantId === variantId);
+    if (!line) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Item não está no carrinho" } });
+      return;
+    }
+    if (quantity === 0) {
+      await db.delete(cartItems).where(eq(cartItems.id, line.id));
+    } else {
+      await db.update(cartItems).set({ quantity }).where(eq(cartItems.id, line.id));
+    }
+    if (sessionKey) setCartCookie(reply as never, sessionKey);
+    reply.send(await cartView(db, cart.id));
+  });
+
+  app.delete("/api/cart/items/:variantId", async (request, reply) => {
+    const { variantId } = request.params as { variantId: string };
+    const { cart } = await getCart(db, request as never);
+    const existing = await db.select().from(cartItems).where(eq(cartItems.cartId, cart.id));
+    const line = existing.find((i) => i.variantId === variantId);
+    if (!line) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Item não está no carrinho" } });
+      return;
+    }
+    await db.delete(cartItems).where(eq(cartItems.id, line.id));
+    reply.send(await cartView(db, cart.id));
+  });
+
+  app.post("/api/cart/coupon", async (request, reply) => {
+    const { code } = request.body as { code: string };
+    const { cart } = await getCart(db, request as never);
+    const view = await cartView(db, cart.id);
+    const validation = await validateCoupon(db, { code: code ?? "", subtotalCents: view.subtotalCents });
+    if (!validation.valid) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_coupon", message: validation.message ?? "Cupom inválido" } });
+      return;
+    }
+    await db.update(carts).set({ couponCode: code.trim().toUpperCase() }).where(eq(carts.id, cart.id));
+    reply.send({ ...view, coupon: code.trim().toUpperCase(), discountCents: validation.discountCents });
+  });
+
+  app.delete("/api/cart/coupon", async (request, reply) => {
+    const { cart } = await getCart(db, request as never);
+    await db.update(carts).set({ couponCode: null }).where(eq(carts.id, cart.id));
+    reply.send(await cartView(db, cart.id));
+  });
+
+  // ---------------------------------------------------------- Frete + cupom
+  app.post("/api/shipping/quote", async (request, reply) => {
+    const body = request.body as { zip: string; items?: { variantId: string; quantity: number }[]; subtotalCents?: number };
+    const zip = (body.zip ?? "").replace(/\D/g, "");
+    if (zip.length !== 8) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "CEP inválido" } });
+      return;
+    }
+    let subtotalCents = body.subtotalCents ?? 0;
+    let weight = 0;
+    if (body.items?.length) {
+      for (const item of body.items) {
+        const rows = await db.select().from(productVariants).where(eq(productVariants.id, item.variantId)).limit(1);
+        const v = rows[0];
+        if (v) {
+          subtotalCents += (v.promoPriceCents ?? v.priceCents) * item.quantity;
+          weight += v.weightGrams * item.quantity;
+        }
+      }
+    }
+    reply.send({ options: calculateShipping({ zip, subtotalCents, totalWeightGrams: weight }) });
+  });
+
+  app.get("/api/coupons/validate", async (request, reply) => {
+    const q = request.query as Record<string, string | undefined>;
+    const result = await validateCoupon(db, { code: q.code ?? "", subtotalCents: Number(q.subtotalCents ?? 0) || 0 });
+    reply.send(result);
+  });
+
+  // ---------------------------------------------------------- Checkout + pedidos cliente
+  // ---------------------------------------------------------- Newsletter
+  app.post("/api/newsletter", async (request, reply) => {
+    const body = request.body as { email?: string; source?: string };
+    const email = (body.email ?? "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email) || email.length > 254) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "E-mail inválido" } });
+      return;
+    }
+    const source = (body.source ?? "homepage").slice(0, 40);
+    await db
+      .insert(newsletterSubscribers)
+      .values({ email, source, consent: true })
+      .onConflictDoNothing({ target: newsletterSubscribers.email });
+    reply.status(201);
+    reply.send({ success: true });
+  });
+
+  app.post("/api/checkout", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Faça login para finalizar a compra" } });
+      return;
+    }
+    const parsed = checkoutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+      return;
+    }
+    try {
+      const result = await handleCheckout(db, parsed.data, {
+        customerId: customer.id,
+        ip: request.ip,
+        correlationId: request.id,
+      });
+      reply.status(201);
+      reply.send(result);
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? 500;
+      reply.status(status);
+      reply.send({
+        error: {
+          code: (err as { code?: string }).code ?? "internal_error",
+          message: err instanceof Error ? err.message : "Erro interno",
+          details: (err as { details?: unknown }).details,
+        },
+      });
+    }
+  });
+
+  app.get("/api/orders", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const rows = await db.select().from(orders).where(eq(orders.customerId, customer.id)).orderBy(desc(orders.createdAt));
+    reply.send({ items: rows });
+  });
+
+  app.get("/api/orders/:number", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const { number } = request.params as { number: string };
+    const found = await db.select().from(orders).where(eq(orders.number, number)).limit(1);
+    const order = found[0];
+    if (!order || order.customerId !== customer.id) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Pedido não encontrado" } });
+      return;
+    }
+    const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+    reply.send({ order, items });
+  });
+
+  // ---------------------------------------------------------- Auth cliente
+  /** Sessão do cliente: cookie httpOnly, 7 dias, sem token no corpo da resposta. */
+  const customerCookie = (maxAgeSeconds: number) => ({
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: config.NODE_ENV === "production",
+    maxAge: maxAgeSeconds,
+  });
+
+  app.post(
+    "/api/auth/register",
+    { preHandler: authRateLimit(registerRateLimitRule(config)) },
+    async (request, reply) => {
+      const parsed = registerSchema.safeParse(request.body);
+      if (!parsed.success) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+        return;
+      }
+      const { name, email, password, cpf, phone } = parsed.data;
+      const cleanCpf = cpf ? cpf.replace(/\D/g, "") : null;
+      if (cleanCpf && cleanCpf.length !== 11) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "CPF deve conter 11 dígitos" } });
+        return;
+      }
+
+      const existing = await db.select().from(customers).where(eq(customers.email, email)).limit(1);
+      if (existing.length > 0) {
+        await writeAudit(db, request, {
+          action: "auth.register.duplicate",
+          entity: "customer",
+          actorLabel: maskEmail(email),
+        });
+        reply.status(409);
+        reply.send({ error: { code: "email_taken", message: "E-mail já cadastrado. Faça login." } });
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      // Corrida de requisições:ON CONFLICT evita 500 por e-mail duplicado.
+      let inserted: (typeof customers.$inferSelect)[] = [];
+      try {
+        inserted = await db
+          .insert(customers)
+          .values({ name, email, passwordHash, cpf: cleanCpf, phone: phone || null })
+          .onConflictDoNothing({ target: customers.email })
+          .returning();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("duplicate key")) throw error;
+        inserted = [];
+      }
+
+      const customer = inserted[0];
+      if (!customer) {
+        await writeAudit(db, request, {
+          action: "auth.register.duplicate",
+          entity: "customer",
+          actorLabel: maskEmail(email),
+        });
+        reply.status(409);
+        reply.send({ error: { code: "email_taken", message: "E-mail já cadastrado. Faça login." } });
+        return;
+      }
+
+      const token = await signJwt({ sub: customer.id, role: "customer", type: "customer" });
+      reply.setCookie("aa_customer", token, customerCookie(60 * 60 * 24 * 7));
+      await writeAudit(db, request, {
+        action: "auth.register",
+        entity: "customer",
+        entityId: customer.id,
+        actorLabel: maskEmail(email),
+      });
+      reply.status(201);
+      reply.send({ customer: publicCustomer(customer) });
+    },
+  );
+
+  app.post(
+    "/api/auth/login",
+    { preHandler: authRateLimit(loginRateLimitRule(config)) },
+    async (request, reply) => {
+      const parsed = loginSchema.safeParse(request.body);
+      if (!parsed.success) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+        return;
+      }
+      const { email, password } = parsed.data;
+      const found = await db.select().from(customers).where(eq(customers.email, email)).limit(1);
+      const customer = found[0];
+      if (!customer?.passwordHash || !(await bcrypt.compare(password, customer.passwordHash))) {
+        await writeAudit(db, request, {
+          action: "auth.login.failed",
+          entity: "customer",
+          actorLabel: maskEmail(email),
+        });
+        reply.status(401);
+        reply.send({ error: { code: "unauthorized", message: "E-mail ou senha incorretos" } });
+        return;
+      }
+
+      const token = await signJwt({ sub: customer.id, role: "customer", type: "customer" });
+      reply.setCookie("aa_customer", token, customerCookie(60 * 60 * 24 * 7));
+      await writeAudit(db, request, {
+        action: "auth.login",
+        entity: "customer",
+        entityId: customer.id,
+        actorLabel: maskEmail(email),
+      });
+      reply.send({ customer: publicCustomer(customer) });
+    },
+  );
+
+  app.get("/api/auth/me", async (request, reply) => {
+    const token = customerToken(request as never);
+    if (!token) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    try {
+      const payload = await verifyJwt(token);
+      if (payload.type !== "customer") throw new Error("wrong type");
+      const found = await db.select().from(customers).where(eq(customers.id, payload.sub)).limit(1);
+      const customer = found[0];
+      if (!customer) {
+        reply.status(401);
+        reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+        return;
+      }
+      reply.send({ customer: publicCustomer(customer) });
+    } catch {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Token inválido ou expirado" } });
+    }
+  });
+
+  app.post("/api/auth/logout", async (request, reply) => {
+    reply.clearCookie("aa_customer", {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: config.NODE_ENV === "production",
+    });
+    await writeAudit(db, request, { action: "auth.logout", entity: "customer" });
+    reply.send({ success: true });
+  });
+
+  // ---------------------------------------------------------- Auth admin (users)
+  app.post(
+    "/api/auth/admin-login",
+    { preHandler: authRateLimit(adminLoginRateLimitRule(config)) },
+    async (request, reply) => {
+    const parsed = loginSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+      return;
+    }
+    const { email, password } = parsed.data;
+    const found = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const user = found[0];
+    if (!user || !user.active || !(await bcrypt.compare(password, user.passwordHash))) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "E-mail ou senha incorretos" } });
+      return;
+    }
+    await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+    const token = await signJwt({ sub: user.id, role: user.role, type: "access" });
+    reply.setCookie("aa_session", token, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 12,
+    });
+    reply.send({ user: { id: user.id, name: user.name, email: user.email, role: user.role }, token });
+  });
+
+  // ---------------------------------------------------------- Admin clientes
+  app.get(
+    "/api/admin/customers",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const q = request.query as Record<string, string | undefined>;
+      const term = (q.q ?? "").trim();
+      const query = db.select().from(customers).orderBy(desc(customers.createdAt)).$dynamic();
+      if (term) {
+        query.where(sql`${customers.name} ILIKE ${`%${term}%`} OR ${customers.email} ILIKE ${`%${term}%`}`);
+      }
+      const rows = await query.limit(200);
+      reply.send({ items: rows.map(publicCustomer), total: rows.length });
+    },
+  );
+
+  app.get(
+    "/api/admin/customers/:id",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const found = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
+      if (!found[0]) {
+        reply.status(404);
+        reply.send({ error: { code: "not_found", message: "Cliente não encontrado" } });
+        return;
+      }
+      reply.send({ customer: publicCustomer(found[0]) });
+    },
+  );
+
+  app.post(
+    "/api/admin/customers",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const parsed = adminCustomerSchema.safeParse(request.body);
+      if (!parsed.success) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+        return;
+      }
+      const { name, email, password, cpf, phone, notes } = parsed.data;
+      const existing = await db.select().from(customers).where(eq(customers.email, email)).limit(1);
+      if (existing.length > 0) {
+        reply.status(409);
+        reply.send({ error: { code: "email_taken", message: "E-mail já cadastrado" } });
+        return;
+      }
+      const passwordHash = password ? await bcrypt.hash(password, 10) : null;
+      const inserted = await db
+        .insert(customers)
+        .values({
+          name,
+          email,
+          passwordHash,
+          cpf: cpf ? cpf.replace(/\D/g, "") : null,
+          phone: phone || null,
+          notes: notes || null,
+        })
+        .returning();
+      const created = inserted[0];
+      if (!created) {
+        reply.status(500);
+        reply.send({ error: { code: "internal_error", message: "Falha ao cadastrar cliente" } });
+        return;
+      }
+      await db
+        .insert(auditLogs)
+        .values({ action: "customer.created", entity: "customers", entityId: created.id });
+      reply.status(201);
+      reply.send({ customer: publicCustomer(created) });
+    },
+  );
+
+  // ---------------------------------------------------------- Admin métricas
+  app.get(
+    "/api/admin/metrics",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const [oTotal, oApproved, pTotal, lowStock, cbTotal] = await Promise.all([
+        db.select({ value: count() }).from(orders),
+        db.select({ value: count() }).from(orders).where(eq(orders.status, "pagamento_aprovado")),
+        db.select({ value: count() }).from(products).where(eq(products.published, true)),
+        db.select().from(inventory).where(sql`${inventory.physical} - ${inventory.reserved} <= ${inventory.minQuantity}`),
+        db.select({ value: count() }).from(payments).where(eq(payments.status, "chargeback")),
+      ]);
+      const revenueRows = await db.select({ total: orders.totalCents }).from(orders).where(eq(orders.status, "pagamento_aprovado"));
+      const revenueCents = revenueRows.reduce((a, r) => a + r.total, 0);
+      reply.send({
+        ordersTotal: Number(oTotal[0]?.value ?? 0),
+        ordersApproved: Number(oApproved[0]?.value ?? 0),
+        productsPublished: Number(pTotal[0]?.value ?? 0),
+        lowStock: lowStock.length,
+        chargebacks: Number(cbTotal[0]?.value ?? 0),
+        revenueCents,
+        ticketCents: revenueRows.length ? Math.floor(revenueCents / revenueRows.length) : 0,
+      });
+    },
+  );
+
+  // ---------------------------------------------------------- Admin produtos
+  app.get(
+    "/api/admin/products",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const rows = await db.select().from(products).orderBy(desc(products.createdAt));
+      const items = await Promise.all(
+        rows.map(async (row) => {
+          const variants = await db.select().from(productVariants).where(eq(productVariants.productId, row.id));
+          return { ...row, variants };
+        }),
+      );
+      reply.send({ items });
+    },
+  );
+
+  app.post(
+    "/api/admin/products",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const parsed = productSchema.safeParse(request.body);
+      if (!parsed.success) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+        return;
+      }
+      const data = parsed.data;
+      const [product] = await db
+        .insert(products)
+        .values({
+          name: data.name,
+          slug: data.slug,
+          description: data.description,
+          categoryId: data.categoryId,
+          brandId: data.brandId ?? null,
+          ageRestricted: data.ageRestricted,
+          featured: data.featured,
+          published: data.published,
+        })
+        .returning();
+      if (!product) throw new Error("product insert failed");
+      const variants = [];
+      for (const v of data.variants) {
+        const [variant] = await db
+          .insert(productVariants)
+          .values({
+            productId: product.id,
+            sku: v.sku,
+            name: v.name,
+            priceCents: v.priceCents,
+            promoPriceCents: v.promoPriceCents ?? null,
+            weightGrams: v.weightGrams,
+            active: v.active,
+          })
+          .returning();
+        if (!variant) continue;
+        const existing = await db.select().from(inventory).where(eq(inventory.variantId, variant.id));
+        if (!existing[0]) {
+          await db.insert(inventory).values({
+            variantId: variant.id,
+            physical: v.stockPhysical,
+            reserved: 0,
+            minQuantity: v.stockMin,
+          });
+        }
+        variants.push(variant);
+      }
+      await db.insert(auditLogs).values({ action: "product.created", entity: "products", entityId: product.id });
+      reply.status(201);
+      reply.send({ product: { ...product, variants } });
+    },
+  );
+
+  app.patch(
+    "/api/admin/products/:id",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const body = request.body as Partial<{ name: string; published: boolean; featured: boolean }>;
+      const found = await db.select().from(products).where(eq(products.id, id)).limit(1);
+      if (!found[0]) {
+        reply.status(404);
+        reply.send({ error: { code: "not_found", message: "Produto não encontrado" } });
+        return;
+      }
+      const [updated] = await db
+        .update(products)
+        .set({
+          ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.published !== undefined ? { published: body.published } : {}),
+          ...(body.featured !== undefined ? { featured: body.featured } : {}),
+        })
+        .where(eq(products.id, id))
+        .returning();
+      await db.insert(auditLogs).values({ action: "product.updated", entity: "products", entityId: id });
+      reply.send({ product: updated });
+    },
+  );
+
+  // ---------------------------------------------------------- Admin estoque
+  app.get(
+    "/api/admin/inventory",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const rows = await db.select().from(inventory).orderBy(asc(inventory.variantId));
+      const items = await Promise.all(
+        rows.map(async (row) => {
+          const variants = await db.select().from(productVariants).where(eq(productVariants.id, row.variantId)).limit(1);
+          const v = variants[0];
+          return { ...row, available: row.physical - row.reserved, sku: v?.sku ?? "", name: v?.name ?? "" };
+        }),
+      );
+      reply.send({ items });
+    },
+  );
+
+  app.post(
+    "/api/admin/inventory/movements",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const parsed = stockMovementSchema.safeParse(request.body);
+      if (!parsed.success) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+        return;
+      }
+      try {
+        await adjustStock(db, {
+          variantId: parsed.data.variantId,
+          type: parsed.data.type,
+          quantity: parsed.data.quantity,
+          reason: parsed.data.reason,
+          userId: (request as { user?: { sub: string } }).user?.sub ?? "",
+        });
+        await db.insert(auditLogs).values({ action: "stock.movement", entity: "inventory", entityId: parsed.data.variantId });
+        reply.send({ ok: true });
+      } catch (err) {
+        reply.status((err as { status?: number }).status ?? 400);
+        reply.send({ error: { code: (err as { code?: string }).code ?? "bad_request", message: err instanceof Error ? err.message : "Erro" } });
+      }
+    },
+  );
+
+  // ---------------------------------------------------------- Admin pedidos
+  app.get(
+    "/api/admin/orders",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const rows = await db.select().from(orders).orderBy(desc(orders.createdAt)).limit(200);
+      const items = await Promise.all(
+        rows.map(async (row) => {
+          const found = await db
+            .select({ name: customers.name, email: customers.email })
+            .from(customers)
+            .where(eq(customers.id, row.customerId))
+            .limit(1);
+          return { ...row, customerName: found[0]?.name ?? "Cliente", customerEmail: found[0]?.email ?? "" };
+        }),
+      );
+      reply.send({ items });
+    },
+  );
+
+  app.post(
+    "/api/admin/orders/:id/transition",
+    { preHandler: authMiddleware },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const parsed = orderStatusSchema.safeParse(request.body);
+      if (!parsed.success) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Dados inválidos" } });
+        return;
+      }
+      const found = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
+      const order = found[0];
+      if (!order) {
+        reply.status(404);
+        reply.send({ error: { code: "not_found", message: "Pedido não encontrado" } });
+        return;
+      }
+      if (!canTransition(order.status, parsed.data.status)) {
+        reply.status(409);
+        reply.send({ error: { code: "invalid_transition", message: `Transição ${order.status} → ${parsed.data.status} não permitida` } });
+        return;
+      }
+      await db.update(orders).set({ status: parsed.data.status, updatedAt: new Date() }).where(eq(orders.id, id));
+      reply.send({ order: { ...order, status: parsed.data.status } });
+    },
+  );
+
+  // Admin health — protegido como as demais rotas de admin
+  app.get("/api/admin/health", { preHandler: authMiddleware }, async (request, reply) => {
+    reply.send({ status: "ok" });
+  });
+
+  return app;
+}
+
+export type { Config };

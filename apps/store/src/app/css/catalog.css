@@ -1,0 +1,215 @@
+/* Airsoft Americana — layout de catálogo e busca (parte 3)
+ * Trilha de navegação, filtros de faceta, ordenação, paginação e estado vazio.
+ */
+
+/* ————— Trilha de navegação ————— */
+.crumbs {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 1rem clamp(1rem, 4vw, 2.5rem);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+}
+.crumbs a { color: var(--dim); text-decoration: none; }
+.crumbs a:hover { color: var(--primary); }
+.crumbs svg { color: #4d534d; }
+.crumbs span { color: #f4f5f2; }
+
+/* ————— Coluna principal do catálogo ————— */
+.catalog {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: clamp(1.5rem, 3vw, 3rem);
+  align-items: start;
+  padding: 0 clamp(1rem, 4vw, 2.5rem) clamp(3rem, 6vw, 5rem);
+}
+.catalog__main { min-width: 0; display: flex; flex-direction: column; }
+@media (max-width: 900px) {
+  .catalog { grid-template-columns: 1fr; }
+}
+
+/* ————— Filtros ————— */
+.catalog__side {
+  position: sticky;
+  top: 120px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 1.1rem 1.15rem 1.35rem;
+}
+@media (max-width: 900px) { .catalog__side { position: static; } }
+.filters__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #f4f5f2;
+}
+.filters__head svg { color: var(--primary); }
+.filters__clear {
+  margin-left: auto;
+  color: var(--primary);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.filters__clear:hover { color: var(--primary-dark); text-decoration: underline; }
+.filters__group { padding-top: 1.1rem; }
+.filters__title {
+  margin: 0 0 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--primary);
+}
+.filters__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.filters__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.42rem 0.5rem;
+  color: #c8cbc8;
+  text-decoration: none;
+  font-size: 0.85rem;
+  border-left: 2px solid transparent;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.filters__item span {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: #6f766f;
+}
+.filters__item:hover { color: #ffffff; background: rgb(139 207 22 / 0.06); }
+.filters__item.is-active {
+  color: var(--primary);
+  border-left-color: var(--primary);
+  background: rgb(139 207 22 / 0.08);
+}
+.filters__item.is-active span { color: var(--primary); }
+.filters__hint {
+  margin: 0.6rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: #6f766f;
+}
+
+/* ————— Cabeçalho do catálogo ————— */
+.catalog__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.catalog__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  line-height: 0.95;
+  letter-spacing: 0.005em;
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  color: #ffffff;
+}
+.catalog__count {
+  margin: 0.5rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+}
+.catalog__sort { display: flex; align-items: center; gap: 0.6rem; }
+.catalog__sort label {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--dim);
+}
+.catalog__sort select {
+  background: #0d100d;
+  color: #f4f5f2;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.catalog__sort select:focus { outline: none; border-color: var(--primary); }
+
+/* Botão pequeno */
+.btn-sm { padding: 0.5rem 0.95rem; font-size: 0.8rem; letter-spacing: 0.06em; }
+
+/* ————— Estado vazio ————— */
+.catalog__empty {
+  border: 1px dashed var(--line);
+  background: var(--panel);
+  padding: clamp(2.5rem, 6vw, 4.5rem) 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+.catalog__empty-num {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 3.5rem;
+  line-height: 1;
+  color: #2c322c;
+}
+.catalog__empty h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.35rem;
+  color: #ffffff;
+}
+.catalog__empty p { margin: 0 0 0.75rem; color: var(--dim); font-size: 0.9rem; }
+
+/* ————— Paginação ————— */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+.pager__info {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+}

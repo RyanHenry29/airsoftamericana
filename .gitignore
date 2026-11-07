@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+*.log
+.env
+.env.local
+!.env.example
+data/
+*.db
+*.dbj
+coverage/
+.DS_Store
+
+mirror/
+temp_base/
+logs/

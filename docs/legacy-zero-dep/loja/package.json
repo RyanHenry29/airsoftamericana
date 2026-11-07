@@ -1,0 +1,1 @@
+{"name":"airsoft-americana-loja","version":"0.1.0","type":"module","engines":{"node":">=22.13"},"scripts":{"start":"node server.js","test":"node --test test/*.test.js"}}

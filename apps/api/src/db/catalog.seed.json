@@ -1,0 +1,4606 @@
+{
+  "generatedAt": "2026-11-05T20:31:37.399Z",
+  "source": "gmtatico.com.br (espelho salvo + catalogo publico)",
+  "categories": [
+    {
+      "url": "/contato/",
+      "name": "Contato"
+    },
+    {
+      "url": "/condicoes-de-frete/",
+      "name": "CONDIÇÕES DE FRETE"
+    },
+    {
+      "url": "/troca-devolucao-garantia/",
+      "name": "Trocas / Devoluções / Garantias"
+    },
+    {
+      "url": "/perguntas-frequentes/",
+      "name": "Perguntas Frequentes / CUPOM DE DESCONTO"
+    },
+    {
+      "url": "/quem-somos-loja-fisica-campinas/",
+      "name": "QUEM SOMOS/ LOJA FÍSICA CAMPINAS"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "name": "Rifle GBBR"
+    },
+    {
+      "url": "/atendimento-ao-cliente/",
+      "name": "ATENDIMENTO AO CLIENTE"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "name": "Rifle AEG"
+    },
+    {
+      "url": "/airsoft/",
+      "name": "Airsoft"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/",
+      "name": "Armas de Airsoft"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/speed-soft/",
+      "name": "Speed Soft"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/kit-rifles-airsoft-aeg/",
+      "name": "Kit Rifles Airsoft AEG"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/suporte/",
+      "name": "Suporte"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "name": "Shotgun"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "name": "Sniper de Airsoft"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "name": "Rifle HTA"
+    },
+    {
+      "url": "/airsoft/pistola-airsoft/pistola-eletricas-aep/",
+      "name": "Pistola Elétrica (AEP)"
+    },
+    {
+      "url": "/airsoft/pistola-airsoft/revolver/",
+      "name": "Revólver"
+    },
+    {
+      "url": "/airsoft/pistola-airsoft/",
+      "name": "Pistolas"
+    },
+    {
+      "url": "/airsoft/pistola-airsoft/pistola-spring/",
+      "name": "Pistola Spring"
+    },
+    {
+      "url": "/airsoft/pistola-airsoft/pistola-a-gas-gbb/",
+      "name": "Pistola a Gás (GBB)"
+    },
+    {
+      "url": "/airsoft/armas-de-airsoft/armas-de-epoca/",
+      "name": "Armas de Época"
+    },
+    {
+      "url": "/airsoft/comunicacao/radios/",
+      "name": "Rádios"
+    },
+    {
+      "url": "/airsoft/comunicacao/",
+      "name": "Comunicação"
+    },
+    {
+      "url": "/airsoft/bazar-de-usados/",
+      "name": "Usados"
+    },
+    {
+      "url": "/airsoft/brinquedos-e-jogos/",
+      "name": "Brinquedos e Jogos"
+    },
+    {
+      "url": "/airsoft/comunicacao/ptts-fones/",
+      "name": "PTTS/Fones"
+    },
+    {
+      "url": "/airsoft/miras-para-airsoft/",
+      "name": "Miras e Óptica"
+    },
+    {
+      "url": "/airsoft/miras-para-airsoft/colimadores/",
+      "name": "Colimadores"
+    },
+    {
+      "url": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "name": "Alça e Massa de Mira"
+    },
+    {
+      "url": "/airsoft/miras-para-airsoft/red-green-dot/",
+      "name": "Red / Green Dot"
+    },
+    {
+      "url": "/airsoft/miras-para-airsoft/lunetas/",
+      "name": "Lunetas"
+    },
+    {
+      "url": "/airsoft/miras-para-airsoft/protetores-de-mira/",
+      "name": "Protetores de Mira"
+    },
+    {
+      "url": "/airsoft/acessorios-para-airsoft/",
+      "name": "Acessórios para Airsoft"
+    },
+    {
+      "url": "/life-style/camisetas/camisetas-femininas/",
+      "name": "Camisetas Femininas"
+    },
+    {
+      "url": "/life-style/camisas/camisa-polo/",
+      "name": "Camisa Polo"
+    },
+    {
+      "url": "/life-style/manguito/",
+      "name": "Manguito"
+    },
+    {
+      "url": "/life-style/calcas-jeans/",
+      "name": "Calças Jeans"
+    },
+    {
+      "url": "/life-style/camisetas/",
+      "name": "Camisetas"
+    },
+    {
+      "url": "/life-style/bermudas/",
+      "name": "Bermudas"
+    }
+  ],
+  "brands": [],
+  "products": [
+    {
+      "slug": "rifle-de-airsoft-mp7-gbb-hk-umarex",
+      "name": "RIFLE DE AIRSOFT MP7 GBB - H&K/UMAREX",
+      "sku": "6768",
+      "priceCents": 369000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/4c8cedb22ae892882fe4c1cb683dfc3f-018a294af6cfebf96e17366010773669-1024-1024.webp",
+      "images": [
+        "/produtos/e0c3dc6a62a7f830.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-mp9-gbb-ksc-kwa",
+      "name": "SUBMETRALHADORA DE AIRSOFT MP9 GBB - KSC/KWA",
+      "sku": "5636",
+      "priceCents": 469000,
+      "compareAtCents": 479000,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/3841b9ab774de951483db4911431834a-c116d2a45e9f97f07b17401525189882-1024-1024.webp",
+      "images": [
+        "/produtos/fd6500ad96a6675c.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-daniel-defense-mk18-dual-tone-gbbr-6mmproshop",
+      "name": "RIFLE DE AIRSOFT DANIEL DEFENSE MK18 DUAL TONE GBBR - 6mmProShop",
+      "sku": "B0326",
+      "priceCents": 469000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/a3a208252a969ec9a468ad0c47b042a5-c736265c5e5af9bbc017640007891212-1024-1024.webp",
+      "images": [
+        "/produtos/61c56dc6ba9fdb20.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-daniel-defense-mk18-dual-tone-tan-furniture-gbbr-6mmproshop",
+      "name": "RIFLE DE AIRSOFT DANIEL DEFENSE MK18 DUAL TONE TAN FURNITURE GBBR - 6mmProShop",
+      "sku": "10987",
+      "priceCents": 469000,
+      "compareAtCents": 479000,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/da7e946e6d3828fde38881c5645ca161-9dbf2358926efc16f417044657476294-1024-1024.webp",
+      "images": [
+        "/produtos/2dd3c51b4fe33f5d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-daniel-defense-mk18-bk-gbbr-6mmproshop",
+      "name": "RIFLE DE AIRSOFT DANIEL DEFENSE MK18 BK GBBR - 6mmProShop",
+      "sku": "B1652",
+      "priceCents": 529000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f1588c3cac54b0063e802332cd1f1c26-000d95e3340312a22f17907726661616-1024-1024.webp",
+      "images": [
+        "/produtos/7607dcaf68616b5a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-scar-h-gbb-tan-fn-herstal-cybergun",
+      "name": "RIFLE DE AIRSOFT SCAR-H GBB TAN - FN Herstal CYBERGUN",
+      "sku": "B1640",
+      "priceCents": 369000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/b2cbeee38943d893b2981a081363ca68-7630463227bae5457317906178511339-1024-1024.webp",
+      "images": [
+        "/produtos/8cd3238de6a1e54e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-mp7-gbb-dual-tone-hk-umarex",
+      "name": "SUBMETRALHADORA DE AIRSOFT MP7 GBB DUAL TONE H&K/UMAREX",
+      "sku": "B1618",
+      "priceCents": 419000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/16f034fc33fb9ba3b757b412d25f71d2-d424f28c4952d6870817902760101611-1024-1024.webp",
+      "images": [
+        "/produtos/4cf7342c03610113.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-airsoft-scar-l-cqc-gbb-6mm-tan-cybergun-fn-herstal",
+      "name": "RIFLE AIRSOFT SCAR-L CQC GBB 6MM TAN CYBERGUN FN HERSTAL",
+      "sku": "B0431",
+      "priceCents": 259000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/26c8fc7f934165c5f1b19e8b78d18309-ac65c64a06983920dd17653037042414-1024-1024.webp",
+      "images": [
+        "/produtos/b44649a4854e5c84.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-winchester-m1873-gbbr-standard-madeira-real-ak",
+      "name": "RIFLE DE AIRSOFT WINCHESTER M1873 GBBR STANDARD MADEIRA REAL - A&K",
+      "sku": "2361",
+      "priceCents": 529000,
+      "compareAtCents": 599990,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7cf62b5530450c7565b967ed236cbbf2-d5da1650b79228af4d17424802446524-1024-1024.webp",
+      "images": [
+        "/produtos/b40a35d4385749ca.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-scar-h-gbb-fn-herstal-cybergun",
+      "name": "RIFLE DE AIRSOFT SCAR-H GBB - FN Herstal CYBERGUN",
+      "sku": "5674",
+      "priceCents": 359000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/e97adbcce3de184fbd2e0102efb303d6-dbf42d02ce0c1dbf5d17411897296719-1024-1024.webp",
+      "images": [
+        "/produtos/880fe1be38e807fb.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-gbb-ar-15-cqb-r-matrix",
+      "name": "RIFLE DE AIRSOFT M4 GBB AR-15 CQB-R - MATRIX",
+      "sku": "6776",
+      "priceCents": 579000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-de-airsoft-gbbr/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/5e2f9cf19d0cb067524b5a24a3b218a2-310e3ccf733484ecf517367793849798-1024-1024.webp",
+      "images": [
+        "/produtos/e46b43b57f4021df.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-kriss-vector-krytac",
+      "name": "RIFLE DE AIRSOFT KRISS VECTOR KRYTAC",
+      "sku": "7623",
+      "priceCents": 589000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/rifle-de-airsoft-kriss-vector-krytac-53ac6208772fc5110817823139264185-1024-1024.webp",
+      "images": [
+        "/produtos/e6861a3be961bb5a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-kwa-modelo-rm4a1-full-metal",
+      "name": "RIFLE DE AIRSOFT RM4A1 FULL METAL KWA",
+      "sku": "A4473",
+      "priceCents": 489000,
+      "compareAtCents": 499000,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d92dbbaf318aa0ee0bfb67a54caee4dbawsaccesskeyidakiatclmsgfx4g7qtfvdexpires1674570230signaturetlq7luj2fxgciox9v2f9m9g9h653s3d-5d5cae8f8dd031e34c16430342333766-1024-1024.webp",
+      "images": [
+        "/produtos/40ee54d15d27ef5f.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-ronin-10-sbr-m-lok-kwa",
+      "name": "RIFLE DE AIRSOFT RONIN 10 SBR M-LOK KWA",
+      "sku": "2530",
+      "priceCents": 459000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/rifle-de-airsoft-trident-mkii-spr-krytac-0692bca60c67b5db2817852475001928-1024-1024.webp",
+      "images": [
+        "/produtos/19f03f68998ae286.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-trident-mkii-spr-krytac",
+      "name": "RIFLE DE AIRSOFT TRIDENT MKII SPR KRYTAC",
+      "sku": "7029",
+      "priceCents": 459000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6543854488-kwa-77135-1-9c350abda0585b6dbd16366323898059-1024-1024.webp",
+      "images": [
+        "/produtos/912897327c5796d1.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-kwa-modelo-rm4-sr10-full-metal",
+      "name": "RIFLE DE AIRSOFT RM4 SR10 FULL METAL KWA",
+      "sku": "2272",
+      "priceCents": 325000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f19f525746f16bcd6e9b7c688945cbc3-2dd307f4e025c991a417471463743692-1024-1024.webp",
+      "images": [
+        "/produtos/9fb63311892dde35.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-ar15-neptune-9-marsoc-mil-spec-ctr-rossi",
+      "name": "RIFLE DE AIRSOFT AR15 NEPTUNE 9\" MARSOC MIL SPEC CTR - ROSSI",
+      "sku": "3910-1",
+      "priceCents": 379000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/94587da65f40aec9126c34bd9b022a81-f2ff09be65464520e917371160528086-1024-1024.webp",
+      "images": [
+        "/produtos/0bb1e0e7fe833824.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-akm-full-steel-e-madeira-real-el",
+      "name": "RIFLE DE AIRSOFT AKM FULL STEEL E MADEIRA REAL - E&L",
+      "sku": "3084",
+      "priceCents": 349000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/452c411248f4bf944f5c5adc1f0c3aa4-f01666305e3cf6d4f317247730456288-1024-1024.webp",
+      "images": [
+        "/produtos/1907318e5ffa699d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-aks-74un-full-steel-madeira-real-el",
+      "name": "RIFLE DE AIRSOFT AKS-74UN FULL STEEL MADEIRA REAL - E&L",
+      "sku": "8184",
+      "priceCents": 439000,
+      "compareAtCents": 589000,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6517732777-products16932-1200x800-1754498998-daa77297a42f1e043115815226981183-1024-1024.webp",
+      "images": [
+        "/produtos/bd44230f09aa0388.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-krytac-modelo-lvoa-c-m4",
+      "name": "RIFLE DE AIRSOFT LVOA-C M4 KRYTAC",
+      "sku": "5219",
+      "priceCents": 199000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8a58ff98898f3bf9896105b65313d1cc-3bccf76df6224993b317121579654829-1024-1024.webp",
+      "images": [
+        "/produtos/dc85e75754bd00d9.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-aeg-ar15-sentinel-10-m-lock-rossi",
+      "name": "RIFLE DE AIRSOFT AEG AR15 SENTINEL 10″ M-LOCK - ROSSI",
+      "sku": "1555",
+      "priceCents": 199000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 17,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/rifle-de-airsoft-aeg-ar15-sentinel-8-m-lock-rossi-8-262cddc5fc6c5ccc7817627946473917-1024-1024.webp",
+      "images": [
+        "/produtos/73f8af4726e6bc17.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-aeg-ar15-sentinel-8-m-lock-rossi",
+      "name": "RIFLE DE AIRSOFT AEG AR15 SENTINEL 8″ M-LOCK - ROSSI",
+      "sku": "1881",
+      "priceCents": 419000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/riflesdeairsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7576254579-kwa-104-04500-1-56194-1573665879-1556da581c7eaccdc915829052558117-1024-1024.webp",
+      "images": [
+        "/produtos/39fbcd4a3909b961.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magazine-para-m4-serie-midcap-100-bbs-zc-em-abs",
+      "name": "MAGAZINE PARA M4 SERIE MIDCAP 100 BBS EM ABS - MG-014 - ZC",
+      "sku": "2355",
+      "priceCents": 7990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 28,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/magazine-para-airsoft-m4-mid-cap-black-m11-5ffa19b3b4fecac37e15973240558186-1024-1024.webp",
+      "images": [
+        "/produtos/f9bdac3f071dfd33.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magazine-para-ump-mid-cap-100-bbs-zc",
+      "name": "MAGAZINE PARA UMP MID-CAP 100 BBS MG-008 - ZC",
+      "sku": "4180",
+      "priceCents": 84900,
+      "compareAtCents": 93500,
+      "promoPriceCents": null,
+      "stock": 25,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/pistola-de-airsoft-glock-cm030-g18c-eletrica-cyma-5-4340cc3e9ba128050417881909652977-1024-1024.webp",
+      "images": [
+        "/produtos/04027a9be21960bc.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-cyma-modelo-glock-cm030-eletrica",
+      "name": "PISTOLA DE AIRSOFT GLOCK CM030 G18C ELÉTRICA CYMA",
+      "sku": "4254",
+      "priceCents": 9990,
+      "compareAtCents": 12900,
+      "promoPriceCents": null,
+      "stock": 103,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6579443822-carregador-magazine-mid-cap-65-bbs-p-m4-m16-em-metal-dboys-ab7c2c20be878ea2c815816214585552-1024-1024.webp",
+      "images": [
+        "/produtos/ed090f09d3c5284f.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magazine-para-airsoft-m4-m16-mid-cap-100-bbs-em-metal",
+      "name": "MAGAZINE PARA AIRSOFT M4/M16 MID CAP 100 BBS EM METAL MG-013 - ZC",
+      "sku": "A4652",
+      "priceCents": 12900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 43,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/2c29f0676c3f859cee373cea742242e1awsaccesskeyidakiatclmsgfx4g7qtfvdexpires1676983946signaturezus2bwfllkj6nymldnfitp2lzoyo3d-011164cd8456818a0716454479493164-1024-1024.webp",
+      "images": [
+        "/produtos/0bfa1317b09305c0.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magazine-para-m4-m16-mid-cap-120-bbs-bk-specna-arms",
+      "name": "MAGAZINE PARA M4/M16 MID CAP 120 BBS BK SPECNA ARMS",
+      "sku": "A1171",
+      "priceCents": 2490,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 169,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/9508778982-6319672edf-415fdb8384d39891c116299188482696-1024-1024.webp",
+      "images": [
+        "/produtos/790743e7a88a3adb.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "granada-de-fumaca-ot-smoke-pavio",
+      "name": "GRANADA DE FUMAÇA OT SMOKE PÁVIO",
+      "sku": "1673",
+      "priceCents": 9900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/sem-titulo1-6fcd1b57543799610b15974059795871-1024-1024.webp",
+      "images": [
+        "/produtos/97d21565202013ce.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magazine-para-m4-m16-ar15-high-cap-300-bbs-em-metal-zc",
+      "name": "MAGAZINE PARA M4/M16/AR15 HIGH-CAP 300 BB'S EM METAL M-122/MG-012 - ZC",
+      "sku": "A1627",
+      "priceCents": 17500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 9,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/9989309358-ares-12831-2-6d0d6cded8ea74680c16040660508164-1024-1024.webp",
+      "images": [
+        "/produtos/a86f2bd211d0cd86.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magazine-amag-m4-m16-mid-cap-100bbs-preto-ares",
+      "name": "MAGAZINE AMAG M4/M16 MID-CAP 100BBS PRETO ARES",
+      "sku": "A0476",
+      "priceCents": 28500,
+      "compareAtCents": 29900,
+      "promoPriceCents": null,
+      "stock": 101,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/687c34af8e7f45c233cd33d86e267b87awsaccesskeyidakiatclmsgfx4g7qtfvdexpires1683029633signaturer6nyrroltmtbhkdjrtfp7ryrra03d-7ce7bb6fbd87f9306616514936382059-1024-1024.webp",
+      "images": [
+        "/produtos/cb12fd2c6de5d645.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magazine-para-glock-g17-gen5-e-gen4-gbb-we",
+      "name": "MAGAZINE PARA GLOCK G17 GEN5 E GEN4 GBB WE",
+      "sku": "2373",
+      "priceCents": 21500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/magazine-para-mp5-mid-cap-100-bbs-metal-636438ff41d132915117395436540438-1024-1024.webp",
+      "images": [
+        "/produtos/253fd30a5c92f3d6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magazine-para-mp5-mid-cap-100-bbs-metal",
+      "name": "MAGAZINE PARA MP5 MID-CAP 100 BB'S METAL",
+      "sku": "4813",
+      "priceCents": 14900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 9,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7597768080-products304-1200x800-137699-01e3c8e772bb38d5e315862675244706-1024-1024.webp",
+      "images": [
+        "/produtos/2262dfa3044eab70.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "conversor-de-magazine-g36-mk36-para-m4-m16",
+      "name": "CONVERSOR DE MAGAZINE G36 / MK36 PARA M4 / M16 GP0040 - ZC",
+      "sku": "A0063",
+      "priceCents": 12900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 32,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7755637250-specna-94171-d533ae193efa0bbc8e16454479319855-1024-1024.webp",
+      "images": [
+        "/produtos/035d2c2816090d04.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "airsoft-sniper-bravo-mk98-indicado-para-uso-decorativo",
+      "name": "AIRSOFT SNIPER BRAVO MK98 – INDICADO PARA USO DECORATIVO",
+      "sku": "A5159-1",
+      "priceCents": 95000,
+      "compareAtCents": 99999,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/5724f1f85f0953428b3253baf4244885awsaccesskeyidakiatclmsgfx4j7tu445expires1729092031signaturentbsoertghkwydcco5fnizrxry83d-0b114879a66dda45f816975560585410-1024-1024.webp",
+      "images": [
+        "/produtos/4f29e7826c02bb5c.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-001b-spring",
+      "name": "RIFLE DE AIRSOFT SNIPER 001B SPRING",
+      "sku": "A5162",
+      "priceCents": 69500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 17,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/70af4d992c747cd65882b8af0c334e79awsaccesskeyidakiatclmsgfx4j7tu445expires1688571332signature0nsqiuuuvyhqdhfvq3g2fftgxmpu3d-558df7738ffc276ed116570353380363-1024-1024.webp",
+      "images": [
+        "/produtos/601555f1ca1d1737.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m1b-carbine-spring",
+      "name": "RIFLE DE AIRSOFT M1B CARBINE SPRING",
+      "sku": "7623",
+      "priceCents": 589000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/rifle-de-airsoft-kriss-vector-krytac-53ac6208772fc5110817823139264185-1024-1024.webp",
+      "images": [
+        "/produtos/e6861a3be961bb5a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-1911a1-gen2-gbb-we1",
+      "name": "PISTOLA DE AIRSOFT 1911A1 GEN2 GBB WE",
+      "sku": "A5020",
+      "priceCents": 48900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/610ae5919acf4fd51ff920750bbe0423awsaccesskeyidakiatclmsgfx4j7tu445expires1686239564signaturewauf5g49mikentu5htrjv7vstzo3d-df44df713868eabe6216547035772125-1024-1024.webp",
+      "images": [
+        "/produtos/1b2b4893bfe71973.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "combo-airsoft-rifle-m4-e-pistola-glock-spring-vg",
+      "name": "COMBO AIRSOFT RIFLE M4 E PISTOLA GLOCK SPRING - VG",
+      "sku": "2272",
+      "priceCents": 325000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f19f525746f16bcd6e9b7c688945cbc3-2dd307f4e025c991a417471463743692-1024-1024.webp",
+      "images": [
+        "/produtos/9fb63311892dde35.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "drop-stock-para-speedsoft-kpp-airsoft",
+      "name": "DROP STOCK PARA SPEEDSOFT - KPP AIRSOFT",
+      "sku": "4166",
+      "priceCents": 69900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/speed-soft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/9eb296bf45013fa64d4b43edd11838bbawsaccesskeyidakiatclmsgfx4j7tu445expires1702587073signature4xbnjd00uvv2fcvv7pllu2f8vxkk3d-532b74e47cbbbb2e5d16710510825844-1024-1024.webp",
+      "images": [
+        "/produtos/8f0d5ad4b228a592.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "kit-rifle-de-airsoft-m4a1-custom-cm619-cyma",
+      "name": "KIT RIFLE DE AIRSOFT M4A1 CUSTOM CM619 CYMA",
+      "sku": "A4476",
+      "priceCents": 231000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/kit-rifles-airsoft-aeg/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/bebd4d247dca58876ed407e9426d000aawsaccesskeyidakiatclmsgfx4g7qtfvdexpires1674665599signatureirvhk76razg6jvtgoi2fbtqqaghi3d-88f0c40ed319dac50416431296026183-1024-1024.webp",
+      "images": [
+        "/produtos/fd26021764cc0861.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-suporte-m249-para-6mm-hsem001-hwasan",
+      "name": "RIFLE DE AIRSOFT SUPORTE M249 PARA 6MM HSEM001 - HWASAN",
+      "sku": "B0619",
+      "priceCents": 339000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/suporte/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/10c3e980f83917ae582c2e80053dd26b-6b5edad408a286537217684211236544-1024-1024.webp",
+      "images": [
+        "/produtos/0adc001405a651a1.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-suporte-mk46-mod-0-hsem003-hwasan",
+      "name": "RIFLE DE AIRSOFT SUPORTE MK46 MOD.0 HSEM003 - HWASAN",
+      "sku": "5363",
+      "priceCents": 469000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/suporte/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/543e284b20c79d2eb256326964460712-b755202f221d48585817386862311043-1024-1024.webp",
+      "images": [
+        "/produtos/77f990bde3ee33c6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-suporte-lmg-m249-light-elet-6mm-rossi",
+      "name": "RIFLE DE AIRSOFT SUPORTE LMG M249 LIGHT ELÉT. 6MM - ROSSI",
+      "sku": "6688",
+      "priceCents": 599000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/suporte/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7f3618fd29ebad75a8c6c0d1200f5fcb-040afa462469ac5b6d17326352826572-1024-1024.webp",
+      "images": [
+        "/produtos/88b7c28fd578eeb5.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-suporte-m249-mkii-para-dark-earth-ak",
+      "name": "RIFLE DE AIRSOFT SUPORTE M249 MKII PARA DARK EARTH - A&K",
+      "sku": "B1632",
+      "priceCents": 485000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/suporte/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/85f541e3385c12e995a516faecc91884-e6c67755d2cc08e52117903481677491-1024-1024.webp",
+      "images": [
+        "/produtos/b51dc6cc82617bee.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-suporte-lmg-m249-saw-light-long-elet-6mm-rossi",
+      "name": "RIFLE DE AIRSOFT SUPORTE LMG M249 SAW LIGHT LONG ELET. 6MM - ROSSI",
+      "sku": "B1479",
+      "priceCents": 599000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/suporte/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/df44090e4810532a1fd7de62b0734356-66ba9fcacbf57f6fee17891557045285-1024-1024.webp",
+      "images": [
+        "/produtos/849874126db2d84b.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-airsoft-suporte-m249k-6mm-fn-herstal-ak",
+      "name": "RIFLE AIRSOFT SUPORTE M249K 6MM FN HERSTAL A&K",
+      "sku": "5620",
+      "priceCents": 359000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/suporte/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/9331b7e9b9ff22c64d2309f5a51fc4a7-476fb633dd71f4c3da17400676226824-1024-1024.webp",
+      "images": [
+        "/produtos/17c4fa0205ecf545.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "shotgun-de-airsoft-b28b-m3-3-burst-pistol-grip-spring-bravo",
+      "name": "SHOTGUN DE AIRSOFT B28B M3 3-BURST PISTOL GRIP SPRING - BRAVO",
+      "sku": "B0247",
+      "priceCents": 59000,
+      "compareAtCents": 79000,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f7b06bfe7297a9f1c6ff571cdf670eff-a415beeae18538f72f17631426440347-1024-1024.webp",
+      "images": [
+        "/produtos/693cb0364f0d13af.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "shotgun-de-airsoft-pump-short-spring-vg",
+      "name": "SHOTGUN DE AIRSOFT PUMP SHORT SPRING VG",
+      "sku": "B1565",
+      "priceCents": 199000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/dfab942bfc99f2cc90c181706611aeb1-3f31acaf183014f96917900105198360-1024-1024.webp",
+      "images": [
+        "/produtos/2203223b956dba92.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "shotgun-de-airsoft-m870-spring-full-metal-st",
+      "name": "SHOTGUN DE AIRSOFT M870 SPRING FULL METAL S&T",
+      "sku": "B1488",
+      "priceCents": 99900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/4d5632f7f23a01f5c9ff2a562cb1072a-02ffcd9beba949cb0217891557349980-1024-1024.webp",
+      "images": [
+        "/produtos/8c06477aeb84e3db.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "shotgun-de-airsoft-m3-3-shots-spring-cm360-cyma",
+      "name": "SHOTGUN DE AIRSOFT M3 3 SHOTS SPRING CM360 - CYMA",
+      "sku": "5728",
+      "priceCents": 159000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/e4b7802369faa986e410c489502a8dca-f33b2a5d3442bc18c517891585538272-1024-1024.webp",
+      "images": [
+        "/produtos/e2c98a82df8e9908.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-magnum-4-full-metal-co2-wingun",
+      "name": "REVÓLVER DE AIRSOFT MAGNUM 4'' FULL METAL CO2 - WINGUN",
+      "sku": "B1490",
+      "priceCents": 119000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8d8d380636aae464f13b90b9a60dd5b5-095a3ebaa72c2044d117891557423449-1024-1024.webp",
+      "images": [
+        "/produtos/ddd85ea849caa8b8.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "shotgun-de-airsoft-m3-3-shots-spring-sport-cm363l-cyma",
+      "name": "SHOTGUN DE AIRSOFT M3 3 SHOTS SPRING SPORT CM363L - CYMA",
+      "sku": "B1489",
+      "priceCents": 119000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/a1a05355e7747fd18cf08fc7bebcbf74-5c933531c6c5dfe39417891557386392-1024-1024.webp",
+      "images": [
+        "/produtos/a187124a3835890c.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "shotgun-de-airsoft-m3-3-shots-spring-coronha-retratil-cm363-cyma",
+      "name": "SHOTGUN DE AIRSOFT M3 3 SHOTS SPRING CORONHA RETRÁTIL CM363 - CYMA",
+      "sku": "B1312",
+      "priceCents": 17900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/66dde5f2dd491d9e05a36fb21fcd377b-074dcc5da6294c8fce17848227773533-1024-1024.webp",
+      "images": [
+        "/produtos/120b0ea7ba98ba71.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "shotgun-de-airsoft-pump-short-tactical-spring-vg",
+      "name": "SHOTGUN DE AIRSOFT PUMP SHORT TACTICAL SPRING VG",
+      "sku": "A4028",
+      "priceCents": 279000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7c051b407e31acb9b2526983863e5292-2738c852ac71ea568f17676250386541-1024-1024.webp",
+      "images": [
+        "/produtos/200dc2bbddc7e96b.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sa-e05-edge-bk-specna-arms-cbdqf",
+      "name": "RIFLE DE AIRSOFT SA-E05 EDGE BK SPECNA ARMS",
+      "sku": "B0501",
+      "priceCents": 249000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/shotgun-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/03aad8d72d4bc902500d201a56714442-29822e961c29da7ed217661528829711-1024-1024.webp",
+      "images": [
+        "/produtos/5a8c039d626672a8.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-m24-storm-mola-6mm-rossi",
+      "name": "RIFLE DE AIRSOFT SNIPER M24 STORM MOLA 6MM ROSSI",
+      "sku": "B0307",
+      "priceCents": 129000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 18,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/41caaf631697b9fcc70a300c068317e5-792e5045b677936be717637308493621-1024-1024.webp",
+      "images": [
+        "/produtos/0e632020aee7d6e8.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-asr-jp-54-echo1",
+      "name": "RIFLE DE AIRSOFT SNIPER ASR JP-54 - ECHO1",
+      "sku": "10182",
+      "priceCents": 179000,
+      "compareAtCents": 189000,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8bc741ccb4271d5e3172605d33418692awsaccesskeyidakiatclmsgfx4j7tu445expires1731073903signaturejxisvphlqi71gksjvtkxmvirhjg3d-418215783cb980f17f16995379298598-1024-1024.webp",
+      "images": [
+        "/produtos/55413cdf8a484a64.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-m40-storm-mola-6mm-rossi",
+      "name": "RIFLE DE AIRSOFT SNIPER M40 STORM MOLA 6MM - ROSSI",
+      "sku": "A5195-0",
+      "priceCents": 189000,
+      "compareAtCents": 249000,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/2dbfb5b4bbbbc6917652a9bf575402b6awsaccesskeyidakiatclmsgfx4j7tu445expires1725027506signature2y4w28fp5no2c3rwlsosg3vcgeg3d-c4315bd7071c98a9bd16934915353131-1024-1024.webp",
+      "images": [
+        "/produtos/337589cf91b38d9a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-m24-black-spring-ql-a010-com-upgrade-hta",
+      "name": "RIFLE DE AIRSOFT SNIPER M24 BLACK SPRING QL-A010 COM UPGRADE HTA",
+      "sku": "B1199",
+      "priceCents": 139000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/70e2b5a53c88c123b515f10b02e2e562-fa041551dfa9481cd217816173492647-1024-1024.webp",
+      "images": [
+        "/produtos/1ee873a6c7a4c868.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-vsr-10-precision-psr-jp-88-echo1",
+      "name": "RIFLE DE AIRSOFT SNIPER VSR-10 PRECISION PSR JP-88 - ECHO1",
+      "sku": "9059-1",
+      "priceCents": 499000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/9061e2e0dcaf67419f71071395b8dd12-f984af2dafe386384f17533646898837-1024-1024.webp",
+      "images": [
+        "/produtos/82faef2dab11ac4c.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-mlc-ltr303-vsr-10-maple-leaf",
+      "name": "RIFLE DE AIRSOFT SNIPER MLC LTR303 VSR-10 - MAPLE LEAF",
+      "sku": "2947",
+      "priceCents": 249000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/65df27d41631d554e743de3cc30ae411-710654f59ad15f39de17212303028836-1024-1024.webp",
+      "images": [
+        "/produtos/fd2156918f4f82d7.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-m24-storm-wood-mola-6mm-rossi",
+      "name": "RIFLE DE AIRSOFT SNIPER M24 STORM WOOD MOLA 6MM ROSSI",
+      "sku": "A3413",
+      "priceCents": 629000,
+      "compareAtCents": 699000,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/11285583261-sba-69255a-538f321ba8f14c9e1416300973922395-1024-1024.webp",
+      "images": [
+        "/produtos/1c688d19cbb3e2ba.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-sniper-srs-a2-16-hand-guard-em-metal-silverback",
+      "name": "RIFLE DE AIRSOFT SNIPER SRS-A2 16\" HAND GUARD EM METAL - SILVERBACK",
+      "sku": "B1751",
+      "priceCents": 199900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/33f3f3977c4a5a8a01839f91969b5705-ffe10682630d3e61ba17932846857326-1024-1024.webp",
+      "images": [
+        "/produtos/fcf18208bae59915.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-airsoft-sniper-m40-a5-sa-s03-vsr-10-multicam-specna-arms",
+      "name": "RIFLE AIRSOFT SNIPER M40 A5 SA-S03 VSR-10 MULTICAM SPECNA ARMS",
+      "sku": "A4052",
+      "priceCents": 179000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/sniper-de-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/41e513a2042894fb4f259a0ae1a6149c-7c317d4ddfc6d89a4d17932838901885-1024-1024.webp",
+      "images": [
+        "/produtos/9792e4bd757a49c2.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-pdw-ris-5-5-pol-supressor-ql048-hta",
+      "name": "RIFLE DE AIRSOFT M4 PDW RIS 5.5 POL SUPRESSOR QL048 - HTA",
+      "sku": "2625-1",
+      "priceCents": 219500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 34,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/b3f53c796ae412f1bce15ec2de79a276-6b182a811d1515eeea17134557443642-1024-1024.webp",
+      "images": [
+        "/produtos/f04ce180c8b06b9a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-mk18-hand-guard-cnc-9-polegadas-ql018s-hta",
+      "name": "RIFLE DE AIRSOFT MK18 HAND GUARD CNC 9 POLEGADAS QL018S - HTA",
+      "sku": "2630-1",
+      "priceCents": 219000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/4c4a08c19721ca53ad4715d16c0c280f-f1e6910ad8ee4b2feb17134553125515-1024-1024.webp",
+      "images": [
+        "/produtos/1c2dc0aeb1b46c0a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-longa-cnc-mlock-12-polegadas-ql026s-hta",
+      "name": "RIFLE DE AIRSOFT M4 LONGA CNC MLOCK 12 POLEGADAS QL026S - HTA",
+      "sku": "2733-1",
+      "priceCents": 289000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f643e0b5664b1daee46180522d40fe5c-f20d53a2067d7e464517133700033636-1024-1024.webp",
+      "images": [
+        "/produtos/7654b6e8d17e1a4d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-lvoa-m4-ris-16-polegadas-full-metal-ql025-hta",
+      "name": "RIFLE DE AIRSOFT LVOA-M4 RIS 16 POLEGADAS FULL METAL QL025 - HTA",
+      "sku": "2687-1",
+      "priceCents": 219000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 7,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/a755c30a7b934b20b00e9fc975b5f173-469e69afc8ec64cacf17134425032674-1024-1024.webp",
+      "images": [
+        "/produtos/5f53c4ced0de0ec2.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-cqb-ris-5-polegadas-full-metal-ql008-hta",
+      "name": "RIFLE DE AIRSOFT M4 CQB RIS 5 POLEGADAS FULL METAL QL008 - HTA",
+      "sku": "2688-1",
+      "priceCents": 239000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7b1b528945146d0bc36016688249f0f2-d6172707b6a18a71ef17133703624055-1024-1024.webp",
+      "images": [
+        "/produtos/2c834a372eb19f1d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-ris-hand-guard-cnc-8-polegadas-full-metal-ql009-hta",
+      "name": "RIFLE DE AIRSOFT M4 RIS HAND GUARD CNC 8 POLEGADAS FULL METAL QL009 - HTA",
+      "sku": "2623-1",
+      "priceCents": 189900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 40,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/45d3e3425348185742635fba9e209715-ec382ae4239d23e67817134559477373-1024-1024.webp",
+      "images": [
+        "/produtos/e61068caa0a58f23.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-ris-hand-guard-cnc-8-polegadas-ql011s-hta",
+      "name": "RIFLE DE AIRSOFT M4 RIS HAND GUARD CNC 8 POLEGADAS QL011S - HTA",
+      "sku": "2627-1",
+      "priceCents": 219500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 6,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/03e308735ba243a2c9515e8a3609ff19-45b33b64f8945bac8917134427499270-1024-1024.webp",
+      "images": [
+        "/produtos/9038fefb6541b4b0.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-ris-10-polegadas-cnc-ql019s-hta",
+      "name": "RIFLE DE AIRSOFT M4 RIS 10 POLEGADAS CNC QL019S - HTA",
+      "sku": "2629-1",
+      "priceCents": 199900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/76060556ee81dde8ce29a36008cb722f-6e8d5ae567fa79f2fa17134426780545-1024-1024.webp",
+      "images": [
+        "/produtos/bbaf11203a5f39b2.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-cqb-kmr-8-polegadas-ql021s-hta",
+      "name": "RIFLE DE AIRSOFT M4 CQB KMR 8 POLEGADAS QL021S - HTA",
+      "sku": "2631-1",
+      "priceCents": 229000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/043e06c5394d323ea349b9aa5796dedd-90ded9eaa5a6ce6e6a17134426211769-1024-1024.webp",
+      "images": [
+        "/produtos/17dbef510812b6de.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-lvoa-m4-ris-16-polegadas-ql028s-hta",
+      "name": "RIFLE DE AIRSOFT LVOA-M4 RIS 16 POLEGADAS QL028S - HTA",
+      "sku": "2697-1",
+      "priceCents": 275000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/3a44a5c5ccf7c85177bcbe2a8108fbdf-30a04877b5d185be3b17133699742170-1024-1024.webp",
+      "images": [
+        "/produtos/092ced41311c5486.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m4-pdw-ris-5-5-pol-ql041-hta",
+      "name": "RIFLE DE AIRSOFT M4 PDW RIS 5.5 POL QL041 - HTA",
+      "sku": "2707-1",
+      "priceCents": 249000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/rifle-airsoft-hta/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/4d0fa11714fa5e374cf3e837085cc1f5-b434fe86af241d0aa017133693315780-1024-1024.webp",
+      "images": [
+        "/produtos/21d54aadaedd71ff.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-m1895-nagan-full-metal-co2-wingun",
+      "name": "REVÓLVER DE AIRSOFT M1895 NAGAN FULL METAL CO2 - WINGUN",
+      "sku": "5522",
+      "priceCents": 199000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/a40a6af0ec6c5f4330212467989fefed-9605b5e667906b73d317395545203051-1024-1024.webp",
+      "images": [
+        "/produtos/57418a8fa01d0467.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-dan-wesson-6-preto-co2-full-metal-asg",
+      "name": "REVÓLVER DE AIRSOFT DAN WESSON 6\" PRETO CO2 FULL METAL - ASG",
+      "sku": "A2223",
+      "priceCents": 95000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/11525682201-a2ad9b7f457e5617850a369a050ce086-84aeafaa6da1e7985c16148675340109-1024-1024.webp",
+      "images": [
+        "/produtos/d836791888837800.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-hg-131c-1-silver-gbb-hfc",
+      "name": "REVÓLVER DE AIRSOFT HG-131C-1 SILVER GBB HFC",
+      "sku": "10983",
+      "priceCents": 169000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/3f81da2795d21c5d12eb62a43eefba16-418745e4e303a09d4917044585283213-1024-1024.webp",
+      "images": [
+        "/produtos/7a31422998fdbf0e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-g731-co2-full-metal-wingun",
+      "name": "REVÓLVER DE AIRSOFT G731 CO2 FULL METAL - WINGUN",
+      "sku": "B0388",
+      "priceCents": 99000,
+      "compareAtCents": 129000,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/075391610d133b278720571c952652e6-7da88b2b925a4c051817643503047880-1024-1024.webp",
+      "images": [
+        "/produtos/f610d7124089af93.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airgun-colt-python-357-co2-4-5mm-umarex",
+      "name": "REVÓLVER DE AIRGUN COLT PYTHON .357 CO2 4.5MM - UMAREX",
+      "sku": "B0059",
+      "priceCents": 95000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/c80c3cb0aac8c5aa20418ba8292a260b-e03878f4aa23200c5c17568249942063-1024-1024.webp",
+      "images": [
+        "/produtos/eac79ea00388075d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-6-hg-133c-1-green-gas-hfc",
+      "name": "REVÓLVER DE AIRSOFT 6'' HG-133C-1 GREEN GÁS - HFC",
+      "sku": "5655",
+      "priceCents": 169000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/eeedc438598880a8dbb5a4806e4820e9-60e71a6c26773bc63e17411896914107-1024-1024.webp",
+      "images": [
+        "/produtos/0ef6b1e26211873b.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-g731-co2-full-metal-cromado-wingun",
+      "name": "REVÓLVER DE AIRSOFT G731 CO2 FULL METAL CROMADO - WINGUN",
+      "sku": "B1497",
+      "priceCents": 239000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/57fa1c8fdd0ffefa93137e5fbe76f205-64d34e3f2d208030de17894099282381-1024-1024.webp",
+      "images": [
+        "/produtos/73b0184d1b97e19a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-airsoft-smith-wesson-model-29-8-3-8-co2-6mm-umarex",
+      "name": "REVÓLVER AIRSOFT SMITH & WESSON MODEL 29 8 3/8\" CO2 6MM UMAREX",
+      "sku": "B0342",
+      "priceCents": 299000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/e08437535292fe44090fa9234b35598c-6a8731244b436f542a17640084291409-1024-1024.webp",
+      "images": [
+        "/produtos/e7c39414852ac28d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airgun-smith-wesson-model-29-co2-calibre-177-umarex",
+      "name": "REVÓLVER DE AIRGUN SMITH & WESSON MODEL 29 CO2 CALIBRE .177 - UMAREX",
+      "sku": "A4881",
+      "priceCents": 239000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/c227ce740afd799b33b59bf0c4aa0b0eawsaccesskeyidakiatclmsgfx4g7qtfvdexpires1681923537signatureyiuosp9gwieppalyjofv3fq7s6m3d-f4898582f116d4d95616503875493192-1024-1024.webp",
+      "images": [
+        "/produtos/a43ebe29882abdcc.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-co2-titan-6s-full-metal-qgk",
+      "name": "REVÓLVER DE AIRSOFT CO2 TITAN 6S FULL METAL QGK",
+      "sku": "B1678",
+      "priceCents": 95000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/221c66d82bd702116df369b05199265f-694cf8e7a9fa83bfe717913003778987-1024-1024.webp",
+      "images": [
+        "/produtos/a30461462d9d9d42.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "revolver-de-airsoft-3-5-hg-134c-green-gas-hfc",
+      "name": "REVÓLVER DE AIRSOFT 3.5'' HG-134C GREEN GÁS - HFC",
+      "sku": "B1674",
+      "priceCents": 74900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/revolver/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/1049265243ff247b7f07b48decb94362-35badf24c5542f1a6f17913003749731-1024-1024.webp",
+      "images": [
+        "/produtos/bda5beff721b10a6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-we-modelo-glock-g17-gen5-tan",
+      "name": "PISTOLA DE AIRSOFT GLOCK G17 GEN5 TAN WE",
+      "sku": "C0154",
+      "priceCents": 259000,
+      "compareAtCents": 279000,
+      "promoPriceCents": null,
+      "stock": 26,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/e1313472e9c3d9eaf72e75c663d0e374-c9a397d1967b61592017901850715146-1024-1024.webp",
+      "images": [
+        "/produtos/f42939023537817d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-john-wick-3-combat-master-gbb-emg",
+      "name": "PISTOLA DE AIRSOFT JOHN WICK 3 COMBAT MASTER GBB EMG",
+      "sku": "2140",
+      "priceCents": 13900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 14,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7547938357-pistola-de-airsoft-vg-gk-v307-spring-6-0mm-vigor-z2-5be4642ea9e329add615829015966233-1024-1024.webp",
+      "images": [
+        "/produtos/592b68945eddce13.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-vg-gk-v307-spring-6mm-vigor",
+      "name": "PISTOLA DE AIRSOFT VG GK-V307 SPRING 6MM VIGOR",
+      "sku": "2574",
+      "priceCents": 279000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 12,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/pistola-de-airsoft-john-wick-4-pit-viper-gbb-emg-1-e29791890ed4ab8e5317791063520316-1024-1024.webp",
+      "images": [
+        "/produtos/e3737325784860ba.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-john-wick-4-pit-viper-gbb-emg",
+      "name": "PISTOLA DE AIRSOFT JOHN WICK 4 PIT VIPER GBB - EMG",
+      "sku": "1225",
+      "priceCents": 25990,
+      "compareAtCents": 33900,
+      "promoPriceCents": null,
+      "stock": 6,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/998f5a9a9862868c3ce8bc6debc2833cawsaccesskeyidakiatclmsgfx4j7tu445expires1690904299signaturep3jqlvkoalt6a1ohppvqkw25c0k3d-2e90b276fd0e6c094216593683109565-1024-1024.webp",
+      "images": [
+        "/produtos/fdb1b517300021ec.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-1911-v13-bk-full-metal-spring-vg",
+      "name": "PISTOLA DE AIRSOFT 1911 V13 BK FULL METAL SPRING VG",
+      "sku": "4718",
+      "priceCents": 199990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 7,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/311574-21-8edc403cd9537de59116126168210283-1024-1024.webp",
+      "images": [
+        "/produtos/24b916777446547c.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-we-modelo-m92-b-burton-gbb",
+      "name": "PISTOLA DE AIRSOFT M92 B.BURTON GBB WE",
+      "sku": "1979",
+      "priceCents": 239000,
+      "compareAtCents": 249000,
+      "promoPriceCents": null,
+      "stock": 11,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/ee2fa28971292f9d9c01cb151ccfeb77awsaccesskeyidakiatclmsgfx4j7tu445expires1693601355signature9wkfd6nkfltuh3eegcqplvnr7c83d-4267494a2bf7a2fdac16620653670805-1024-1024.webp",
+      "images": [
+        "/produtos/0a0d7dcf96749bb7.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-canik-tp9-gbb-cybergun",
+      "name": "PISTOLA DE AIRSOFT CANIK TP9 GBB CYBERGUN",
+      "sku": "1544",
+      "priceCents": 115000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/1f84da7c57f559367f98fd12587f82bfawsaccesskeyidakiatclmsgfx4j7tu445expires1706126948signaturegnuhskcda2bnb1rd8r2rkaqccx1g3d-6ab80030a12d25d16816745909591790-1024-1024.webp",
+      "images": [
+        "/produtos/06b9d3e5677f43bd.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-a-gas-green-gas-vg-v17-blowback-rossi",
+      "name": "PISTOLA DE AIRSOFT A GÁS GREEN GAS VG V17 BLOWBACK - ROSSI",
+      "sku": "2136",
+      "priceCents": 10900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 12,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7548611251-b-685b7e65ed2a658d8f15829016285289-1024-1024.webp",
+      "images": [
+        "/produtos/d826a642438f0509.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-vg-p226-2124-spring-vigor",
+      "name": "PISTOLA DE AIRSOFT VG P226 2124 SPRING VIGOR",
+      "sku": "B0513",
+      "priceCents": 129000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 9,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/c6d8efced844bed7535d06af43534874-a7bd979acc29ffba2717661658323570-1024-1024.webp",
+      "images": [
+        "/produtos/de154d71f88a5025.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-hi-capa-5-1-2011-combat-master-dark-earth-ec-2102-ec",
+      "name": "PISTOLA DE AIRSOFT HI-CAPA 5.1 2011 COMBAT MASTER DARK EARTH EC-2102 - E&C",
+      "sku": "4367",
+      "priceCents": 24900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6545458993-12-c7fcd9b1b1d91b3a4615816175453187-1024-1024.webp",
+      "images": [
+        "/produtos/1a76f106d19a9840.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-kwc-modelo-g7-hp-spring",
+      "name": "PISTOLA DE AIRSOFT G7 HP SPRING KWC",
+      "sku": "A2409",
+      "priceCents": 10990,
+      "compareAtCents": 13900,
+      "promoPriceCents": null,
+      "stock": 21,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-spring/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12435258298-25207833-gs1-9a774c7cc7dc6cf9c216204809846448-1024-1024.webp",
+      "images": [
+        "/produtos/64df6a3c35021b3d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-spring-24-7-v310-vg",
+      "name": "PISTOLA DE AIRSOFT SPRING 24/7 V310 VG",
+      "sku": "3317",
+      "priceCents": 34500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-spring/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7074853850-pistola-de-airsoft-spring-uhc-modelo-desert-eagle-45-toys-cod-ua-959bh-preta-1-6b8189977b1bf8aaef15816171547815-1024-1024.webp",
+      "images": [
+        "/produtos/99a70d62eacb0c2b.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-uhc-modelo-desert-eagle-spring",
+      "name": "PISTOLA DE AIRSOFT DESERT EAGLE SPRING 959BH UHC",
+      "sku": "2378",
+      "priceCents": 10990,
+      "compareAtCents": 11900,
+      "promoPriceCents": null,
+      "stock": 7,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-spring/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8fc20504f3aba51be3ab8a84a8be314e-8effa05c2ced90243517436871724619-1024-1024.webp",
+      "images": [
+        "/produtos/e025b8d442148316.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-spring-pt92-v21-mola-6mm-vg-rossi",
+      "name": "PISTOLA DE AIRSOFT SPRING PT92 V21 MOLA 6MM - VG/ROSSI",
+      "sku": "5378",
+      "priceCents": 19500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 10,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-spring/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/e7d0afb762682ce1d6d88e2c3bee4640-26c3b7d719959cb58617386862394558-1024-1024.webp",
+      "images": [
+        "/produtos/c7399531e7aa4453.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-vg-gk-v500-spring-6mm-slide-em-metal-rossi",
+      "name": "PISTOLA DE AIRSOFT VG GK-V500 SPRING 6MM SLIDE EM METAL - ROSSI",
+      "sku": "B0750",
+      "priceCents": 34900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-spring/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/3f06635841a0c94da74f7f9328fe56a9-b3afce09b95f3746ad17709971067692-1024-1024.webp",
+      "images": [
+        "/produtos/58a3ceba868e1809.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-airsoft-m92-6mm-spring-preta-rossi",
+      "name": "PISTOLA AIRSOFT M92 6MM SPRING PRETA - ROSSI",
+      "sku": "B0749",
+      "priceCents": 19500,
+      "compareAtCents": 33500,
+      "promoPriceCents": null,
+      "stock": 18,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-spring/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d823bfea9bf84cff43028c836d60872f-266cda4166002c85b417709971025511-1024-1024.webp",
+      "images": [
+        "/produtos/11316c55cd286f51.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-k17-6mm-spring-preta-rossi",
+      "name": "PISTOLA DE AIRSOFT K17 6MM SPRING PRETA - ROSSI",
+      "sku": "B0751",
+      "priceCents": 25900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-spring/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/2de34aaa2204e2c72e7f7c93edcb90a1-3684b0574bc455333c17709971117636-1024-1024.webp",
+      "images": [
+        "/produtos/a8705b9801c9ec07.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-mauser-c96-v10-6mm-spring-preta-rossi",
+      "name": "PISTOLA DE AIRSOFT MAUSER C96 V10 6MM SPRING PRETA - ROSSI",
+      "sku": "2379",
+      "priceCents": 16500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 8,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-spring/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/pistola-de-airsoft-spring-desert-eagle-v30-mola-6mm-vg-rossi-3-e3e86fcae8e3317f3417751404867006-1024-1024.webp",
+      "images": [
+        "/produtos/3e0fab79b621330d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-cybergun-taurus-modelo-pt92-co2",
+      "name": "PISTOLA DE AIRSOFT TAURUS PT92 CO2 CYBERGUN",
+      "sku": "3143",
+      "priceCents": 239000,
+      "compareAtCents": 249000,
+      "promoPriceCents": null,
+      "stock": 12,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-a-gas-gbb/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/pistola-de-airsoft-canik-tp9-gbb-bk-cybergun-0086d181eff081ee9817901690062631-1024-1024.webp",
+      "images": [
+        "/produtos/1732e6c1291e336c.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-canik-tp9-gbb-cybergun1",
+      "name": "PISTOLA DE AIRSOFT CANIK TP9 GBB CYBERGUN",
+      "sku": "A2085",
+      "priceCents": 149000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 8,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-a-gas-gbb/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/2dc898b0a65447c66c4ab083cdf462d4awsaccesskeyidakiatclmsgfx4j7tu445expires1714916547signaturevr2fpbicz2bzxz5cyh41v72kjeidm3d-ba99eaa964078d9f5416833805572615-1024-1024.webp",
+      "images": [
+        "/produtos/4a946d0a9a508bd6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-m17-p320-gbb-sig-sauer",
+      "name": "PISTOLA DE AIRSOFT M17 P320 GBB - SIG SAUER",
+      "sku": "A5144",
+      "priceCents": 219000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/pistola-airsoft/pistola-a-gas-gbb/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d2ecfc160816fdafa38dcbeac3a50a51awsaccesskeyidakiatclmsgfx4j7tu445expires1688156084signatureuj9sekbv28zmva92f6z2fghfaqtye3d-f22ca40fb3d8afc7eb16566200946595-1024-1024.webp",
+      "images": [
+        "/produtos/1f84ce75cbff9e95.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-de-airsoft-m1911a1-green-gas-full-metal-kwa",
+      "name": "PISTOLA DE AIRSOFT M1911A1 GREEN GÁS FULL METAL KWA",
+      "sku": "3192",
+      "priceCents": 439000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/armas-de-epoca/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/26244078b947dd81c7f5b5629bb36d1b-699f37faa837118ee817265818231607-1024-1024.webp",
+      "images": [
+        "/produtos/23f3f7e70673a46a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-mp44-full-steel-madeira-real-agm",
+      "name": "RIFLE DE AIRSOFT MP44 FULL STEEL MADEIRA REAL - AGM",
+      "sku": "10961",
+      "priceCents": 89000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/armas-de-epoca/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/2d8e2726127f11affa267d337c735f5a-516b3ebc63a2987d5917042897850125-1024-1024.webp",
+      "images": [
+        "/produtos/7597fdb289ffa8f6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-spring-tommy-gun-com-red-dot-e-lanterna-avengers-vigor",
+      "name": "RIFLE DE AIRSOFT SPRING TOMMY GUN COM RED DOT E LANTERNA - AVENGERS VIGOR",
+      "sku": "B0453",
+      "priceCents": 399000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/armas-de-epoca/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/08739c4aa872344717d81670518472de-50cb24267e6c7f071117654728700530-1024-1024.webp",
+      "images": [
+        "/produtos/d078f9ff7d38f18e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-winchester-m1894-co2-prata-madeira-real103ay-double-bell",
+      "name": "RIFLE DE AIRSOFT WINCHESTER M1894 CO2 PRATA MADEIRA REAL103AY - DOUBLE BELL",
+      "sku": "B0431",
+      "priceCents": 259000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/armas-de-epoca/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/26c8fc7f934165c5f1b19e8b78d18309-ac65c64a06983920dd17653037042414-1024-1024.webp",
+      "images": [
+        "/produtos/b44649a4854e5c84.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-airsoft-m1-garand-madeira-e-full-metal-ak",
+      "name": "RIFLE DE AIRSOFT M1 GARAND MADEIRA E FULL METAL - A&K",
+      "sku": "B1539",
+      "priceCents": 259000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/armas-de-epoca/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f913624b0aeba6e86a68c833a00f415f-fb347619067fdd9a4817896575429512-1024-1024.webp",
+      "images": [
+        "/produtos/7c44127ef86a1d1f.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-de-sniper-m1903a3-spring-st-armament",
+      "name": "RIFLE DE SNIPER M1903A3 SPRING - S&T ARMAMENT",
+      "sku": "5603",
+      "priceCents": 339000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/armas-de-epoca/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/2f8e11cb370bc41952e7a9e672a2f704-906fd1dd381e2b342817894110503402-1024-1024.webp",
+      "images": [
+        "/produtos/424d27cb13eb0e3e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "submetralhadora-de-airsoft-wwii-mkii-sten-british-9mm-agm",
+      "name": "SUBMETRALHADORA DE AIRSOFT WWII MKII STEN BRITISH 9MM - AGM",
+      "sku": "B0623",
+      "priceCents": 169000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/armas-de-airsoft/armas-de-epoca/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6a4fd331ce3c34c9904c4fdb05bdd951-39454512a81b913d4017684916480658-1024-1024.webp",
+      "images": [
+        "/produtos/c6f37655cff1be4b.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "radio-baofeng-pofung-uv5r-unidade",
+      "name": "RÁDIO BAOFENG POFUNG UV5R - UNIDADE",
+      "sku": "1536",
+      "priceCents": 19900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 16,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6505016056-bao2-1-dc3d88acb99cce054b15817714546504-1024-1024.webp",
+      "images": [
+        "/produtos/9c5f4840b4b02c63.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "antena-compacta-para-radio-baofeng-uv5r-e-similares",
+      "name": "ANTENA COMPACTA PARA RÁDIO BAOFENG UV5R E SIMILARES",
+      "sku": "5316",
+      "priceCents": 29990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/b39c774811f21c3922350181a0f8bacc-5169bf8419ef7383ee17376379749126-1024-1024.webp",
+      "images": [
+        "/produtos/d78e492ed0f12019.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "radio-baofeng-uv18l-uv18-tri-banda-vhf-uhf-e-220-mhz",
+      "name": "RÁDIO BAOFENG UV18L UV18 TRI BANDA VHF UHF E 220 MHZ",
+      "sku": "8422",
+      "priceCents": 4290,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519875850-51iasy2i4bl-sx425-76fd1fa5ba1b0f4c1115817711029471-1024-1024.webp",
+      "images": [
+        "/produtos/b5c749f4c62b8077.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "antena-para-radio-baofeng-e-similares-vhf-144-mhz",
+      "name": "ANTENA PARA RÁDIO BAOFENG E SIMILARES VHF 144 MHZ",
+      "sku": "7635",
+      "priceCents": 14990,
+      "compareAtCents": 21900,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/2e65447b933b5a86ce563df3ded312f9awsaccesskeyidakiatclmsgfx4j7tu445expires1714571823signatureucmqmti39kwwic9mlyjuwhhejhm3d-4aeca38eeb641cbf0c16830358333406-1024-1024.webp",
+      "images": [
+        "/produtos/26d018f24e711584.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "case-para-radio-prc-152-dummy-verde-fma",
+      "name": "CASE PARA RÁDIO PRC-152 DUMMY VERDE FMA",
+      "sku": "5312",
+      "priceCents": 29900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7f3d71e33b85052abdc9888b801e54b8-9b41c55b193b87c9a917376379679085-1024-1024.webp",
+      "images": [
+        "/produtos/eb8888c7257eeb8e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "radio-baofeng-uv-s9-plus-10w",
+      "name": "RÁDIO BAOFENG UV S9 PLUS 10W",
+      "sku": "A4303",
+      "priceCents": 14990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/15098317091-wyposazenie-taktyczne-atrapy-prc-152-atrapa-radiostacji-black-fma-24377-1-7e4fda7294e4a07c1716382926365248-1024-1024.webp",
+      "images": [
+        "/produtos/7ce6e9e1a9c0ebd5.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "case-para-radio-prc-152-dummy-preto-fma",
+      "name": "CASE PARA RÁDIO PRC-152 DUMMY PRETO FMA",
+      "sku": "B0659",
+      "priceCents": 8500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/1a41e6b55d0292628e9a13169b70f237-be0cc1984242ca4d3717685975130455-1024-1024.webp",
+      "images": [
+        "/produtos/23967f6f2e487f06.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "antena-dobravel-para-radio-baofeng-uv-5r-uv-777s-dual-band-vhf-uhf-sma-femea",
+      "name": "ANTENA DOBRÁVEL PARA RÁDIO BAOFENG UV-5R UV-777S DUAL BAND VHF UHF SMA FÊMEA",
+      "sku": "5313",
+      "priceCents": 5990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/555f48bcbdd4f89e2b9d9f25d457f391-a7d3e133eb441fb24217376379597024-1024-1024.webp",
+      "images": [
+        "/produtos/cb95f9acb65f04f6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "carregador-para-baofeng-uv-5r-unidade",
+      "name": "CARREGADOR PARA BAOFENG UV-5R UNIDADE",
+      "sku": "2773",
+      "priceCents": 7500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d119c68af5c295f0feae232f51ed39caawsaccesskeyidakiatclmsgfx4j7tu445expires1723668110signatureojmohhuebtidaqqm7s5cqqxwgog3d-07d4c423ab7204a23a16921321214645-1024-1024.webp",
+      "images": [
+        "/produtos/d0022969dd4554f8.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "case-para-radio-baofeng-uv-5r-5re",
+      "name": "CASE PARA RÁDIO BAOFENG UV-5R/5RE",
+      "sku": "B1364",
+      "priceCents": 31500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/61fa9c71375636ad194546092080eebe-8442cad972fff27a6b17869859175414-1024-1024.webp",
+      "images": [
+        "/produtos/8feb5b281b324e8d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "radio-comunicador-baofeng-uv-17-dual-band-vhf-uhf-5w",
+      "name": "RÁDIO COMUNICADOR BAOFENG UV-17 DUAL BAND VHF UHF 5W",
+      "sku": "B1363",
+      "priceCents": 27900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/radios/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/10f33d14a3c2955d1ac392927c2fa1f2-f3796b0661b28b98cc17869859140673-1024-1024.webp",
+      "images": [
+        "/produtos/8cc494efe66e5a95.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "ptt-para-radio-baofeng-entrada-kenwood-z113-ztac",
+      "name": "PTT PARA RÁDIO BAOFENG ENTRADA KENWOOD Z113 - ZTAC",
+      "sku": "6863",
+      "priceCents": 3900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 7,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6573731852-870536307-1-644x461-antena-curta-diamond-srh805s-sma-femea-p-baofeng-etc-barcelos-c929676f6d7f38b52a15817707547223-1024-1024.webp",
+      "images": [
+        "/produtos/40ba7bf490a5fbe3.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "mini-microfone-ptt-baofeng",
+      "name": "MINI MICROFONE PTT BAOFENG",
+      "sku": "4541-1",
+      "priceCents": 39900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8a1a4afba2f847fd8f92ef92583f9ca5awsaccesskeyidakiatclmsgfx4j7tu445expires1727270271signaturex1vehvfaqe8oxrvzav0hlotbu5q3d-8b6b53b0ccb4951a2f16957343259345-1024-1024.webp",
+      "images": [
+        "/produtos/7b86a57a438999f0.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "headset-para-airsoft-comtac-iii-z163-z-tac",
+      "name": "HEADSET PARA AIRSOFT COMTAC III Z163 - Z TAC",
+      "sku": "1132",
+      "priceCents": 23900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/laringofone-para-airsoft-mic-z033-tan-z-tatico1-0e44a83b9c399432e216952204667556-1024-1024.webp",
+      "images": [
+        "/produtos/ce9e6afd7c6b8ff7.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "laringofone-para-airsoft-mic-z033-tan-z-tatico",
+      "name": "LARINGOFONE PARA AIRSOFT MIC Z033 TAN Z-TÁTICO",
+      "sku": "0885",
+      "priceCents": 22900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 6,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/laringofone-militar-z033-mic-preto-z-tatico1-90cdb988f33a30972416952204319532-1024-1024.webp",
+      "images": [
+        "/produtos/9c2ee875d5522e88.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "laringofone-militar-z033-mic-preto-z-tatico",
+      "name": "LARINGOFONE MILITAR Z033 MIC PRETO Z-TÁTICO",
+      "sku": "A2172",
+      "priceCents": 4990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/11445318803-sem-titulo12-4ab1e5931ba37387da16143434290402-1024-1024.webp",
+      "images": [
+        "/produtos/9c1d8cc3f24be989.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-auricular-tipo-abafador-qm24-honeywell",
+      "name": "PROTETOR AURICULAR TIPO ABAFADOR QM24+ HONEYWELL",
+      "sku": "0989",
+      "priceCents": 23900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/laringofone-militar-z033-mic-fg-z-tatico1-1193cce276bce68d7116952205010865-1024-1024.webp",
+      "images": [
+        "/produtos/9f36f0672a0f2128.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "laringofone-militar-z033-mic-fg-z-tatico",
+      "name": "LARINGOFONE MILITAR Z033 MIC FG Z-TÁTICO",
+      "sku": "0404",
+      "priceCents": 15900,
+      "compareAtCents": 19500,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7523949909-99-f6a0dd66c838bc93f615817706292593-1024-1024.webp",
+      "images": [
+        "/produtos/8f2a10b550ea156e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "ptt-para-baofeng-com-conexao-kenwood-z-tac-134-combat-series",
+      "name": "PTT PARA BAOFENG COM CONEXÃO KENWOOD Z-TAC 134 COMBAT SERIES",
+      "sku": "A4373",
+      "priceCents": 15900,
+      "compareAtCents": 24900,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6b1c18dc6f53039d4b2f4750cd413e02awsaccesskeyidakiatclmsgfx4g7qtfvdexpires1671033356signature9et266dggdtos8b2fpg2qyihgbtk3d-4f8eaae9521bc125b716394973586260-1024-1024.webp",
+      "images": [
+        "/produtos/ef0c730364592c42.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "ptt-para-radio-baofeng-u94-entrada-kenwood-z115-z-tac",
+      "name": "PTT PARA RÁDIO BAOFENG U94 ENTRADA KENWOOD Z115 Z-TAC",
+      "sku": "4805",
+      "priceCents": 14990,
+      "compareAtCents": 19900,
+      "promoPriceCents": null,
+      "stock": 18,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6511083408-acc-z122-7c5063b560c939069515817712947691-1024-1024.webp",
+      "images": [
+        "/produtos/2fe4ee96b07ca021.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "radio-icom-ic-v80-vhf-136-174mhz-199-canais-usado",
+      "name": "RÁDIO ICOM IC-V80 VHF 136-174MHZ 199 CANAIS USADO",
+      "sku": "B0758",
+      "priceCents": 34900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/bazar-de-usados/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/tmp_b64_8d149143-7c5d-4b73-93c9-aaa46154b020_1100518_1258974-2d6e05c7909f96fbc817713444804342-1024-1024.webp",
+      "images": [
+        "/produtos/3de6db89d3ee2c17.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "cano-externo-para-atp-auto-kwa-peca-usada",
+      "name": "CANO EXTERNO PARA ATP AUTO KWA - PEÇA USADA",
+      "sku": "A0557",
+      "priceCents": 14500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/bazar-de-usados/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8741884281-15-5d3d6f26135fb42b5115943126075008-1024-1024.webp",
+      "images": [
+        "/produtos/2166e9cdd50ab1e2.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "gatilho-e-trava-do-slide-acp-aps-usada",
+      "name": "GATILHO E TRAVA DO SLIDE ACP APS - USADA",
+      "sku": "8170",
+      "priceCents": 19000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/bazar-de-usados/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519323043-dsc00172-cc3d1af83062c1e1fa15820347520140-1024-1024.webp",
+      "images": [
+        "/produtos/71700cc3860764f0.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bolinhas-de-gel-para-arminha-10-000-unidades",
+      "name": "BOLINHAS DE GEL PARA ARMINHA 10.000 UNIDADES",
+      "sku": "6800-1",
+      "priceCents": 250,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 16,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/816935a7284cd79e539c341027a334bb-db1b96c7e0a271b77717376380206811-1024-1024.webp",
+      "images": [
+        "/produtos/80c319ec73c78587.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bolinhas-de-gel-cresce-na-agua-500-unidades",
+      "name": "BOLINHAS DE GEL CRESCE NA ÁGUA 500 UNIDADES",
+      "sku": "3320",
+      "priceCents": 24990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/358df788f4fe39576f76891633975e49awsaccesskeyidakiatclmsgfx4j7tu445expires1720887885signature2qalmt2f8vsd0f8r6quq21utezto3d-55f6b1dce1305a92b016893519064546-1024-1024.webp",
+      "images": [
+        "/produtos/9d3f2b9b89468846.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "boneco-john-wick-action-figure",
+      "name": "BONECO JOHN WICK ACTION FIGURE",
+      "sku": "7909",
+      "priceCents": 15900,
+      "compareAtCents": 19990,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6518985646-41xpvxcrogl-a37d79af6c2d01cd4b15828088118352-1024-1024.webp",
+      "images": [
+        "/produtos/a91572858af6cdcb.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "boneco-tatico-special-forces-soldado-acu",
+      "name": "BONECO TÁTICO SPECIAL FORCES SOLDADO ACU",
+      "sku": "6798",
+      "priceCents": 18990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/087d2a0c1ae96baf2943ccecc2e392ed-15ac3c2dde4a96acb417375577463151-1024-1024.webp",
+      "images": [
+        "/produtos/c61c8b622ddede9d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "arma-bolinhas-de-gel-ak47-automatica",
+      "name": "ARMA BOLINHAS DE GEL AK47 AUTOMÁTICA",
+      "sku": "2590-1",
+      "priceCents": 19990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d4fde73c6b1c4937fbabea1e3e2bae08-1b479afe46187f7e6e17308124928611-1024-1024.webp",
+      "images": [
+        "/produtos/7dc0a386e5c6ae7d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "pistola-eletrica-de-bolinhas-de-gel-akm-amarela-orbeez1",
+      "name": "PISTOLA ELÉTRICA DE BOLINHAS DE GEL AKM AMARELA - ORBEEZ",
+      "sku": "8332",
+      "priceCents": 11500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d191f50ace6d9a0cfa643cec3683b3d8awsaccesskeyidakiatclmsgfx4j7tu445expires1709122500signatureie0uloqj2bccfo76werzgsbmqo803d-1b5a54aa8dff91cc9c16775865087766-1024-1024.webp",
+      "images": [
+        "/produtos/8763d94f43d9011e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "rifle-eletrico-de-bolinhas-de-gel-akm-orbeez",
+      "name": "RIFLE ELÉTRICO DE BOLINHAS DE GEL AKM - ORBEEZ",
+      "sku": "7906",
+      "priceCents": 15900,
+      "compareAtCents": 19990,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6518982635-41pyzc5ws4l-76737e512a6436bcb915828088292618-1024-1024.webp",
+      "images": [
+        "/produtos/4c04905a9461ee36.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "boneco-tatico-special-forces-medico-olive",
+      "name": "BONECO TÁTICO SPECIAL FORCES MÉDICO OLIVE",
+      "sku": "7905",
+      "priceCents": 15900,
+      "compareAtCents": 19990,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6518982300-41jvmbh-eol-46336c1262fe726b2b15828088195249-1024-1024.webp",
+      "images": [
+        "/produtos/9e46eddd2c37f99e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "boneco-tatico-special-forces-sdu",
+      "name": "BONECO TÁTICO SPECIAL FORCES SDU",
+      "sku": "7908",
+      "priceCents": 15900,
+      "compareAtCents": 19990,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6518985209-41l3tblb8sl-197b1d749329459c5315828088019302-1024-1024.webp",
+      "images": [
+        "/produtos/f2e1ab7b18229cc2.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "boneco-tatico-special-forces-soldado-ferido",
+      "name": "BONECO TÁTICO SPECIAL FORCES SOLDADO FERIDO",
+      "sku": "B1545",
+      "priceCents": 49500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/ca803fe3aeb7cfa367376cf167da0a67-7a0eb055128b301f5917897391006143-1024-1024.webp",
+      "images": [
+        "/produtos/dc1d7f4b62fcc8d4.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "lancador-de-dardos-de-brinquedo-jet-blaster-ceda",
+      "name": "LANÇADOR DE DARDOS DE BRINQUEDO JET BLASTER CEDA",
+      "sku": "3012-1",
+      "priceCents": 27900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/brinquedos-e-jogos/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d7902e5ad51c3b009c12e8bd2581cbab-214995dc5767d5abf917724576802404-1024-1024.webp",
+      "images": [
+        "/produtos/d39002eb40fa993a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "ptt-para-radio-baofeng-e-switch-kenwood-z122",
+      "name": "PTT PARA RÁDIO BAOFENG E-SWITCH KENWOOD Z122",
+      "sku": "0886",
+      "priceCents": 14990,
+      "compareAtCents": 25900,
+      "promoPriceCents": null,
+      "stock": 14,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/comunicacao/ptts-fones/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6764131364-thumbnail-ha-ztac-z028-de-01-600x600-b1780193916232765815817709552660-1024-1024.webp",
+      "images": [
+        "/produtos/2933b70177896f84.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-red-dot-com-base-de-metal-universal",
+      "name": "PROTETOR DE RED DOT COM BASE DE METAL UNIVERSAL",
+      "sku": "0720",
+      "priceCents": 4990,
+      "compareAtCents": 7990,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6885654701-for-551-552-553-556-557-558-riflescopes-font-b-lens-b-font-font-b-protector-6b225e2b7e78e2756c16382159318181-1024-1024.webp",
+      "images": [
+        "/produtos/d7b58e36ebf26476.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-red-dot-para-modelos-eotech-hta",
+      "name": "PROTETOR DE RED DOT PARA MODELOS EOTECH - HTA",
+      "sku": "8047",
+      "priceCents": 1990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 204,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519072859-thumbnail-reflex-01-f2dc3ed534e3af7ad515816850246861-1024-1024.webp",
+      "images": [
+        "/produtos/c6b21f6087f5dbcc.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-red-dot-para-modelos-reflex-hta",
+      "name": "PROTETOR DE RED DOT PARA MODELOS REFLEX HTA",
+      "sku": "2279-1",
+      "priceCents": 2290,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/ac4fdfadf5b4c54da5031011a20856a3-aa38d08a1af5d12acf17474017511375-1024-1024.webp",
+      "images": [
+        "/produtos/a8f6792d4ee9e359.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-red-dot-producao-3d-com-lente-de-policarbonato",
+      "name": "PROTETOR DE RED DOT – PRODUÇÃO 3D COM LENTE DE POLICARBONATO",
+      "sku": "7565",
+      "priceCents": 44900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 7,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6518783288-imgpsh-fullsize-1-1-cfed9d53fc94fac26b15816852122638-1024-1024.webp",
+      "images": [
+        "/produtos/de2c04ef1b4e43d0.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "red-green-dot-we-airsoft-552",
+      "name": "RED/GREEN DOT WE AIRSOFT 552",
+      "sku": "7573",
+      "priceCents": 39900,
+      "compareAtCents": 54900,
+      "promoPriceCents": null,
+      "stock": 25,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/red-green-dot-we-airsoft-hd-t1-qd-high-mount-tan_031-c9917d87d81effcf5916518663874661-1024-1024.webp",
+      "images": [
+        "/produtos/42dded258aa4dd82.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "red-green-dot-we-airsoft-hd-t1-qd-high-mount-tan",
+      "name": "RED/GREEN DOT WE AIRSOFT HD-T1 QD HIGH MOUNT TAN",
+      "sku": "8049",
+      "priceCents": 2000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 109,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519073622-thumbnail-luneta-01-d232a4e3ec469e5db415817044397878-1024-1024.webp",
+      "images": [
+        "/produtos/f896673a45a8b2b8.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-luneta-diametro-40mm-hta",
+      "name": "PROTETOR DE LUNETA DIÂMETRO 40MM - HTA",
+      "sku": "7572",
+      "priceCents": 39900,
+      "compareAtCents": 52900,
+      "promoPriceCents": null,
+      "stock": 9,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/redgreen-dot-we-airsoft-modelo-hd-t1-qd-high-mount-bk-6b6f400b031b321aef17013482878246-1024-1024.webp",
+      "images": [
+        "/produtos/285208b053d7efd0.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "red-green-dot-we-airsoft-modelo-hd-t1-qd-high-mount-bk",
+      "name": "RED/GREEN DOT WE AIRSOFT MODELO HD-T1 QD HIGH MOUNT BK",
+      "sku": "3983",
+      "priceCents": 3990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 9,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/1a56fd928e7204e8323a93afa9175fc9awsaccesskeyidakiatclmsgfx4j7tu445expires1726688560signaturexf63rnvb9pzvndk3h5dbj0dybpa3d-3944c295eec81b775d16951525682388-1024-1024.webp",
+      "images": [
+        "/produtos/6bbcef7991d9de03.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-red-dot-551-552-wadsn",
+      "name": "PROTETOR DE RED DOT 551/552 WADSN",
+      "sku": "A1967",
+      "priceCents": 17900,
+      "compareAtCents": 25900,
+      "promoPriceCents": null,
+      "stock": 38,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/10911053045-1584609349-a30256064df8796fc416106502585734-1024-1024.webp",
+      "images": [
+        "/produtos/0f667fde7045541e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "colimador-red-laser-lbc01-victo-optics",
+      "name": "COLIMADOR RED LASER LBC01 - VICTO OPTICS",
+      "sku": "7566",
+      "priceCents": 44900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 21,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6518783676-eng-pl-red-dot-type-et-552-tan-1152193918-6-429c80ccd291465cee15816852040334-1024-1024.webp",
+      "images": [
+        "/produtos/21d3a997add53732.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "red-green-dot-we-airsoft-552-tan",
+      "name": "RED/GREEN DOT WE AIRSOFT 552 TAN",
+      "sku": "A0871",
+      "priceCents": 2000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 14,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519073622-thumbnail-luneta-01-d232a4e3ec469e5db415956879092205-1024-1024.webp",
+      "images": [
+        "/produtos/a96d7c46b856b58e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "colimador-para-regulagem-de-lunetas-gpbs-01",
+      "name": "COLIMADOR PARA REGULAGEM DE LUNETAS GPBS-01",
+      "sku": "A4750",
+      "priceCents": 41900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/colimadores/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8b19dfca06832b51703bb1f61f10abbbawsaccesskeyidakiatclmsgfx4g7qtfvdexpires1678467911signaturemwyvt2fbp8ezhmoapgwl2fvhwli0e3d-28897e058a9d2f4eba16469319136538-1024-1024.webp",
+      "images": [
+        "/produtos/67de622c684921f9.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "colimador-green-laser-vector-optics",
+      "name": "COLIMADOR GREEN LASER VICTOPTICS",
+      "sku": "3486",
+      "priceCents": 10900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/colimadores/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/3cea048f29ff5890798c5f477198bf2aawsaccesskeyidakiatclmsgfx4j7tu445expires1720554845signaturea3kiebmqj4e82fcfv6ldo8ssqchk3d-04e1f08a0e1f497ebb16890188516986-1024-1024.webp",
+      "images": [
+        "/produtos/5e5091f8a0649720.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "colimador-para-calibre-7-62x54r-scbcr-09",
+      "name": "COLIMADOR PARA CALIBRE 7.62X54R - SCBCR-09",
+      "sku": "3465",
+      "priceCents": 10900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/colimadores/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/82bd4b9c9e7df5d5451af67b0f45b031awsaccesskeyidakiatclmsgfx4j7tu445expires1720554840signaturefvoudrwg6p1dtkd6s2fltsgqcj2fg3d-6be0adf9b7bdcdaf9916890188461152-1024-1024.webp",
+      "images": [
+        "/produtos/3b74a39529286f3e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-e-massa-de-mira-para-airsoft-em-metal-m194z-zc",
+      "name": "ALÇA E MASSA DE MIRA PARA AIRSOFT EM METAL M194Z ZC",
+      "sku": "A1100",
+      "priceCents": 24500,
+      "compareAtCents": 29500,
+      "promoPriceCents": null,
+      "stock": 10,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/9272789951-ddd6bae5-ff04-4504-8030-1a6bbfd27571-41b94ecdad313b361e15984509848673-1024-1024.webp",
+      "images": [
+        "/produtos/704416f3ca215588.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-e-massa-de-mira-flip-up-rebativel-ex1601-wosport-b4vjf",
+      "name": "ALÇA E MASSA DE MIRA FLIP UP REBATÍVEL EX1601 - WOSPORT",
+      "sku": "A1674",
+      "priceCents": 54500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/10063961496-417736-7ee693d3609243cc93b5ed097a6c1f0f-mv2-227b3efe6170167ca416046751566109-1024-1024.webp",
+      "images": [
+        "/produtos/682a557d4cb147ea.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-e-massa-de-mira-epbuis-pts",
+      "name": "ALÇA E MASSA DE MIRA EPBUIS PTS",
+      "sku": "8543-1",
+      "priceCents": 4990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/b494c4f047cf83ca20cd9d50037684f0awsaccesskeyidakiatclmsgfx4j7tu445expires1728568318signaturezs2bs97p4oxtkvdcyhhjyjgrwzh83d-06356ffaab03ccb61316970323390864-1024-1024.webp",
+      "images": [
+        "/produtos/5218aa8aa7828ff6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "conjunto-alca-e-massa-de-mira-20mm-dedos",
+      "name": "CONJUNTO ALÇA E MASSA DE MIRA 20MM DEDOS",
+      "sku": "A4766",
+      "priceCents": 26900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/5e39fe835de4dc052b77e4b23fe82531awsaccesskeyidakiatclmsgfx4g7qtfvdexpires1678811149signatureezfahraqexrtwvj1rlixk2bwbb3w3d-7a90fb989945e3312616472751520083-1024-1024.webp",
+      "images": [
+        "/produtos/af0848ca1f95ef2e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-e-massa-de-mira-com-fibra-optica-para-pistolas-de-airsoft-scis-07",
+      "name": "ALÇA E MASSA DE MIRA COM FIBRA ÓPTICA PARA PISTOLAS DE AIRSOFT SCIS-07",
+      "sku": "9530",
+      "priceCents": 38900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6502116774-96df7e3bc24f4522a47db0541b930d1a-1-073f763f06b2d7ab8915889667642182-1024-1024.webp",
+      "images": [
+        "/produtos/4f063609d5a4b345.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-e-massa-de-mira-em-metal-inclinada-20mm",
+      "name": "ALÇA E MASSA DE MIRA EM METAL INCLINADA 20MM",
+      "sku": "1169",
+      "priceCents": 14900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/365bd313d0024b8c236ba142de260c16-780932ac84bffa2eb617546713181689-1024-1024.webp",
+      "images": [
+        "/produtos/7ee35181f4cb41b6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-de-mira-hk-416-universal-em-metal-p000492-zc",
+      "name": "ALÇA DE MIRA HK 416 UNIVERSAL EM METAL P000492 - ZC",
+      "sku": "A2814",
+      "priceCents": 24900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12861917667-20203294023458-bbc0aab19aea0abc6a16225699442336-1024-1024.webp",
+      "images": [
+        "/produtos/fbb85211f76c0688.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-e-massa-de-mira-para-airsoft-m4-style-tan-big-dragon",
+      "name": "ALÇA E MASSA DE MIRA PARA AIRSOFT M4 STYLE TAN BIG DRAGON",
+      "sku": "B0178",
+      "priceCents": 16500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/ccc8faa44a5b78a692c54328dcd9a84e-3637133bb1f698cb5217600237382037-1024-1024.webp",
+      "images": [
+        "/produtos/426b7aa08968fc64.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-e-massa-de-mira-para-airsoft-71l-qd-bd3818-big-dragon",
+      "name": "ALÇA E MASSA DE MIRA PARA AIRSOFT 71L QD BD3818 – BIG DRAGON",
+      "sku": "A2812",
+      "priceCents": 32500,
+      "compareAtCents": 49000,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12861658743-sem-titulo-fa02893631e9c4d67916225699084621-1024-1024.webp",
+      "images": [
+        "/produtos/958e3651720096f9.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "alca-e-massa-de-mira-para-airsoft-style-bk-big-dragon",
+      "name": "ALÇA E MASSA DE MIRA PARA AIRSOFT STYLE BK BIG DRAGON",
+      "sku": "B1205",
+      "priceCents": 1890,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f3a9303278ab8e45e9de944010d7593d-bb56f323405e31450517821416255540-1024-1024.webp",
+      "images": [
+        "/produtos/79b25ac19eb0b903.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "conjunto-massa-de-mira-dione-4g-rossi",
+      "name": "CONJUNTO MASSA DE MIRA DIONE 4G ROSSI",
+      "sku": "B1201",
+      "priceCents": 11970,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/alca-e-massa-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/36527f9217085f07f0d6515acee3a728-1ed75fd72af3fae6fa17821416227515-1024-1024.webp",
+      "images": [
+        "/produtos/f8f2b5214136da88.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "red-green-dot-para-airsoft-1x35-20mm-rdsl05-victoptics",
+      "name": "RED/GREEN DOT PARA AIRSOFT 1X35 20MM RDSL05 VICTOPTICS",
+      "sku": "A0583",
+      "priceCents": 59000,
+      "compareAtCents": 69000,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/red-green-dot/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8773718371-34d0fa8f8964cc1a2a465c7aab108802-ba7d042d447fcba62015946430452897-1024-1024.webp",
+      "images": [
+        "/produtos/4dc1721b64353e7d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "red-green-dot-para-armas-de-fogo-1x25x34-sable-vector-optics",
+      "name": "RED/GREEN DOT PARA ARMAS DE FOGO 1X25X34 SABLE VECTOR OPTICS",
+      "sku": "6198",
+      "priceCents": 14900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/red-green-dot/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6516049127-63495fbdbd85c382b44f7d1efc3796e7-539a43758d0bee9c5515816853439684-1024-1024.webp",
+      "images": [
+        "/produtos/adf86785f6d8028c.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "kill-flash-para-acog-4x32",
+      "name": "KILL FLASH PARA ACOG 4x32",
+      "sku": "7571",
+      "priceCents": 29900,
+      "compareAtCents": 34900,
+      "promoPriceCents": null,
+      "stock": 16,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/red-green-dot/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/red-green-dot-we-airsoft-hd-400-4-reticle1-49dab012eb521fe7b716518691303031-1024-1024.webp",
+      "images": [
+        "/produtos/b6c56b6bf379be72.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "red-green-dot-we-airsoft-hd-400-4-reticle",
+      "name": "RED/GREEN DOT WE AIRSOFT HD-400 4 RETICLE",
+      "sku": "9473",
+      "priceCents": 36900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/red-green-dot/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/micro-red-dot-we-airsoft-hd-t1-bk-3-b3820f71d09b6bfa4117586304080395-1024-1024.webp",
+      "images": [
+        "/produtos/14621e0ce66e3f13.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "micro-red-dot-we-airsoft-hd-t1-bk",
+      "name": "MICRO RED DOT WE AIRSOFT HD-T1 BK",
+      "sku": "B0704-1",
+      "priceCents": 99900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 14,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/red-green-dot/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/79f68c77a41e2a6b3df8d00c3f164eef-603f3be558adf60e4a17882673481984-1024-1024.webp",
+      "images": [
+        "/produtos/416988389bbf3196.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "red-dot-mod-558-com-magnifier-g33-3x-trilho-22mm",
+      "name": "RED DOT MOD 558 COM MAGNIFIER G33 3X TRILHO 22MM",
+      "sku": "B0705",
+      "priceCents": 59900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 10,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/red-green-dot/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/db17b7ca0b08b3d6d580806c012a2b2c-700c029190917b16bb17707424511323-1024-1024.webp",
+      "images": [
+        "/produtos/e5739917cc838dba.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "magnifier-g33-3x-com-mount-flip-lateral-qd-trilho-22mm",
+      "name": "MAGNIFIER G33 3X COM MOUNT FLIP LATERAL QD TRILHO 22MM",
+      "sku": "B1431-1",
+      "priceCents": 49900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 12,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/red-green-dot/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/db240cce547ca9e80cefb83f06b317bd-81f786caa19993155617882835399570-1024-1024.webp",
+      "images": [
+        "/produtos/facee8879ec4a036.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-tatica-com-reticulo-iluminado-1-2-6x24-t-eagle",
+      "name": "LUNETA TÁTICA COM RETÍCULO ILUMINADO 1.2-6X24 T-EAGLE",
+      "sku": "B0698",
+      "priceCents": 79000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 9,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/c58ca46850d446b368a9b3609d7ba391-11a207fe3ff782375817707424122148-1024-1024.webp",
+      "images": [
+        "/produtos/43b09f6c6fb032e1.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-tatica-eos-1-2-6x24-ir-tan-22mm-t-eagle",
+      "name": "LUNETA TÁTICA EOS 1.2-6X24 IR TAN 22MM T-EAGLE",
+      "sku": "B0149",
+      "priceCents": 69500,
+      "compareAtCents": 79000,
+      "promoPriceCents": null,
+      "stock": 13,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/a952781695bbea6d58388f411e4c1054-9fd2d122e09256083317594174998125-1024-1024.webp",
+      "images": [
+        "/produtos/81f2d131eddc9984.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-tatica-para-airsoft-sr-3-9x50-wa-hk-t-eagle",
+      "name": "LUNETA TÁTICA PARA AIRSOFT SR 3-9X50 WA HK – T-EAGLE",
+      "sku": "7622",
+      "priceCents": 47900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 10,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/luneta-para-airsoft-sfp-3-9x40-pac-opsl20-victoptics1-e880d45824f6c6412116896008009891-1024-1024.webp",
+      "images": [
+        "/produtos/4462a8e97fc9630f.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-para-airsoft-sfp-3-9x40-pac-opsl20-victoptics",
+      "name": "LUNETA PARA AIRSOFT SFP 3-9X40 PAC OPSL20 - VICTOPTICS",
+      "sku": "A4814",
+      "priceCents": 129000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/645071858916133a7ec2ab4a82808f00awsaccesskeyidakiatclmsgfx4g7qtfvdexpires1679156858signaturexx2f1jqkjpmkryh2eped6fzebeqi3d-f1cf6154385a5a083216476208606785-1024-1024.webp",
+      "images": [
+        "/produtos/b705af7ebf598a8f.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-para-armas-de-fogo-s4-6-24x50-mdl-opsl17-victoptics",
+      "name": "LUNETA PARA ARMAS DE FOGO S4 6-24x50 MDL OPSL17 VICTOPTICS",
+      "sku": "B0700",
+      "priceCents": 49500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 16,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/luneta-tatica-eox-4-16x44-ao-reticulo-iluminado-8d28cf1aa5ae6fe5fc17915498581839-1024-1024.webp",
+      "images": [
+        "/produtos/72e9aadc7113d770.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-tatica-eox-4-16x44-ao-reticulo-iluminado-t-eagle",
+      "name": "LUNETA TÁTICA EOX 4-16X44 AO RETÍCULO ILUMINADO T-EAGLE",
+      "sku": "5383",
+      "priceCents": 43900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 8,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8b6b9233368e15097e7e3bf3125a64f2-7c87aacc4bbfad800c17392030855915-1024-1024.webp",
+      "images": [
+        "/produtos/2c32e5b15da71d62.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-para-airsoft-b1-4x32-compact-opsl25-victoptics",
+      "name": "LUNETA PARA AIRSOFT B1 4X32 COMPACT OPSL25 - VICTOPTICS",
+      "sku": "7619",
+      "priceCents": 229000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/4796e980b7ea09e43d2f6edef7703426awsaccesskeyidakiatclmsgfx4j7tu445expires1713889287signaturejxcf9b7zfmonz2b6m91rohde2fmxm3d-73614052c462cb68c216823532968608-1024-1024.webp",
+      "images": [
+        "/produtos/923f1d9211e85831.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-para-armas-de-fogo-forester-1-5x24sfp-genii-fde-scoc-32-vector-optics",
+      "name": "LUNETA PARA ARMAS DE FOGO FORESTER 1-5X24SFP GENII FDE SCOC-32 - VECTOR OPTICS",
+      "sku": "B0699",
+      "priceCents": 79000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 11,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/1015cedee2271e34e7f08b157086f4ba-e1301056dd07e10cb317707424168359-1024-1024.webp",
+      "images": [
+        "/produtos/981580cf24e28158.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-tatica-eos-1-2-6x24-ir-preta-22m-t-eagle",
+      "name": "LUNETA TÁTICA EOS 1.2-6X24 IR PRETA 22M T-EAGLE",
+      "sku": "B0244",
+      "priceCents": 39900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/441005d79bceab807c299ab5446758e9-45844a6d123e06b40217631373999191-1024-1024.webp",
+      "images": [
+        "/produtos/10a72e25b61062e2.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-tatica-para-airsoft-3-9x32mm-hibrido-11mm-e-22mm",
+      "name": "LUNETA TÁTICA PARA AIRSOFT 3-9X32MM HÍBRIDO 11MM E 22MM",
+      "sku": "5486",
+      "priceCents": 115000,
+      "compareAtCents": 139000,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/4ae5595ed0fa6b34e6b7b77b7281bd0e-ad02071702bc23546d17394627815753-1024-1024.webp",
+      "images": [
+        "/produtos/2e8fe9673f3a2ff9.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "luneta-matiz-3-9x50-sfp-scom-28-vector-optics",
+      "name": "LUNETA MATIZ 3-9X50 SFP SCOM-28 - VECTOR OPTICS",
+      "sku": "5455",
+      "priceCents": 175000,
+      "compareAtCents": 235000,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/lunetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/99f107b1a06e3302701f36c2431b0ad8-e7e6e79f8d9345ffe517394627522403-1024-1024.webp",
+      "images": [
+        "/produtos/910a33e74f8e29a6.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-luneta-diametro-50mm",
+      "name": "PROTETOR DE LUNETA DIÂMETRO 50MM",
+      "sku": "8048",
+      "priceCents": 2000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 85,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/protetores-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519073197-thumbnail-luneta-01-d232a4e3ec469e5db415817044472027-1024-1024.webp",
+      "images": [
+        "/produtos/07271c373b3b7003.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-luneta-diametro-30mm-hta",
+      "name": "PROTETOR DE LUNETA DIÂMETRO 30MM - HTA",
+      "sku": "1101",
+      "priceCents": 3500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/protetores-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7c18eaceb70fb3feb32997701531c00aawsaccesskeyidakiatclmsgfx4j7tu445expires1693494963signaturebpbxtfsdkxlqojgollfp7eylcd03d-74e1291fb00272b5de16619589671978-1024-1024.webp",
+      "images": [
+        "/produtos/9c262c0786453c32.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-lanterna-anpeq-4mm",
+      "name": "PROTETOR DE LANTERNA ANPEQ 4MM",
+      "sku": "1027",
+      "priceCents": 2990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/protetores-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/371add9e4ee2d298174f80681285bbc8awsaccesskeyidakiatclmsgfx4j7tu445expires1693494948signatureds2fv9runylw4em2bf06qlu2byvsi3d-775acbf12e41e6d1a216619589541181-1024-1024.webp",
+      "images": [
+        "/produtos/c261d40e1a1f5f52.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-red-dot-m2-m3-aimpoint-4mm-101014",
+      "name": "PROTETOR DE RED DOT M2/M3 AIMPOINT 4MM 101014",
+      "sku": "1029",
+      "priceCents": 2990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/protetores-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/da31944235b09ff8b13e578a829f8958awsaccesskeyidakiatclmsgfx4j7tu445expires1693494980signaturemvwi2n0qvybifglwpkpv1fivbeu3d-a33b9befb29db718b516619589838869-1024-1024.webp",
+      "images": [
+        "/produtos/bc1e8ec31b01ab0f.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "protetor-de-mira-magnifier-3x-4x-5x-101027",
+      "name": "PROTETOR DE MIRA MAGNIFIER 3X-4X-5X 101027",
+      "sku": "3034",
+      "priceCents": 4990,
+      "compareAtCents": 7990,
+      "promoPriceCents": null,
+      "stock": 13,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/miras-para-airsoft/protetores-de-mira/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6508758241-fma-tb1039-de-1-1674-fcdb66174377741ba115816854105258-1024-1024.webp",
+      "images": [
+        "/produtos/f747e6c936fb4986.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "abafador-de-ruido-eletronico-mute-invictus",
+      "name": "ABAFADOR DE RÚIDO ELETRÔNICO MUTE INVICTUS",
+      "sku": "B1437",
+      "priceCents": 79000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/a5b3fa9e7b1593f51edd352a154ce17a-a8b653552e1f0299e117882835570800-1024-1024.webp",
+      "images": [
+        "/produtos/01ff9c9dffb84154.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "acog-para-airsoft-com-fibra-otica-verde-4x32",
+      "name": "ACOG PARA AIRSOFT COM FIBRA ÓTICA VERDE 4X32",
+      "sku": "B1438",
+      "priceCents": 119000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/3f0e84553ba38474ee893d836f53a68d-994082c4f6ecc4140a17882847696687-1024-1024.webp",
+      "images": [
+        "/produtos/54f151d9d1cf13ed.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "acog-red-dot-para-airsoft-com-fibra-otica-4x32",
+      "name": "ACOG RED DOT PARA AIRSOFT COM FIBRA ÓTICA 4X32",
+      "sku": "A2467",
+      "priceCents": 9990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 9,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12533306725-1-6191477e15b42e59c615923087393233-1024-1024-7d0cb2a16d82fb45f216207616795643-1024-1024.webp",
+      "images": [
+        "/produtos/791593d499d5a40a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "adaptador-de-bipe-trilho-picatinny-jqa-1-avb",
+      "name": "ADAPTADOR DE BIPÉ TRILHO PICATINNY JQA-1 AVB",
+      "sku": "A2395",
+      "priceCents": 5990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12398279535-adaptador-de-cintura-pro-belica-coyote-c3ba757f-766fa4773d1602175216200697168318-1024-1024.webp",
+      "images": [
+        "/produtos/1abdc799d2cd9b5e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "adaptador-de-cintura-pro-belica-coyote-belica",
+      "name": "ADAPTADOR DE CINTURA PRO BÉLICA COYOTE BÉLICA",
+      "sku": "A2397",
+      "priceCents": 5990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12398312921-d-nq-np-941856-mlb42936368801-072020-o-458790e4a96e4150c416200697270309-1024-1024.webp",
+      "images": [
+        "/produtos/4645d24e496dd019.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "adaptador-de-cintura-pro-belica-preto-belica",
+      "name": "ADAPTADOR DE CINTURA PRO BÉLICA PRETO BÉLICA",
+      "sku": "A2396",
+      "priceCents": 5990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12398258976-adaptador-de-cintura-pro-belica-verde-4ddbe3af-3e5459bf0923262faf16200697038698-1024-1024.webp",
+      "images": [
+        "/produtos/aab41a61fb81e088.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "adaptador-de-cintura-pro-belica-verde-belica",
+      "name": "ADAPTADOR DE CINTURA PRO BÉLICA VERDE BÉLICA",
+      "sku": "9064",
+      "priceCents": 25900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/77146ee9fa33eab605899d1e9b377c66-fae08789f250a86df417533775418156-1024-1024.webp",
+      "images": [
+        "/produtos/f502cc780fb3ecdc.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "adaptador-de-coldre-para-lancador-de-granada-volcano-40mm-acetech",
+      "name": "ADAPTADOR DE COLDRE PARA LANÇADOR DE GRANADA VOLCANO 40MM – ACETECH",
+      "sku": "9937",
+      "priceCents": 4900,
+      "compareAtCents": 6500,
+      "promoPriceCents": null,
+      "stock": 124,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519324072-dsc00176-f96ec92021563a2cfc15816830652232-1024-1024.webp",
+      "images": [
+        "/produtos/62b835606033d089.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "adaptador-de-engate-rapido-para-hpa-para-magazine-army-armament",
+      "name": "ADAPTADOR DE ENGATE RÁPIDO PARA HPA PARA MAGAZINE ARMY ARMAMENT",
+      "sku": "9936",
+      "priceCents": 4900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 136,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519324072-dsc00176-f96ec92021563a2cfc15816830825306-1024-1024.webp",
+      "images": [
+        "/produtos/418b8bf31f77b6fd.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "adaptador-de-engate-rapido-para-hpa-para-magazine-tokyo-marui",
+      "name": "ADAPTADOR DE ENGATE RÁPIDO PARA HPA PARA MAGAZINE TOKYO MARUI",
+      "sku": "8171",
+      "priceCents": 4900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 11,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6519323535-dsc00176-f96ec92021563a2cfc15816833366048-1024-1024.webp",
+      "images": [
+        "/produtos/3983f30cb90aef3e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "adaptador-de-engate-rapido-para-hpa-para-magazine-we-airsoft",
+      "name": "ADAPTADOR DE ENGATE RÁPIDO PARA HPA PARA MAGAZINE WE AIRSOFT",
+      "sku": "3316-1",
+      "priceCents": 27900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 5,
+      "weightGrams": 0,
+      "categoryUrl": "/airsoft/acessorios-para-airsoft/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f35917e9720f5d5f597fd1e05f1bccaaawsaccesskeyidakiatclmsgfx4j7tu445expires1720885590signaturexawish5lqq4r6ggfvhcb7ehjuo03d-0e5ad0fc905abb080716893497131441-1024-1024.webp",
+      "images": [
+        "/produtos/81e1b548e5119487.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-feminina-concept-love-invictus",
+      "name": "CAMISETA FEMININA CONCEPT LOVE INVICTUS",
+      "sku": "3893-0",
+      "priceCents": 8990,
+      "compareAtCents": 10900,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d6af27d28da54dc65384b52809211839awsaccesskeyidakiatclmsgfx4j7tu445expires1698756426signaturep2fq1gqm6hckalygynvz3hsz3kzi3d-93ea9ce44802bcf2cf16672204440459-1024-1024.webp",
+      "images": [
+        "/produtos/bed2ec0be6f18176.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-tatica-feminina-girl-power-invictus",
+      "name": "CAMISETA TÁTICA FEMININA GIRL POWER INVICTUS",
+      "sku": "A2905-1",
+      "priceCents": 8990,
+      "compareAtCents": 10900,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/13084838192-concept-brave-girl-frente-68f1b0b87a71df792516237886934207-1024-1024.webp",
+      "images": [
+        "/produtos/705bd125f0fa2746.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-feminina-concept-brave-girl-invictus",
+      "name": "CAMISETA FEMININA CONCEPT BRAVE GIRL INVICTUS",
+      "sku": "6970-1",
+      "priceCents": 5500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/70213509a5ae3eea4e2640a5d4dee229awsaccesskeyidakiatclmsgfx4j7tu445expires1732364899signatureixqwdm7dtuk2bjutjsqrkzqblepm3d-1abe952f4bc22a985217008289233034-1024-1024.webp",
+      "images": [
+        "/produtos/ec3b90aae8a110bc.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-us-navy-seals-feminina-baby-look-azul-marinho",
+      "name": "CAMISETA US NAVY SEALS FEMININA BABY LOOK AZUL MARINHO",
+      "sku": "A2537-1",
+      "priceCents": 5900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12623614823-camiseta-lute-como-uma-mulher-branca-frente-550x550-112635f8c20cab940e16212822287808-1024-1024.webp",
+      "images": [
+        "/produtos/6085e18cfee4ad20.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-feminina-lute-como-uma-mulher",
+      "name": "CAMISETA FEMININA LUTE COMO UMA MULHER",
+      "sku": "A2521-1",
+      "priceCents": 8990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12616532763-1ff67b9055-3087a5752ba406d90516212657199365-1024-1024.webp",
+      "images": [
+        "/produtos/c8adbe6987ad8699.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "t-shirt-feminina-soldier-multicam-belica",
+      "name": "T-SHIRT FEMININA SOLDIER MULTICAM BÉLICA",
+      "sku": "B0001-3",
+      "priceCents": 12900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/camiseta-feminina-legacy-usa-flag-5-11-tactical-d843e3a3979ce19c8d17585472539465-1024-1024.webp",
+      "images": [
+        "/produtos/88bdd0bf00796526.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-feminina-legacy-usa-flag-5-11-tactical",
+      "name": "CAMISETA FEMININA LEGACY USA FLAG - 5.11 TACTICAL",
+      "sku": "A2175-4",
+      "priceCents": 4990,
+      "compareAtCents": 6390,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7872d5f15f5617d5ef9d35d5e0145c7b-fef6413bd0c39cb10717307318854458-1024-1024.webp",
+      "images": [
+        "/produtos/0f887806870e974c.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-baby-look-feminina-punisher-gold-line",
+      "name": "CAMISETA BABY LOOK FEMININA PUNISHER GOLD LINE",
+      "sku": "A2522-1",
+      "priceCents": 8990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12616573674-220f40d984-a9b7f1b7b015c3fdba16212656978720-1024-1024.webp",
+      "images": [
+        "/produtos/3c2a8a2ee787ec38.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "t-shirt-feminina-soldier-verde-belica",
+      "name": "T-SHIRT FEMININA SOLDIER VERDE BÉLICA",
+      "sku": "A1438-1",
+      "priceCents": 19000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/9951760383-61305-019-01-aac15df737bf38404f16038146120988-1024-1024.webp",
+      "images": [
+        "/produtos/11644e1467a7de8d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camisa-polo-feminina-helios-sleeve-5-11-tactical",
+      "name": "CAMISA POLO FEMININA HELIOS SLEEVE 5.11 TACTICAL",
+      "sku": "7285-1",
+      "priceCents": 4990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/camisetas-femininas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6517811122-dsc09004-288811901ce290c1b315827213026186-1024-1024.webp",
+      "images": [
+        "/produtos/2c943e70fb39098e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camisa-polo-black-lisa-for-honor",
+      "name": "CAMISA POLO BLACK LISA FOR HONOR",
+      "sku": "A4924-1",
+      "priceCents": 11900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisas/camisa-polo/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/43edce64a143d9ad2f622c6356b093b3awsaccesskeyidakiatclmsgfx4g7qtfvdexpires1682694195signaturev2e2ftjkgbedkzko6hdm2b65etlo03d-24f6d71b635d57dd7316511582110275-1024-1024.webp",
+      "images": [
+        "/produtos/0b6ea31bcf452008.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camisa-polo-masculina-grafite-division-invictus",
+      "name": "CAMISA POLO MASCULINA GRAFITE DIVISION INVICTUS",
+      "sku": "A0504-1",
+      "priceCents": 17500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisas/camisa-polo/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/251-a0bf7ece66d036bc1c15934396341610-1024-1024.webp",
+      "images": [
+        "/produtos/66aa44a682dde871.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camisa-polo-coyote-lisa-for-honor",
+      "name": "CAMISA POLO COYOTE LISA FOR HONOR",
+      "sku": "6646-1",
+      "priceCents": 12900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisas/camisa-polo/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/3024ca54dd0855c711c2e7c3476a8668awsaccesskeyidakiatclmsgfx4j7tu445expires1690473176signaturerg2bgjeljjlwpdzfkfvbqrme5cp83d-869676c37d4946246116589371921786-1024-1024.webp",
+      "images": [
+        "/produtos/8f68e9a99bc23aab.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camisa-polo-masculina-azul-marinho-division-invictus",
+      "name": "CAMISA POLO MASCULINA AZUL MARINHO DIVISION INVICTUS",
+      "sku": "A1439-1",
+      "priceCents": 19000,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisas/camisa-polo/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/9951809585-61305-160-01-f490cb3d872a577d3816038145869995-1024-1024.webp",
+      "images": [
+        "/produtos/120af0662248e9b2.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camisa-polo-feminina-helios-silver-tan-5-11-tactical",
+      "name": "CAMISA POLO FEMININA HELIOS SILVER TAN 5.11 TACTICAL",
+      "sku": "B0685-1",
+      "priceCents": 15900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisas/camisa-polo/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/c7d4106fd2a6eba53f08dc16ff63cb48-571291fbadaf11d9b517706589542579-1024-1024.webp",
+      "images": [
+        "/produtos/2f65ff44beaf94f7.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "manguito-segunda-pele-session-preto-invictus",
+      "name": "MANGUITO SEGUNDA PELE SESSION PRETO INVICTUS",
+      "sku": "A2502-1",
+      "priceCents": 7990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/manguito/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12591226917-manguito-m1-dbac589835e2356a3316210263460231-1024-1024.webp",
+      "images": [
+        "/produtos/fafc8dfc8d2ef187.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "manguito-segunda-pele-mg01-shotgun",
+      "name": "MANGUITO SEGUNDA PELE MG01 SHOTGUN",
+      "sku": "A2507-1",
+      "priceCents": 7900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/manguito/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12595065757-manguito-m6-d851593ac7dee60ddf16210813714930-1024-1024.webp",
+      "images": [
+        "/produtos/f42315e493d76f23.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "manguito-segunda-pele-mg06-shotgun",
+      "name": "MANGUITO SEGUNDA PELE MG06 SHOTGUN",
+      "sku": "A2503-1",
+      "priceCents": 7900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/manguito/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12591251967-manguito-m2-a604f3992c5a78830616210263200122-1024-1024.webp",
+      "images": [
+        "/produtos/4d1064b98388cc9a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "manguito-segunda-pele-mg02-shotgun",
+      "name": "MANGUITO SEGUNDA PELE MG02 SHOTGUN",
+      "sku": "A2504-1",
+      "priceCents": 7900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/manguito/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12591225772-manguito-mod-1-pst-9260e919f23e0291aa16210262945002-1024-1024.webp",
+      "images": [
+        "/produtos/05005bdb44eb3ec1.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "manguito-segunda-pele-mg03-shotgun",
+      "name": "MANGUITO SEGUNDA PELE MG03 SHOTGUN",
+      "sku": "B1388",
+      "priceCents": 33900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/manguito/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/1da297757c6dfda30319a31f46f114fb-ed6b8847608140290117873311288976-1024-1024.webp",
+      "images": [
+        "/produtos/13b3fb1d76fcf60a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "manguito-de-protecao-kevlar-anticorte-e-calor-18-mechanix",
+      "name": "MANGUITO DE PROTEÇÃO KEVLAR ANTICORTE E CALOR 18\" MECHANIX",
+      "sku": "A4126-1",
+      "priceCents": 11500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/manguito/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/15094475129-teilin-68645-c9076f676bf271ddd916361265095720-1024-1024.webp",
+      "images": [
+        "/produtos/7c35cc74b8bda4e3.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "manguito-segunda-pele-camuflado-warchief",
+      "name": "MANGUITO SEGUNDA PELE CAMUFLADO WARCHIEF",
+      "sku": "A2506-1",
+      "priceCents": 5900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/manguito/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12595054173-manguito-m5-334ceb8c1578c54a1916210813606918-1024-1024.webp",
+      "images": [
+        "/produtos/d8e902ad3699d19e.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "manguito-segunda-pele-mg05-shotgun",
+      "name": "MANGUITO SEGUNDA PELE MG05 SHOTGUN",
+      "sku": "A2505-1",
+      "priceCents": 7900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/manguito/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12595040032-manguito-m4-c86b16c11999266a1916210813482056-1024-1024.webp",
+      "images": [
+        "/produtos/49781a90ebdf779d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-tatica-masculina-505-for-honor",
+      "name": "CALÇA JEANS TÁTICA MASCULINA 505 FOR HONOR",
+      "sku": "7703-1",
+      "priceCents": 25900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/09bc65a92b613f1758b1f55cb35a636bawsaccesskeyidakiatclmsgfx4j7tu445expires1715706309signaturecq2k2ftn5t382bcszgf0drzqilqc43d-db0bc90f2522d4e8f716841703957372-1024-1024.webp",
+      "images": [
+        "/produtos/8a639b311cc99b2b.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-tatica-preto-profundo-legion-2-0-invictus",
+      "name": "CALÇA JEANS TÁTICA PRETO PROFUNDO LEGION 2.0 - INVICTUS",
+      "sku": "A3257-1",
+      "priceCents": 16990,
+      "compareAtCents": 21900,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/14085516035-artico-1-b6696d75547678f80216364002506260-1024-1024.webp",
+      "images": [
+        "/produtos/397944fb043ba7af.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-feminina-victory-azul-artico-invictus",
+      "name": "CALÇA JEANS FEMININA VICTORY AZUL ARTICO INVICTUS",
+      "sku": "10120-1",
+      "priceCents": 25900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/5dbb4bd15f3570c0f5f2ef45f96c2c94awsaccesskeyidakiatclmsgfx4j7tu445expires1729785255signatureww6ff04lyzeg2fpxgiizi7l7hzky3d-b55065c0ff609568e816982494674598-1024-1024.webp",
+      "images": [
+        "/produtos/62f81ca62cfa86c2.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-tatica-patrol-azul-horizonte-invictus",
+      "name": "CALÇA JEANS TÁTICA PATROL AZUL HORIZONTE - INVICTUS",
+      "sku": "A3258-1",
+      "priceCents": 21900,
+      "compareAtCents": 27900,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/14085685777-victory-azul-noite-1-963b0f8d5f6a18979c16364000568971-1024-1024.webp",
+      "images": [
+        "/produtos/e43f0961a00c5309.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-feminina-victory-azul-oceano-invictus",
+      "name": "CALÇA JEANS FEMININA VICTORY AZUL OCEANO INVICTUS",
+      "sku": "7701-1",
+      "priceCents": 25900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/05a99495919b514d88776f76a11ec57cawsaccesskeyidakiatclmsgfx4j7tu445expires1715706203signaturezql40il2bp2bgxlajt8qkrhq8ntfy3d-f10a0bfe1060670c8116841703101932-1024-1024.webp",
+      "images": [
+        "/produtos/de282df20bfbe698.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-tatica-azul-horizonte-legion-2-0-invictus",
+      "name": "CALÇA JEANS TÁTICA AZUL HORIZONTE LEGION 2.0 - INVICTUS",
+      "sku": "2433-1",
+      "priceCents": 29900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/012f3ca531db13a56ce928f4dc07b62e-9d34816eab4ebcfb8217442152292690-1024-1024.webp",
+      "images": [
+        "/produtos/af138991af02a247.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-tatica-azul-escuro-legion-3-0-invictus",
+      "name": "CALÇA JEANS TÁTICA AZUL ESCURO LEGION 3.0 - INVICTUS",
+      "sku": "B1763-1",
+      "priceCents": 29900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f66613eaf3818510e02fb2da55023e84-b137c86fbbee0d0f6917939002840940-1024-1024.webp",
+      "images": [
+        "/produtos/b15c5aea8515f799.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-tatica-preta-legion-3-0-invictus",
+      "name": "CALÇA JEANS TÁTICA PRETA LEGION 3.0 - INVICTUS",
+      "sku": "5784-1",
+      "priceCents": 26900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/07808a866ce6ed2e7e5426b97163f3fa-636b88fe52d9b6fa8617412719114823-1024-1024.webp",
+      "images": [
+        "/produtos/085987c0eb2c50bd.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "calca-jeans-masculina-trooper-azul-medio-invictus",
+      "name": "CALÇA JEANS MASCULINA TROOPER AZUL MÉDIO - INVICTUS",
+      "sku": "2923-1",
+      "priceCents": 26900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/calcas-jeans/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/3df5914b4b85295ec44d1756651496d3-21d82e75b72587e3a317207062021167-1024-1024.webp",
+      "images": [
+        "/produtos/d38a6f6265edda5a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "blusa-segunda-pele-shade-invictus",
+      "name": "BLUSA SEGUNDA PELE SHADE INVICTUS",
+      "sku": "A0924-1",
+      "priceCents": 9999,
+      "compareAtCents": 15900,
+      "promoPriceCents": null,
+      "stock": 8,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/8993513227-x1-t-shirt-infantry2-verde-oliva-jpg-pagespeed-ic-rqf0emrk0u-044b5821f917b6191216140897367886-1024-1024.webp",
+      "images": [
+        "/produtos/198c8779d4745d12.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-militar-infantry-2-0-verde-oliva-invictus",
+      "name": "CAMISETA MILITAR INFANTRY 2.0 VERDE OLIVA INVICTUS",
+      "sku": "A4114-1",
+      "priceCents": 8990,
+      "compareAtCents": 10900,
+      "promoPriceCents": null,
+      "stock": 3,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/15093752098-brave-heart-masc-frente-acc8ecbd89888a9c1816357786491207-1024-1024.webp",
+      "images": [
+        "/produtos/43d29d0ab058b8ad.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-concept-brave-heart-invictus",
+      "name": "CAMISETA CONCEPT BRAVE HEART INVICTUS",
+      "sku": "A2189-1",
+      "priceCents": 7990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/11453703428-fb2e97acbb-1-db70dd0fb30a4d697516143701199253-1024-1024.webp",
+      "images": [
+        "/produtos/50ada2ae9eb2376d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-team-glock-eua-teamsix",
+      "name": "CAMISETA TEAM GLOCK EUA TEAMSIX",
+      "sku": "9044-1V",
+      "priceCents": 8990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d0401fea21a2c1f50ab9de65240026f0-3bbd6c3da5bdcd729817532790967240-1024-1024.webp",
+      "images": [
+        "/produtos/69d3101d67a88ad4.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-masculina-concept-flaming-skull-invictus",
+      "name": "CAMISETA MASCULINA CONCEPT FLAMING SKULL - INVICTUS",
+      "sku": "A4111-1",
+      "priceCents": 10900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/15093747632-microsoftteams-image-5-15f803c28e8af4f65d16357786815629-1024-1024.webp",
+      "images": [
+        "/produtos/ffa8272ec4ef8ce9.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-concept-espresso-marrom-invictus",
+      "name": "CAMISETA CONCEPT ESPRESSO MARROM INVICTUS",
+      "sku": "3191-1",
+      "priceCents": 9990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/01ba290ed2237151074b788bbe974a65awsaccesskeyidakiatclmsgfx4j7tu445expires1701194932signature95mbl08pxd1lwo62b9ofts82b2fv2fg3d-7fa93f649556185df016696589623666-1024-1024.webp",
+      "images": [
+        "/produtos/a5edd3e9aad8879a.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "regata-masculina-dry-fit-verde-action-army-invictus",
+      "name": "REGATA MASCULINA DRY FIT VERDE ACTION ARMY INVICTUS",
+      "sku": "4937-1",
+      "priceCents": 3990,
+      "compareAtCents": 5500,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6511140143-t-shirt-concept-raio-x-mochila-invictus-frente-a452a0030e091b16ff15827220712252-1024-1024.webp",
+      "images": [
+        "/produtos/6714d4edbad881ed.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-militar-invictus-modelo-concept-raio-x-mochila",
+      "name": "CAMISETA CONCEPT RAIO X MOCHILA INVICTUS",
+      "sku": "6976-1",
+      "priceCents": 7990,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/f54127df531-48dbc0dae6b2fd34d116143560563873-1024-1024.webp",
+      "images": [
+        "/produtos/fe675c21c64094ea.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-tatica-modelo-the-punisher-cor-preta",
+      "name": "CAMISETA THE PUNISHER PRETA",
+      "sku": "1740-1",
+      "priceCents": 8990,
+      "compareAtCents": 10900,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6327c3490bf92e541fa378f1ec50c503awsaccesskeyidakiatclmsgfx4j7tu445expires1708604308signatureak3s62z2bl4zujdrefdy6bk36lrc3d-7192b743be4867904d16770683327044-1024-1024.webp",
+      "images": [
+        "/produtos/80ba6b78eb82b4cd.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "camiseta-masculina-cinza-skull-invictus",
+      "name": "CAMISETA MASCULINA CINZA SKULL INVICTUS",
+      "sku": "3893-0",
+      "priceCents": 8990,
+      "compareAtCents": 10900,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/camisetas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/d6af27d28da54dc65384b52809211839awsaccesskeyidakiatclmsgfx4j7tu445expires1698756426signaturep2fq1gqm6hckalygynvz3hsz3kzi3d-93ea9ce44802bcf2cf16672204440459-1024-1024.webp",
+      "images": [
+        "/produtos/bed2ec0be6f18176.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-combat-multicam-for-honor",
+      "name": "BERMUDA COMBAT MULTICAM FOR HONOR",
+      "sku": "A4400-1",
+      "priceCents": 29900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 4,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/bermuda-combat-desert-311-6-for-honor-3-4dbb1f31e42b87685e17937236263473-1024-1024.webp",
+      "images": [
+        "/produtos/0d897f5411c73353.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-combat-desert-311-6-for-honor",
+      "name": "BERMUDA COMBAT DESERT 311-6 FOR HONOR",
+      "sku": "A4674-1",
+      "priceCents": 27900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/ba928eee6efe7a04c95a04cfac116de4awsaccesskeyidakiatclmsgfx4g7qtfvdexpires1677855861signaturepgbnyg2b2ozky5o2nsb4wuaiet1i3d-60d89a2c1ae45f4a5416463198650004-1024-1024.webp",
+      "images": [
+        "/produtos/672e7eb44f7ef00d.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-tatica-veteran-multicam-invictus",
+      "name": "BERMUDA TÁTICA VETERAN MULTICAM INVICTUS",
+      "sku": "2903-1",
+      "priceCents": 19500,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/76534382dd3d7f564d726080e735de1b1-83f74eccf0ff62ccd316230804019632-1024-1024.webp",
+      "images": [
+        "/produtos/3e7a8262d4c6782f.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-tatica-preta-arb-01-arrest",
+      "name": "BERMUDA TÁTICA PRETA ARB 01 - ARREST",
+      "sku": "6528-1",
+      "priceCents": 29900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/bermuda_combat_black_311-1_frente1-6599762c902c8acff315857491853145-1024-1024.webp",
+      "images": [
+        "/produtos/c0e52a0f275ca649.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-combat-preta-for-honor",
+      "name": "BERMUDA COMBAT PRETA FOR HONOR",
+      "sku": "A3174-1",
+      "priceCents": 29900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/13832370040-dsc3264-d7e46d0d72c694576216277362510528-1024-1024.webp",
+      "images": [
+        "/produtos/63e56fd1ea822823.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-combat-tan-311-25-for-honor",
+      "name": "BERMUDA COMBAT TAN 311-25 FOR HONOR",
+      "sku": "6527-1",
+      "priceCents": 29900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/6540213784-bermuda-combat-olive-drab-311-9-fremte-64378598285a3deaa715827244763749-1024-1024.webp",
+      "images": [
+        "/produtos/6100d1043e87b057.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-combat-verde-for-honor",
+      "name": "BERMUDA COMBAT VERDE FOR HONOR",
+      "sku": "A4501-1",
+      "priceCents": 29900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 1,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/7eb6ef72ed2e7a26fb63b2b9e32aa5f6awsaccesskeyidakiatclmsgfx4g7qtfvdexpires1675172757signatureivwbkjmekymubuvop4xqa6d2fz2fk3d-37afce68675994636f16436367638098-1024-1024.webp",
+      "images": [
+        "/produtos/4553ae4b2178b777.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-tatica-taclite-9-cotton-canvas-black-5-11-tactical",
+      "name": "BERMUDA TÁTICA TACLITE 9\" COTTON CANVAS BLACK 5.11 TACTICAL",
+      "sku": "A2317-1",
+      "priceCents": 16900,
+      "compareAtCents": 19900,
+      "promoPriceCents": null,
+      "stock": 0,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/12206709521-1-bermuda-eagle-caqui-31b18d44ac1a59a52a16189485780587-1024-1024.webp",
+      "images": [
+        "/produtos/0663972ac8658838.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-de-sarja-eagle-caqui-invictus",
+      "name": "BERMUDA DE SARJA EAGLE CAQUI INVICTUS",
+      "sku": "A5049-1",
+      "priceCents": 13900,
+      "compareAtCents": 15900,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/ebe93d8c2383ea1137a9b33ab41c0fefawsaccesskeyidakiatclmsgfx4j7tu445expires1687020214signatureqh0j6bsgfouimvdw50qtk515jt83d-87a16a3c751cfb86aa16554842730022-1024-1024.webp",
+      "images": [
+        "/produtos/67dabda76a22a408.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-de-treino-preta-hidden-invictus",
+      "name": "BERMUDA DE TREINO PRETA HIDDEN INVICTUS",
+      "sku": "A4906-1",
+      "priceCents": 27900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/357a1d405dae85cae2da2856ec1034a7awsaccesskeyidakiatclmsgfx4j7tu445expires1684953908signaturebjmxubmcfvad8tieyq1oysm3dbq3d-acc6971bd54c78155a16534179756827-1024-1024.webp",
+      "images": [
+        "/produtos/7240f4a5e7dc7711.webp"
+      ],
+      "source": "gmtatico-live"
+    },
+    {
+      "slug": "bermuda-tatica-preta-veteran-invictus",
+      "name": "BERMUDA TÁTICA PRETA VETERAN INVICTUS",
+      "sku": "A4672-1",
+      "priceCents": 27900,
+      "compareAtCents": null,
+      "promoPriceCents": null,
+      "stock": 2,
+      "weightGrams": 0,
+      "categoryUrl": "/life-style/bermudas/",
+      "brandSlug": null,
+      "imageUrl": "https://acdn-us.mitiendanube.com/stores/001/100/518/products/dc3791ce309c283e42a4b1665619e82aawsaccesskeyidakiatclmsgfx4g7qtfvdexpires1677855878signaturet1u3ui2bumz715yjaayxth9z1dxw3d-6c5ec24ad5eea7287216463198816068-1024-1024.webp",
+      "images": [
+        "/produtos/bfa2a9721d7e2d23.webp"
+      ],
+      "source": "gmtatico-live"
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+import { eq, sql, and, gte, lt, count, sum } from "drizzle-orm";
+import { canTransition, type OrderStatus, RESERVED_STATUSES } from "@airsoft/shared";
+import type { Db } from "../db/index.js";
+import { schema } from "../db/index.js";
+import { badRequest, conflict, notFound } from "../lib/errors.js";
+import { audit } from "../lib/audit.js";
+import { releaseStock } from "./inventory.js";
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export async function transitionOrder(
+  db: Db,
+  input: {
+    orderId: string;
+    to: OrderStatus;
+    reason?: string;
+    actorUserId?: string;
+    actorLabel?: string;
+    ip?: string;
+  },
+): Promise<void> {
+  const rows = await db
+    .select()
+    .from(schema.orders)
+    .where(eq(schema.orders.id, input.orderId));
+  const order = rows[0];
+  if (!order) throw notFound("Pedido não encontrado");
+
+  const from = order.status;
+  if (from === input.to) return;
+  if (!canTransition(from, input.to)) {
+    throw conflict(
+      "invalid_transition",
+      `Transição inválida: ${from} → ${input.to}`,
+      { from, to: input.to },
+    );
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.orders)
+      .set({ status: input.to, updatedAt: new Date() })
+      .where(eq(schema.orders.id, input.orderId));
+    await tx.insert(schema.orderStatusHistory).values({
+      id: crypto.randomUUID(),
+      orderId: input.orderId,
+      fromStatus: from,
+      toStatus: input.to,
+      reason: input.reason ?? null,
+      actorUserId: input.actorUserId ?? null,
+      actorSystem: !input.actorUserId,
+      createdAt: new Date(),
+    });
+
+    if (
+      (input.to === "cancelado" || input.to === "reembolsado") &&
+      (RESERVED_STATUSES as readonly string[]).includes(from)
+    ) {
+      const items = await tx
+        .select()
+        .from(schema.orderItems)
+        .where(eq(schema.orderItems.orderId, input.orderId));
+      for (const item of items) {
+        await releaseStock(tx as unknown as Db, {
+          variantId: item.variantId,
+          quantity: item.quantity,
+          orderId: input.orderId,
+          reason: `Pedido ${input.to}`,
+        });
+      }
+    }
+  });
+
+  await audit(db, {
+    actorUserId: input.actorUserId,
+    actorLabel: input.actorLabel,
+    action: "order.transition",
+    entity: "order",
+    entityId: input.orderId,
+    before: { status: from },
+    after: { status: input.to, reason: input.reason },
+    ip: input.ip,
+  });
+}
+
+export interface VolumeUsage {
+  ordersToday: number;
+  revenueTodayCents: number;
+  limits: {
+    maxOrdersPerDay: number;
+    maxRevenuePerDayCents: number;
+    maxOrdersPerCustomerPerDay: number;
+    maxOrderValueCents: number;
+    actionWhenExceeded: string;
+    enabled: boolean;
+  };
+}
+
+export async function getVolumeUsage(db: Db): Promise<VolumeUsage> {
+  const limitRows = await db.select().from(schema.orderVolumeLimits);
+  const limits = limitRows[0] ?? {
+    maxOrdersPerDay: 0,
+    maxRevenuePerDayCents: 0,
+    maxOrdersPerCustomerPerDay: 0,
+    maxOrderValueCents: 0,
+    actionWhenExceeded: "bloquear_checkout",
+    enabled: false,
+  };
+
+  const day = today();
+  const [usage] = await db
+    .select({
+      orders: count(),
+      revenue: sum(schema.orders.totalCents),
+    })
+    .from(schema.orders)
+    .where(
+      and(
+        gte(schema.orders.createdAt, new Date(`${day}T00:00:00Z`)),
+        lt(schema.orders.createdAt, new Date(`${day}T23:59:59.999Z`)),
+        sql`${schema.orders.status} <> 'cancelado'`,
+      ),
+    );
+
+  return {
+    ordersToday: Number(usage?.orders ?? 0),
+    revenueTodayCents: Number(usage?.revenue ?? 0),
+    limits: {
+      maxOrdersPerDay: Number(limits.maxOrdersPerDay),
+      maxRevenuePerDayCents: Number(limits.maxRevenuePerDayCents),
+      maxOrdersPerCustomerPerDay: Number(limits.maxOrdersPerCustomerPerDay),
+      maxOrderValueCents: Number(limits.maxOrderValueCents),
+      actionWhenExceeded: limits.actionWhenExceeded,
+      enabled: Boolean(limits.enabled),
+    },
+  };
+}
+
+export async function checkOrderVolume(
+  db: Db,
+  input: { customerId: string; totalCents: number },
+): Promise<{ allowed: boolean; requiresReview: boolean; reason?: string }> {
+  const usage = await getVolumeUsage(db);
+  const { limits } = usage;
+  if (!limits.enabled) return { allowed: true, requiresReview: false };
+
+  if (limits.maxOrderValueCents > 0 && input.totalCents > limits.maxOrderValueCents) {
+    return decide(limits, `Valor do pedido acima do limite (R$ ${(limits.maxOrderValueCents / 100).toFixed(2)})`);
+  }
+  if (limits.maxOrdersPerDay > 0 && usage.ordersToday >= limits.maxOrdersPerDay) {
+    return decide(limits, `Cota diária de pedidos atingida (${usage.ordersToday}/${limits.maxOrdersPerDay})`);
+  }
+  if (
+    limits.maxRevenuePerDayCents > 0 &&
+    usage.revenueTodayCents + input.totalCents > limits.maxRevenuePerDayCents
+  ) {
+    return decide(limits, "Cota diária de faturamento seria ultrapassada");
+  }
+  if (limits.maxOrdersPerCustomerPerDay > 0) {
+    const day = today();
+    const [customerToday] = await db
+      .select({ n: count() })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.customerId, input.customerId),
+          gte(schema.orders.createdAt, new Date(`${day}T00:00:00Z`)),
+          lt(schema.orders.createdAt, new Date(`${day}T23:59:59.999Z`)),
+        ),
+      );
+    if (Number(customerToday?.n ?? 0) >= limits.maxOrdersPerCustomerPerDay) {
+      return decide(
+        limits,
+        `Limite de pedidos por cliente no dia (${customerToday?.n}/${limits.maxOrdersPerCustomerPerDay})`,
+      );
+    }
+  }
+  return { allowed: true, requiresReview: false };
+}
+
+function decide(
+  limits: VolumeUsage["limits"],
+  reason: string,
+): { allowed: boolean; requiresReview: boolean; reason: string } {
+  if (limits.actionWhenExceeded === "revisao_manual") {
+    return { allowed: true, requiresReview: true, reason };
+  }
+  return { allowed: false, requiresReview: false, reason };
+}
+
+export async function nextOrderNumber(db: Db): Promise<string> {
+  const day = today();
+  const [row] = await db
+    .select({ n: count() })
+    .from(schema.orders)
+    .where(eq(schema.orders.volumeDay, day));
+  const seq = String(Number(row?.n ?? 0) + 1).padStart(6, "0");
+  return `AA-${day.replace(/-/g, "").slice(2)}-${seq}`;
+}

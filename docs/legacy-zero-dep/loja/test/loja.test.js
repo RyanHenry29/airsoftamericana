@@ -1,0 +1,20 @@
+import test from 'node:test';import assert from 'node:assert/strict';import crypto from 'node:crypto';import {createApp} from '../app.js';
+const SECRET='segredo-de-teste';
+async function boot(){const app=createApp({dbFile:':memory:',adminEmail:'a@x.com',adminPassword:'pw123456',secret:SECRET});await new Promise(r=>app.server.listen(0,r));const base='http://localhost:'+app.server.address().port;
+const f=(p,o={})=>fetch(base+p,{...o,headers:{'content-type':'application/json',...o.headers},body:o.body&&JSON.stringify(o.body)});
+app.db.exec("INSERT INTO products(sku,slug,name,price_cents,stock) VALUES('S1','s1','Item',1000,3)");return{...app,f,close:()=>{app.server.closeAllConnections();app.server.close()}}}
+const post=(a,body)=>a.f('/api/checkout',{method:'POST',body:{email:'c@x.com',address:'Rua 1',items:[{id:1,qty:1}],...body}});
+const hook=(a,b)=>{const raw=JSON.stringify(b);return fetch(a.server.address()&&`http://localhost:${a.server.address().port}/api/webhooks/payment`,{method:'POST',body:raw,headers:{'x-signature':crypto.createHmac('sha256',SECRET).update(raw).digest('hex')}})};
+test('concorrência: 10 compras simultâneas, estoque 3',async()=>{const a=await boot();const rs=await Promise.all(Array.from({length:10},()=>post(a)));const ok=rs.filter(r=>r.status===201).length;
+assert.equal(ok,3);assert.equal(rs.filter(r=>r.status===409).length,7);assert.equal(a.db.prepare('SELECT reserved FROM products').get().reserved,3);a.close()});
+test('webhook duplicado baixa estoque uma vez; assinatura inválida é rejeitada',async()=>{const a=await boot();const{order_id}=await(await post(a)).json();
+assert.equal((await fetch(`http://localhost:${a.server.address().port}/api/webhooks/payment`,{method:'POST',body:'{}',headers:{'x-signature':'x'}})).status,401);
+const ev={event_id:'e1',order_id,status:'paid'};await hook(a,ev);const d=await(await hook(a,ev)).json();assert.equal(d.duplicate,true);
+const p=a.db.prepare('SELECT stock,reserved FROM products').get();assert.deepEqual({...p},{stock:2,reserved:0});a.close()});
+test('reserva expirada é liberada',async()=>{const a=await boot();await post(a);a.db.exec('UPDATE orders SET expires_at=1');a.sweep();assert.equal(a.db.prepare('SELECT reserved FROM products').get().reserved,0);a.close()});
+test('permissões: atendimento não ajusta estoque; admin ajusta e gera auditoria',async()=>{const a=await boot();a.db.prepare("INSERT INTO admins(email,hash,role) VALUES('s@x.com',?,'atendimento')").run(a.hash('pw123456'));
+const login=async(email)=>(await(await a.f('/api/admin/login',{method:'POST',body:{email,password:'pw123456'}})).json()).token;
+const H=t=>({headers:{authorization:'Bearer '+t}});const adj=t=>a.f('/api/admin/stock',{method:'POST',body:{product_id:1,delta:5},...H(t)});
+assert.equal((await adj(await login('s@x.com'))).status,403);assert.equal((await a.f('/api/admin/stock',{method:'POST',body:{}})).status,401);assert.equal((await adj(await login('a@x.com'))).status,200);
+assert.equal(a.db.prepare('SELECT stock FROM products').get().stock,8);assert.equal(a.db.prepare('SELECT COUNT(*) n FROM audit').get().n,1);a.close()});
+test('carrinho persistente e preço validado no servidor',async()=>{const a=await boot();await a.f('/api/cart/t1',{method:'PUT',body:{items:[{id:1,qty:2}]}});const c=await(await a.f('/api/cart/t1')).json();assert.equal(c.total,2000);a.close()});

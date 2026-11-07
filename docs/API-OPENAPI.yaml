@@ -1,0 +1,67 @@
+openapi: 3.0.0
+info:
+  title: Airsoft Americana API
+  version: 0.1.0
+  description: Contrato resumido — ver docs/API.md para o detalhe de rotas e payloads.
+servers:
+  - url: http://localhost:4000
+    description: dev
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        '200': { description: ok }
+  /api/store/home:
+    get:
+      summary: Home (featured, news, sale, banners)
+      responses:
+        '200': { description: seções da loja }
+  /api/checkout:
+    post:
+      summary: Checkout (valores recalculados no servidor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutInput' }
+      responses:
+        '200': { description: pedido criado }
+  /api/webhooks/{provider}:
+    post:
+      summary: Webhook do gateway (body cru, assinatura HMAC, idempotente)
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: processado }
+components:
+  schemas:
+    CheckoutInput:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { type: object, properties: { variantId: { type: string }, quantity: { type: integer } } }
+        address:
+          $ref: '#/components/schemas/AddressInput'
+        paymentMethod: { type: string, enum: [pix, cartao, boleto] }
+        acceptedTerms: { type: boolean, enum: [true] }
+    AddressInput:
+      type: object
+      properties:
+        recipient: { type: string }
+        zip: { type: string, pattern: "^\\d{8}$" }
+        street: { type: string }
+        number: { type: string }
+        neighborhood: { type: string }
+        city: { type: string }
+        state: { type: string, maxLength: 2 }
+        country: { type: string, default: BR }

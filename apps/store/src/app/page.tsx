@@ -1,0 +1,335 @@
+// language: TSX, file: apps/store/src/app/page.tsx, target: Next.js App Router
+// Homepage comercial: hero full-bleed com foto, chips de benefício, faixa de
+// departamentos, blocos com imagem e grades densas. Tudo alimentado por /api/store/home.
+import Image from "next/image";
+import Link from "next/link";
+import { Header } from "./components/Header";
+import { MegaMenu } from "./components/MegaMenu";
+import { ProductCard } from "./components/ProductCard";
+import { Footer } from "./components/Footer";
+import { NewsletterForm } from "./components/NewsletterForm";
+import { ArrowRight, CreditCard, Headphones, Package, Truck } from "lucide-react";
+import {
+  API_URL,
+  formatBRL,
+  storeGet,
+  type StoreHome,
+  type StoreProduct,
+} from "./lib/store";
+
+export const dynamic = "force-dynamic";
+
+function SectionHead({
+  kicker,
+  title,
+  href,
+  label,
+}: {
+  kicker?: string;
+  title: string;
+  href?: string;
+  label?: string;
+}) {
+  return (
+    <div className="sec-head">
+      <div>
+        {kicker && <span className="sec-kicker">{kicker}</span>}
+        <h2 className="sec-title">{title}</h2>
+      </div>
+      {href && (
+        <Link href={href} className="sec-link">
+          {label ?? "Ver tudo"} <ArrowRight size={14} />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Escolhe a vitrine de cada seção pelo tipo — os dados vêm sempre da API. */
+function productsForSection(home: StoreHome, kind: string): StoreProduct[] {
+  switch (kind) {
+    case "news":
+      return home.news;
+    case "featured":
+      return home.featured;
+    case "bestsellers":
+      return home.bestsellers;
+    case "promo":
+      return home.sale;
+    default:
+      return [];
+  }
+}
+
+export default async function HomePage() {
+  const home = await storeGet<StoreHome>(`${API_URL}/api/store/home`, {
+    banners: [],
+    sections: [],
+    departments: [],
+    brands: [],
+    featured: [],
+    news: [],
+    sale: [],
+    bestsellers: [],
+    settings: {
+      pix_discount_percent: 0,
+      installments: 1,
+      installment_interest_free: false,
+      min_installment_cents: 0,
+      free_shipping_from_cents: 0,
+      shipping_carriers: [],
+      whatsapp: "",
+      email: "",
+      address: { street: "", district: "", city: "", state: "", zip: "" },
+      service_hours: "",
+      social: { instagram: "", whatsapp: "" },
+      announcement: "",
+    },
+    totals: { products: 0 },
+  });
+
+  const { settings } = home;
+  const hero = home.banners[0] ?? null;
+  const sections = home.sections.length > 0 ? home.sections : [];
+  const freeShipping = settings.free_shipping_from_cents;
+  const pixPercent = settings.pix_discount_percent;
+  const inst = settings.installments;
+
+  const benefits = [
+    {
+      icon: Truck,
+      title: freeShipping > 0 ? `Frete grátis acima de ${formatBRL(freeShipping)}` : "Frete por CEP",
+      sub: settings.shipping_carriers[0] ?? "Correios PAC e SEDEX",
+    },
+    {
+      icon: CreditCard,
+      title: pixPercent > 0 ? `${pixPercent}% OFF no PIX` : "PIX com desconto",
+      sub: "Aprovação na hora",
+    },
+    {
+      icon: CreditCard,
+      title: `${inst}x sem juros`,
+      sub: "Ou boleto bancário",
+    },
+    {
+      icon: Headphones,
+      title: "Loja física em Campinas",
+      sub: "Retirada com equipe de campo",
+    },
+  ];
+
+  return (
+    <main id="conteudo" className="page-shell">
+      <Header />
+      <MegaMenu departments={home.departments} />
+
+      {/* HERO — full-bleed com foto real do catálogo */}
+      {hero && (
+        <section className="hero-full">
+          <Image
+            src={hero.imageDesktop ?? "/produtos/e0c3dc6a62a7f830.webp"}
+            alt={hero.title}
+            fill
+            priority
+            sizes="100vw"
+            className="hero-full__img"
+          />
+          <div className="hero-full__scrim" />
+          <div className="hero-full__body">
+            {hero.eyebrow && <span className="hero-full__eyebrow">{hero.eyebrow}</span>}
+            <h1 className="hero-full__title">{hero.title}</h1>
+            {hero.subtitle && <p className="hero-full__sub">{hero.subtitle}</p>}
+            {hero.ctaLabel && (
+              <Link href={hero.link ?? "/catalogo"} className="btn-primary btn-lg">
+                {hero.ctaLabel}
+              </Link>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* CHIPS DE BENEFÍCIO */}
+      <section className="chips" aria-label="Condições comerciais">
+        <ul className="chips__row">
+          {benefits.map((b) => (
+            <li key={b.title} className="chip">
+              <b.icon size={18} />
+              <span>
+                <strong>{b.title}</strong>
+                <em>{b.sub}</em>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* FAIXA DE DEPARTAMENTOS */}
+      {home.departments.length > 0 && (
+        <section className="dept-strip" aria-label="Departamentos">
+          <ul className="dept-strip__row">
+            {home.departments.map((dept) => (
+              <li key={dept.id}>
+                <Link href={`/departamento/${dept.slug}`} className="dept-strip__item">
+                  {dept.name}
+                  <ArrowRight size={13} />
+                </Link>
+              </li>
+            ))}
+            <li>
+              <Link href="/catalogo" className="dept-strip__item dept-strip__item--all">
+                Todos os produtos
+                <ArrowRight size={13} />
+              </Link>
+            </li>
+          </ul>
+        </section>
+      )}
+
+      {/* SEÇÕES ADMINISTRÁVEIS — ordem e ativação vêm de homepage_sections */}
+      {sections.map((section) => {
+        if (section.kind === "hero" || section.kind === "benefits") return null;
+
+        if (section.kind === "departments") {
+          return (
+            <section key={section.id} className="block">
+              <SectionHead
+                kicker="Escolha pelo sistema"
+                title={section.title || "Departamentos"}
+                href="/catalogo"
+                label="Catálogo completo"
+              />
+              <ul className="dept-cards">
+                {home.departments.map((dept) => (
+                  <li key={dept.id}>
+                    <Link href={`/departamento/${dept.slug}`} className="dept-card">
+                      {dept.imageUrl && (
+                        <span className="dept-card__media">
+                          <Image
+                            src={dept.imageUrl}
+                            alt={dept.name}
+                            fill
+                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                            className="dept-card__img"
+                          />
+                        </span>
+                      )}
+                      <span className="dept-card__body">
+                        <strong>{dept.name}</strong>
+                        <em>{dept.children.length} categorias</em>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        }
+
+        if (section.kind === "brands") {
+          const brands = home.brands.filter((b) => b.productCount > 0);
+          if (brands.length === 0) return null;
+          return (
+            <section key={section.id} className="block block--border">
+              <SectionHead kicker="Fabricantes que trabalham com a gente" title={section.title || "Marcas"} />
+              <ul className="brand-grid">
+                {brands.map((brand) => (
+                  <li key={brand.id}>
+                    <Link href={`/marca/${brand.slug}`} className="brand-tile">
+                      <span className="brand-tile__name">{brand.name}</span>
+                      <span className="brand-tile__count">{brand.productCount} produtos</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        }
+
+        if (section.kind === "institutional") {
+          return (
+            <section key={section.id} className="block block--border">
+              <div className="inst">
+                <div className="inst__copy">
+                  <span className="sec-kicker">Desde 2012</span>
+                  <h2 className="sec-title">
+                    Loja física em {settings.address.city || "Campinas"}/{settings.address.state || "SP"}
+                  </h2>
+                  <p>
+                    {settings.address.street}
+                    {settings.address.district ? ` — ${settings.address.district}` : ""}
+                    {settings.address.zip ? ` · CEP ${settings.address.zip}` : ""}
+                  </p>
+                  <p>{settings.service_hours}</p>
+                  <div className="inst__actions">
+                    <Link href="/institucional" className="btn-primary">
+                      Conhecer a loja
+                    </Link>
+                    <Link href="/atendimento" className="btn-secondary">
+                      Falar com a gente
+                    </Link>
+                  </div>
+                </div>
+                <ul className="inst__facts">
+                  <li>
+                    <Package size={18} />
+                    <span>
+                      <strong>{home.totals.products}</strong> produtos no catálogo
+                    </span>
+                  </li>
+                  <li>
+                    <Truck size={18} />
+                    <span>
+                      <strong>Brasil</strong> entrega para todo o país
+                    </span>
+                  </li>
+                  <li>
+                    <Headphones size={18} />
+                    <span>
+                      <strong>{settings.service_hours ? "Atendimento" : "WhatsApp"}</strong>{" "}
+                      {settings.service_hours}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </section>
+          );
+        }
+
+        if (section.kind === "newsletter") {
+          return (
+            <section key={section.id} className="block block--border">
+              <div className="newsletter-band">
+                <div>
+                  <span className="sec-kicker">Drops e reposição</span>
+                  <h2 className="sec-title">Receba as novidades no seu e-mail</h2>
+                </div>
+                <NewsletterForm />
+              </div>
+            </section>
+          );
+        }
+
+        const products = productsForSection(home, section.kind);
+        if (products.length === 0) return null;
+
+        return (
+          <section key={section.id} className="block">
+            <SectionHead
+              kicker={section.subtitle}
+              title={section.title}
+              href="/catalogo"
+              label="Ver tudo"
+            />
+            <ul className="product-grid">
+              {products.map((product) => (
+                <ProductCard key={product.id} product={product} settings={settings} />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+
+      <Footer settings={settings} />
+    </main>
+  );
+}

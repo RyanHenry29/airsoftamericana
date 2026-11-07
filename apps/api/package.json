@@ -1,0 +1,41 @@
+{
+  "name": "@airsoft/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/cli.ts",
+    "start": "tsx src/cli.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:reset": "node -e \"require('fs').rmSync('data',{recursive:true,force:true})\" && tsx src/db/seed.ts"
+  },
+  "dependencies": {
+    "@airsoft/shared": "*",
+    "@electric-sql/pglite": "^0.5.15",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/cors": "^11.4.1",
+    "@fastify/helmet": "^13.2.0",
+    "@fastify/multipart": "^9.4.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.8",
+    "jose": "^6.2.15",
+    "pg": "^8.16.3",
+    "pino": "^10.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/pg": "^8.15.0",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2",
+    "vitest": "^5.1.0"
+  }
+}

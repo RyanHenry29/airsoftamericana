@@ -1,0 +1,309 @@
+/* Airsoft Americana — layout da página de produto (parte 4)
+ * Galeria com miniaturas, caixa de preço, Perks, cotação de frete, ficha técnica.
+ */
+
+/* ————— Colunas da PDP ————— */
+.pdp {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  align-items: start;
+  padding: 0 clamp(1rem, 4vw, 2.5rem) clamp(3rem, 6vw, 5rem);
+}
+@media (max-width: 900px) { .pdp { grid-template-columns: 1fr; } }
+.pdp__media { position: sticky; top: 120px; }
+@media (max-width: 900px) { .pdp__media { position: static; } }
+.pdp__info { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+
+.pdp__brand {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--primary);
+  text-decoration: none;
+}
+.pdp__brand:hover { color: var(--primary-dark); }
+.pdp__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  line-height: 0.95;
+  letter-spacing: 0.005em;
+  font-size: clamp(1.9rem, 4vw, 2.9rem);
+  color: #ffffff;
+}
+.pdp__lead {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.6;
+  color: var(--dim);
+}
+
+/* ————— Caixa de preço ————— */
+.pdp__pricebox {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 1.35rem 1.4rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.pdp__was {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #6f766f;
+  text-decoration: line-through;
+}
+.pdp__was em {
+  font-style: normal;
+  text-decoration: none;
+  color: var(--primary);
+  font-weight: 700;
+}
+.pdp__price {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2rem, 4.5vw, 2.85rem);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--primary);
+}
+.pdp__pix {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--primary);
+}
+.pdp__inst {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+.pdp__flags { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+.pdp__flag {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--line);
+  color: #c8cbc8;
+}
+.pdp__flag.is-ok { border-color: rgb(139 207 22 / 0.5); color: var(--primary); }
+.pdp__flag.is-out { border-color: rgb(220 38 38 / 0.5); color: #dc2626; }
+.pdp__buy { margin-top: 1rem; }
+.pdp__nostock {
+  margin: 1rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: #dc2626;
+}
+
+/* ————— Perks ————— */
+.pdp__perks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+.pdp__perks > div {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 0.9rem;
+  background: #050605;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #c8cbc8;
+}
+.pdp__perks svg { color: var(--primary); flex: none; }
+@media (max-width: 560px) { .pdp__perks { grid-template-columns: 1fr; } }
+
+/* ————— Galeria ————— */
+.gallery { display: flex; flex-direction: column; gap: 0.75rem; }
+.gallery__stage {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: #0d100d;
+  border: 1px solid var(--line);
+}
+.gallery__img { object-fit: cover; transition: transform 0.4s var(--ease-out); }
+.gallery__img.is-zoom { transform: scale(1.6); transform-origin: center; }
+.gallery--empty {
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  background: var(--panel);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 3rem;
+  color: #3d443d;
+  text-transform: uppercase;
+}
+.gallery__thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.gallery__thumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  overflow: hidden;
+  background: #0d100d;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.gallery__thumb.is-active { border-color: var(--primary); }
+.gallery__thumb:hover { border-color: var(--primary); }
+.gallery__thumb-img { object-fit: cover; }
+
+/* ————— Cotação de frete ————— */
+.ship {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 1.15rem 1.25rem 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.ship__form { display: flex; flex-direction: column; gap: 0.6rem; }
+.ship__label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.92rem;
+  color: #ffffff;
+}
+.ship__label svg { color: var(--primary); }
+.ship__row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.ship__input {
+  flex: 1 1 160px;
+  min-width: 0;
+  background: #0d100d;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: #f4f5f2;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+.ship__input:focus { outline: none; border-color: var(--primary); }
+.ship__input::placeholder { color: #6f766f; }
+.ship__error {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: #dc2626;
+}
+.ship__note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--primary);
+}
+.ship__options { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ship__option {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 0.25rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.88rem;
+  color: #c8cbc8;
+}
+.ship__carrier strong { color: #ffffff; font-weight: 700; }
+.ship__days { font-family: var(--font-mono); font-size: 0.7rem; color: var(--dim); }
+.ship__price {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+/* ————— Ficha técnica e descrição ————— */
+.pdp__specs { border-top: 1px solid var(--line); padding-top: 1.25rem; }
+.pdp__specs-title {
+  margin: 0 0 0.9rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 1.2rem;
+  color: #ffffff;
+}
+.spec-list { margin: 0; display: flex; flex-direction: column; }
+.spec-list__row {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+.spec-list__row dt {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+}
+.spec-list__row dd { margin: 0; color: #f4f5f2; }
+@media (max-width: 560px) { .spec-list__row { grid-template-columns: 1fr; gap: 0.2rem; } }
+.pdp__desc { border-top: 1px solid var(--line); padding-top: 1.25rem; }
+.pdp__desc p { margin: 0; color: var(--dim); line-height: 1.7; font-size: 0.95rem; }
+
+/* ————— Não encontrado ————— */
+.notfound {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  text-align: center;
+  padding: clamp(3rem, 8vw, 6rem) clamp(1rem, 4vw, 2.5rem);
+}
+.notfound__num {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(4rem, 12vw, 8rem);
+  line-height: 0.9;
+  color: #1f241f;
+}
+.notfound h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+  color: #ffffff;
+}
+.notfound p { margin: 0 0 1rem; color: var(--dim); }

@@ -1,0 +1,23 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin · Airsoft Americana</title><style>
+:root{--bg:#0b0d0c;--gr:#171b19;--gr2:#232924;--neon:#b6ff2e;--ag:#c5ccc8}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:14px system-ui}.w{max-width:1200px;margin:auto;padding:16px}
+nav{background:var(--gr);border-bottom:2px solid #3d5a3a}nav .w{display:flex;gap:4px;flex-wrap:wrap;align-items:center}nav b{color:var(--neon);margin-right:16px;font:900 18px Impact}nav button{background:none;border:0;color:var(--ag);padding:10px 12px;cursor:pointer;text-transform:uppercase;font-weight:700}nav button.on{color:var(--neon)}
+table{width:100%;border-collapse:collapse}td,th{padding:6px;border-bottom:1px solid var(--gr2);text-align:left;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}input,textarea{background:var(--bg);border:1px solid var(--gr2);color:#fff;padding:8px;width:100%;margin:4px 0}
+.b{background:var(--neon);color:#000;border:0;padding:6px 12px;font-weight:700;cursor:pointer}.err{color:#ff6b6b}.ok{color:var(--neon)}</style></head><body>
+<nav><div class="w"><b>ADMIN</b><span id="tabs"></span><span id="who" style="margin-left:auto"></span></div></nav><div class="w" id="v"></div>
+<script>
+const $=s=>document.querySelector(s);let T=localStorage.adm||'',role='';const TABS={products:'Produtos',categories:'Categorias',brands:'Marcas',stock:'Estoque',orders:'Pedidos',coupons:'Cupons',banners:'Banners/Campanhas',admins:'Usuários',audit:'Auditoria'};
+const call=async(m,u,b)=>{const r=await fetch('/api/admin/'+u,{method:m,headers:{'content-type':'application/json',authorization:'Bearer '+T},body:b&&JSON.stringify(b)});const j=await r.json();if(r.status===401){T='';login()}return{ok:r.ok,j}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+function login(){$('#tabs').innerHTML='';$('#v').innerHTML='<h2>Entrar</h2><input id="e" placeholder="e-mail"><input id="p" type="password" placeholder="senha"><button class="b" onclick="go()">Entrar</button><p id="m" class="err"></p>'}
+async function go(){const r=await fetch('/api/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:$('#e').value,password:$('#p').value})});const j=await r.json();if(!r.ok)return $('#m').textContent=j.error;T=localStorage.adm=j.token;role=j.role;init()}
+function init(){$('#tabs').innerHTML=Object.entries(TABS).map(([k,v])=>`<button id="t-${k}" onclick="tab('${k}')">${v}</button>`).join('');tab('products')}
+async function tab(t){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.id==='t-'+t));const{ok,j}=await call('GET',t);if(!ok)return $('#v').innerHTML=`<p class="err">${esc(j.error)}</p>`;
+const cols=j.length?Object.keys(j[0]).filter(c=>c!=='hash'):[];
+$('#v').innerHTML=`<h2>${TABS[t]}</h2>${['audit'].includes(t)?'':t==='stock'?'<button class="b" onclick="adj()">Ajustar estoque</button>':t==='orders'?'':`<button class="b" onclick="novo('${t}')">Novo</button>`}<table><tr>${cols.map(c=>`<th>${c}</th>`).join('')}<th></th></tr>${j.map(r=>`<tr>${cols.map(c=>`<td title="${esc(r[c])}">${esc(r[c])}</td>`).join('')}<td>${['audit','stock'].includes(t)?'':`<button class="b" onclick='ed("${t}",${JSON.stringify(r).replace(/'/g,"&#39;")})'>Editar</button>`}${['banners','coupons'].includes(t)?` <button class="b" onclick="del('${t}',${r.id})">Excluir</button>`:''}</td></tr>`).join('')||'<tr><td>Nenhum registro.</td></tr>'}</table>`}
+async function novo(t){const s=prompt('JSON do novo registro (senha de admin: campo "password")','{}');if(s)res(await call('POST',t,JSON.parse(s)),t)}
+async function ed(t,r){const s=prompt('Editar JSON',JSON.stringify(r));if(s)res(await call('PUT',t+'/'+r.id,JSON.parse(s)),t)}
+async function del(t,id){if(confirm('Excluir?'))res(await call('DELETE',t+'/'+id),t)}
+async function adj(){const id=prompt('ID do produto'),d=prompt('Quantidade (+entrada / -saída)');if(id&&d)res(await call('POST','stock',{product_id:+id,delta:+d}),'stock')}
+function res(r,t){if(!r.ok)alert(r.j.error);tab(t)}
+T?init():login();
+</script></body></html>
