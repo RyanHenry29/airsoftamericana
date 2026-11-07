@@ -12,6 +12,7 @@ const SIGNATURE_HEADER_PREFIX = "sha256=";
 
 export class SandboxAdapter implements PaymentAdapter {
   readonly provider = "sandbox";
+  readonly signatureHeader = "x-signature";
   private secret: string;
 
   constructor(secret = "sandbox-secret") {

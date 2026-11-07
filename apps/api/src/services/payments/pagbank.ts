@@ -12,6 +12,7 @@ const API = "https://api.pagseguro.com";
 
 export class PagBankAdapter implements PaymentAdapter {
   readonly provider = "pagbank";
+  readonly signatureHeader = "x-authenticity-token";
   constructor(private readonly apiKey: string) {}
 
   isConfigured(): boolean {

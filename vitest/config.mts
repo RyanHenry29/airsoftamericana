@@ -2,13 +2,14 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["vitest/**/*.test.ts", "apps/api/src/**/*.test.ts"],
-    exclude: ["node_modules", ".git"],
+    // Somente testes de domínio/integração da raiz. Os testes da API rodam no
+    // workspace @airsoft/api com o setup/config próprios (evita dupla execução
+    // e conflito de diretório PGlite).
+    include: ["vitest/**/*.test.ts"],
+    exclude: ["node_modules", ".git", "docs/legacy-zero-dep/**", "mirror/**"],
     globals: true,
-    // Esta config também roda os testes da API (apps/api/src/**/*.test.ts).
-    // O setup fixa PGLITE_DIR num diretório exclusivo: sem ele, a suíte
-    // abria o banco de desenvolvimento e derrubava as tabelas.
     setupFiles: ["./vitest/setup.mts"],
+    fileParallelism: false,
     typecheck: {
       enabled: true,
     },

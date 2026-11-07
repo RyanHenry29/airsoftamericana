@@ -12,6 +12,7 @@ const API = "https://api.mercadopago.com";
 
 export class MercadoPagoAdapter implements PaymentAdapter {
   readonly provider = "mercadopago";
+  readonly signatureHeader = "x-signature";
   constructor(private readonly accessToken: string) {}
 
   isConfigured(): boolean {

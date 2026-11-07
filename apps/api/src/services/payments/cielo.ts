@@ -12,6 +12,7 @@ const API = "https://apisandbox.cieloecommerce.cielo.com.br";
 
 export class CieloAdapter implements PaymentAdapter {
   readonly provider = "cielo";
+  readonly signatureHeader = "x-signature";
   constructor(private readonly merchantId: string, private readonly merchantKey: string) {}
 
   isConfigured(): boolean {
