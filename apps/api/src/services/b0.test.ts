@@ -170,11 +170,12 @@ describe("B0.3 — admin-login não expõe token no corpo da resposta", () => {
     const marker = '"/api/auth/admin-login"';
     const start = src.indexOf(marker);
     expect(start).toBeGreaterThan(-1);
-    const block = src.slice(start, start + 4000);
+    const block = src.slice(start, start + 4500);
     expect(block).toContain("setCookie(ADMIN_SESSION_COOKIE");
-    expect(block).toContain("createSession(db");
-    // Resposta de sucesso: só { user }, sem token no corpo.
-    expect(block).toMatch(/reply\.send\(\{\s*user:\s*\{/);
-    expect(block).not.toMatch(/reply\.send\(\{[\s\S]{0,120}\btoken\b[\s\S]{0,40}\}\)\s*;?\s*(?:\/\/[^\n]*)?\n\s*\}\);?/);
+    expect(block).toMatch(/createSession\(/); // sessão DB opaca (tx ou db)
+    // Resposta de sucesso: inclui user + flags MFA, sem token no corpo.
+    expect(block).toMatch(/reply\.send\(\{/);
+    expect(block).toContain("user:");
+    expect(block).not.toMatch(/reply\.send\(\{[\s\S]{0,180}\btoken\b\s*:/);
   });
 });
