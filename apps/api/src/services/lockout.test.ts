@@ -46,4 +46,46 @@ describe("B.4 — bloqueio progressivo", () => {
     // chave IP também bloqueia
     expect(await isLocked(db, [keys[1]!])).toBe(true);
   });
+
+  it("E2E isolado (NODE_ENV=test + E2E_READY=1): omite chave IP (anti-cascata), preserva conta", () => {
+    const prevN = process.env.NODE_ENV;
+    const prevE = process.env.E2E_READY;
+    try {
+      process.env.NODE_ENV = "test";
+      process.env.E2E_READY = "1";
+      const keys = lockoutKeys("a@e2e.local", "1.2.3.4");
+      expect(keys).toEqual(["acct:a@e2e.local"]);
+    } finally {
+      if (prevN === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prevN;
+      if (prevE === undefined) delete process.env.E2E_READY; else process.env.E2E_READY = prevE;
+    }
+  });
+
+  it("NODE_ENV=test sem E2E_READY: lockout normal inclui IP", () => {
+    const prevN = process.env.NODE_ENV;
+    const prevE = process.env.E2E_READY;
+    try {
+      process.env.NODE_ENV = "test";
+      delete process.env.E2E_READY;
+      const keys = lockoutKeys("b@t.local", "1.2.3.4");
+      expect(keys).toEqual(["acct:b@t.local", "ip:1.2.3.4"]);
+    } finally {
+      if (prevN === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prevN;
+      if (prevE === undefined) delete process.env.E2E_READY; else process.env.E2E_READY = prevE;
+    }
+  });
+
+  it("NODE_ENV=production + E2E_READY=1: lockout normal, sem exceção/bypass", () => {
+    const prevN = process.env.NODE_ENV;
+    const prevE = process.env.E2E_READY;
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.E2E_READY = "1";
+      const keys = lockoutKeys("c@prod.local", "1.2.3.4");
+      expect(keys).toEqual(["acct:c@prod.local", "ip:1.2.3.4"]);
+    } finally {
+      if (prevN === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prevN;
+      if (prevE === undefined) delete process.env.E2E_READY; else process.env.E2E_READY = prevE;
+    }
+  });
 });
