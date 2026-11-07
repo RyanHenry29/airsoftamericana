@@ -1,0 +1,160 @@
+# Airsoft Americana — Deploy seguro + Admin SaaS completo
+
+Coloque este arquivo em `docs/` do repositório e use a Parte 3 como prompt no OpenCode, uma fase por vez.
+Stack assumida (a que o seu repositório já tem): Next.js (`apps/store`, `apps/admin`), Fastify + Drizzle (`apps/api`), PostgreSQL.
+
+---
+
+## PARTE 1 — Colocar no ar com segurança
+
+### 1.1 Arquitetura de produção
+- **Cloudflare** na frente de tudo (DNS, WAF, rate limit, Turnstile no login/cadastro).
+- **VPS** em região São Paulo (AWS sa-east-1, Google Cloud southamerica-east1, Magalu Cloud ou equivalente), Ubuntu 24.04 LTS, mínimo 2 vCPU / 4 GB para começar.
+- **Docker Compose** com: `caddy` (HTTPS automático), `store`, `admin`, `api`, `worker`, `postgres`, `redis`.
+- **Postgres e Redis sem porta publicada**: só rede interna do Compose.
+- **Imagens de produto** em storage S3-compatível (Cloudflare R2 ou S3) com CDN, nunca no disco do servidor.
+- **Três hosts**: `loja.com.br` (store), `api.loja.com.br` (API), `painel.loja.com.br` (admin). O admin nunca fica em `/admin` do domínio da loja e não tem link em nenhum lugar público.
+
+### 1.2 Servidor (uma vez)
+1. Criar usuário `deploy`, login só por **chave SSH**; desabilitar root e senha (`PermitRootLogin no`, `PasswordAuthentication no`).
+2. Firewall: `ufw default deny incoming`; liberar 80/443 e SSH apenas do seu IP ou via VPN (Tailscale/WireGuard).
+3. `fail2ban` + `unattended-upgrades` ativos.
+4. **Origem só aceita Cloudflare**: liberar 80/443 apenas para as faixas de IP publicadas pela Cloudflare. Sem isso, o atacante acessa o IP direto e ignora WAF e Access.
+5. Backups do disco/snapshot do provedor ligados.
+
+### 1.3 Esconder o admin de verdade (camadas, não "segredo")
+Esconder URL não é segurança; combine:
+1. **Cloudflare Access (Zero Trust)** na frente de `painel.loja.com.br`: login por SSO/e-mail corporativo + código antes de a requisição chegar ao seu servidor (o plano gratuito atende equipes pequenas; confira o limite atual).
+2. **Defesa em profundidade**: o admin e a API validam o JWT `Cf-Access-Jwt-Assertion` do Access. Se ele faltar, retornam 404.
+3. **Login próprio com MFA obrigatório** (TOTP ou passkey/WebAuthn) para todo usuário administrativo. Sem MFA, sem acesso.
+4. Senhas com **argon2id**; bloqueio progressivo após falhas; rate limit por IP e por conta.
+5. Cookie de sessão `HttpOnly; Secure; SameSite=Strict`, sessão curta (ex.: 8 h) com rotação; proteção CSRF em toda mutação.
+6. **Sem cadastro público de admin**: usuários criados só por um superadmin, com convite expirável.
+7. **RBAC no servidor** (nunca só no front): `superadmin`, `gerente`, `estoque`, `atendimento`, `marketing`, `financeiro`, `somente-leitura`.
+8. `X-Robots-Tag: noindex`, `robots.txt` bloqueando, sem sitemap do painel.
+9. **Auditoria imutável** de toda ação crítica (quem, o quê, antes/depois, IP, data). Alerta por e-mail em login novo, mudança de permissão e alteração de preço em massa.
+
+### 1.4 Hardening da aplicação
+- `@fastify/helmet` (CSP, HSTS, nosniff), `@fastify/rate-limit`, `@fastify/cors` com **lista fechada** de origens, `@fastify/cookie`.
+- Validação de entrada em **todas** as rotas com schema (Zod/TypeBox). Preço, estoque e desconto são sempre recalculados no servidor.
+- Segredos só em variáveis de ambiente (ou secret manager). `.env` fora do Git. Rodar `gitleaks` no CI. Rotacionar chaves se algo vazar.
+- Usuário do banco da aplicação com **privilégio mínimo** (sem `DROP`/`CREATE`); usuário de migração separado.
+- Upload de imagem: validar tipo real (magic bytes), limitar tamanho, reprocessar (sharp) e servir de domínio separado.
+- Pagamento: **nunca armazenar dados de cartão**; usar checkout/tokenização do gateway. Webhook com assinatura HMAC, idempotência por `event_id` e reconciliação periódica.
+- Dependências: Dependabot + `npm audit` no CI; versões fixas no lockfile.
+- LGPD: política de privacidade e termos publicados, consentimento de cookies, exportação e exclusão de dados do cliente pelo admin, logs sem dados pessoais. Validar com advogado.
+- Venda de réplicas: confirme com contador/advogado as exigências de venda, nota fiscal, envio e restrição de idade (gate 18+ no checkout, não só texto).
+
+### 1.5 Estrutura de deploy
+
+`Caddyfile`
+```
+loja.com.br, www.loja.com.br { encode zstd gzip; reverse_proxy store:3000 }
+api.loja.com.br { encode zstd gzip; reverse_proxy api:3333 }
+painel.loja.com.br {
+  encode zstd gzip
+  header X-Robots-Tag "noindex, nofollow"
+  reverse_proxy admin:3001
+}
+```
+
+`docker-compose.prod.yml` (esqueleto)
+```yaml
+services:
+  caddy: { image: caddy:2, ports: ["80:80","443:443"], volumes: ["./Caddyfile:/etc/caddy/Caddyfile","caddy:/data"], restart: always, networks: [edge, internal] }
+  store: { build: ./apps/store, env_file: .env.production, restart: always, networks: [edge, internal] }
+  admin: { build: ./apps/admin, env_file: .env.production, restart: always, networks: [edge, internal] }
+  api:   { build: ./apps/api,   env_file: .env.production, restart: always, networks: [edge, internal], depends_on: [postgres, redis] }
+  worker:{ build: ./apps/api, command: node dist/worker.js, env_file: .env.production, restart: always, networks: [internal] }
+  postgres: { image: postgres:16, env_file: .env.production, volumes: ["pg:/var/lib/postgresql/data"], restart: always, networks: [internal] }
+  redis: { image: redis:7, command: ["redis-server","--requirepass","${REDIS_PASSWORD}"], restart: always, networks: [internal] }
+networks: { edge: {}, internal: { internal: true } }
+volumes: { caddy: {}, pg: {} }
+```
+(`internal: true` impede que postgres/redis tenham saída para a internet e não publica portas.)
+
+### 1.6 Backup e recuperação
+- `pg_dump` noturno criptografado (`age`/`restic`) para bucket em **outra conta/região**; retenção 30 dias + mensal.
+- Se o provedor permitir, ativar WAL/PITR. **Testar a restauração todo mês**; backup sem teste não conta.
+- Documentar RTO/RPO e o passo a passo de restauração em `docs/RUNBOOK.md`.
+
+### 1.7 CI/CD (GitHub Actions)
+`push` → lint → typecheck → testes → build → imagem Docker → deploy em **staging** → testes E2E → aprovação manual → deploy em **produção** → migração (`drizzle-kit migrate`) → health check → rollback automático se falhar. Branch `main` protegida, PR com revisão.
+
+### 1.8 Observabilidade
+Sentry (front, API, worker), uptime externo (Better Stack/UptimeRobot) em loja, API e painel, logs estruturados sem PII, alertas por e-mail/WhatsApp para: erro 5xx, fila parada, webhook falhando, estoque negativo, pico de tentativas de login.
+
+### 1.9 Checklist de go-live
+- [ ] Pagamento testado em sandbox e depois com pedido real de baixo valor
+- [ ] Webhooks do gateway apontando para a URL de produção, assinatura validada
+- [ ] Frete calculado com contrato/credenciais reais
+- [ ] Cloudflare Access ativo no painel e origem restrita aos IPs da Cloudflare
+- [ ] MFA obrigatório para todos os admins
+- [ ] Backup restaurado com sucesso em ambiente de teste
+- [ ] Headers conferidos (securityheaders.com), SSL grau A (ssllabs.com)
+- [ ] Teste de carga (k6) na home, busca e checkout
+- [ ] Páginas de privacidade, termos, trocas e frete publicadas
+- [ ] Sentry e uptime recebendo eventos
+
+---
+
+## PARTE 2 — Admin profissional: "editou, está no ar"
+
+### 2.1 Como a edição vai direto para a loja
+1. O admin grava no Postgres **via API** (nunca direto), em transação, com validação e auditoria.
+2. A API invalida o cache (Redis) e chama o **webhook assinado de revalidação** da loja, que executa `revalidateTag` do Next.js (`products`, `product:{id}`, `home`, `menu`, `banners`, `promotions`).
+3. Resultado: preço, estoque, banner e menu mudam na loja em segundos, sem novo deploy.
+4. **Rascunho / publicar / agendar**: toda entidade de conteúdo (banner, promoção, home, páginas) tem status `rascunho`, `agendado`, `publicado`, `arquivado`, com `starts_at`/`ends_at`, executado pelo worker (BullMQ ou pg-boss).
+5. **Pré-visualização** (draft mode do Next.js) antes de publicar e **histórico de versões com rollback** da home e do menu.
+6. Estoque e preço sempre validados no servidor no checkout, para a loja nunca vender por dado velho.
+
+### 2.2 Módulos obrigatórios do admin
+1. **Dashboard**: vendas por período, ticket médio, conversão, pedidos pendentes, estoque baixo, fila antifraude, falhas de webhook.
+2. **Produtos**: variações, galeria (upload para R2, reordenar), SKU, EAN, peso/dimensões, SEO (title, description, slug), especificações, relacionados, histórico de preço, importação/exportação CSV, edição em massa.
+3. **Categorias, marcas e menu**: editor visual do **mega menu** (grupos, links, descrições), ordenação por arrastar.
+4. **Estoque**: múltiplas unidades/depósitos (loja física, depósito), transferência entre unidades, entradas, ajustes com motivo, reservas, alertas de mínimo, extrato de movimentações.
+5. **Pedidos**: máquina de estados independente (pedido, pagamento, antifraude, logística), notas internas, reembolso total/parcial, cancelamento, etiqueta, código de rastreio, e-mail ao cliente, linha do tempo.
+6. **Pagamentos e conciliação**: transações, estornos, divergências, status de webhooks, reprocessamento.
+7. **Antifraude**: fila de revisão, regras (valor, CEP, tentativas, e-mail novo), aprovar/recusar com justificativa, lista de bloqueio.
+8. **Promoções**: motor de regras (% e valor, progressivo, leve X pague Y, frete grátis por faixa, por categoria/marca/produto), prioridade e empilhamento, limites de uso, vigência com agendamento, simulador de carrinho.
+9. **Cupons**: código, regra, limite total/por cliente, validade, relatório de uso.
+10. **Banners e campanhas**: upload desktop/mobile, link, agenda, ordem, métricas de clique.
+11. **Editor da home**: ordem e fonte de cada seção (novidades, destaques, mais vendidos, promoções, marcas), rascunho, prévia, publicar, rollback.
+12. **Frete**: regras por faixa de peso/CEP, frete grátis por valor/região, integrações (Correios/JadLog, por exemplo via agregador), prazo de manuseio.
+13. **Clientes**: histórico, endereços, pedidos, exportação e exclusão (LGPD), notas.
+14. **Conteúdo**: blog, páginas institucionais (privacidade, termos, trocas), FAQ.
+15. **Relatórios**: vendas, produtos, estoque, cupons, margem; exportação CSV/XLSX.
+16. **Usuários e permissões**: convite, papéis (RBAC), MFA, sessões ativas, revogar acesso.
+17. **Auditoria**: busca e filtro por usuário, entidade, período; antes/depois.
+18. **Configurações**: dados da loja, gateways, e-mails transacionais (templates), notificações, webhooks de saída, chaves de API, feature flags.
+
+### 2.3 Decisão de arquitetura (confirmar ANTES de codar)
+Se o objetivo é **vender o sistema para várias lojas** (SaaS de verdade), a multi-tenancy tem de entrar agora: `tenant_id` em todas as tabelas, **Row Level Security** no Postgres, subdomínio/domínio por loja, planos e limites, cobrança recorrente (Stripe/Asaas/Pagar.me) e onboarding. Fazer isso depois exige reescrever o banco. Se for **só a Airsoft Americana**, pule esta decisão e use o escopo da seção 2.2 com uma loja.
+
+---
+
+## PARTE 3 — Prompts para o OpenCode (uma fase por vez, um commit por fase)
+
+Antes de qualquer fase: `Carregue a skill design-comercial-profissional e leia AGENTS.md e docs/DEPLOY_E_ADMIN_SAAS.md.`
+
+**Fase A — Auditoria (sem alterar nada)**
+```
+Audite o monorepo: rotas da API, schema Drizzle, autenticação, RBAC, auditoria, integrações (pagamento, frete, e-mail, storage) e o que já existe em apps/admin. Compare com as seções 1.3, 1.4 e 2.2 deste documento. Entregue um relatório: o que existe e funciona, o que existe incompleto, o que falta. Não recrie o que já funciona e não troque integração real por simulação.
+```
+**Fase B — Segurança do acesso**
+```
+Implemente: MFA obrigatório (TOTP + passkey), argon2id, bloqueio progressivo, sessão em cookie HttpOnly/Secure/SameSite=Strict com rotação, CSRF, convite de usuários (sem cadastro público), RBAC no servidor com papéis da seção 1.3, validação do JWT do Cloudflare Access (404 se ausente), noindex no painel, auditoria imutável. Testes de permissão e de tentativa de bypass.
+```
+**Fase C — Publicação em tempo real**
+```
+Implemente o fluxo da seção 2.1: transação + auditoria + invalidação de cache + webhook assinado de revalidação (revalidateTag) na loja, status rascunho/agendado/publicado, worker para agendamento, draft mode para prévia e versionamento com rollback para home e menu. Teste: editar preço no admin e ver a mudança na loja sem deploy.
+```
+**Fase D em diante — módulos (um por vez, nesta ordem)**
+`Produtos → Estoque (multi-unidade, reservas) → Pedidos (4 estados independentes) → Promoções e cupons → Banners e home → Mega menu → Frete → Pagamentos/antifraude → Clientes/LGPD → Relatórios → Usuários/Auditoria → Configurações`
+```
+Implemente o módulo <NOME> do admin conforme a seção 2.2, seguindo a skill design-comercial-profissional: tabela com filtro, busca, paginação, edição em massa quando fizer sentido, estados carregando/vazio/erro, confirmação em ações destrutivas, auditoria, permissões por papel. Inclua testes unitários, de integração e de permissão. Só considere concluído com typecheck e testes passando; liste o que não conseguiu verificar.
+```
+**Fase Final — Deploy**
+```
+Crie Dockerfiles, docker-compose.prod.yml, Caddyfile, workflow do GitHub Actions (lint, typecheck, testes, build, deploy staging, aprovação, produção, migração, health check, rollback), script de backup criptografado e docs/RUNBOOK.md com restauração, rotação de segredos e resposta a incidentes. Gere o checklist de go-live (seção 1.9) preenchendo o que foi comprovado.
+```
