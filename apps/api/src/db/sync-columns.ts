@@ -12,9 +12,8 @@
  * ALTER TABLE ... ADD COLUMN IF NOT EXISTS para tudo que faltar no banco.
  * Idempotente: rodar de novo não altera nada.
  */
-import { sql } from "drizzle-orm";
-import { PgDialect, getTableConfig } from "drizzle-orm/pg-core";
-import type { PgTable } from "drizzle-orm/pg-core";
+import { is, sql } from "drizzle-orm";
+import { PgDialect, PgTable, getTableConfig } from "drizzle-orm/pg-core";
 import type { Db } from "./index.js";
 import * as schema from "./schema.js";
 
@@ -39,9 +38,7 @@ type DbColumn = {
 };
 
 function isTable(value: unknown): value is PgTable {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as { getTableName?: unknown; columns?: unknown };
-  return typeof candidate.getTableName === "function";
+  return is(value, PgTable);
 }
 
 /** Valor padrão literal da coluna (ou null quando não dá para embutir em DDL). */

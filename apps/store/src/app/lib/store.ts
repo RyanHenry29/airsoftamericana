@@ -28,13 +28,23 @@ export type StoreProduct = {
   slug: string;
   shortDescription: string;
   description: string;
+  technicalDescription?: string;
   categoryId: string;
   brandId: string | null;
   ageRestricted: boolean;
   featured: boolean;
+  condicao?: "novo" | "usado" | "seminovo" | string;
+  estado_conservacao?: string | null;
+  itens_inclusos?: string | null;
+  garantia_dias?: number;
+  unidade_unica?: boolean;
+  tags?: string | null;
   createdAt: string;
+  updatedAt?: string;
+  publishedAt?: string | null;
   variants: StoreVariant[];
   images: StoreImage[];
+  specs?: { id: string; key: string; label: string; value: string; position: number }[];
   brandName: string | null;
   brandSlug: string | null;
   categoryName: string | null;
@@ -46,6 +56,7 @@ export type StoreProduct = {
   promoPriceCents: number | null;
   available: number;
   related?: StoreProduct[];
+  compatibleIds?: string[];
 };
 
 export type StoreCategoryNode = {

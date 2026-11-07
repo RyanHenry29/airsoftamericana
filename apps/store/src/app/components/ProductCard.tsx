@@ -39,6 +39,8 @@ export function ProductCard({ product, settings, compact = false }: Props) {
         <span className="pcard-tags">
           {out && <span className="pcard-tag pcard-tag--out">Esgotado</span>}
           {!out && hasDiscount && <span className="pcard-tag pcard-tag--off">-{offPercent}%</span>}
+          {product.condicao === "usado" && <span className="pcard-tag pcard-tag--used">Usado</span>}
+          {product.condicao === "seminovo" && <span className="pcard-tag pcard-tag--semi">Seminovo</span>}
           {product.ageRestricted && <span className="pcard-tag pcard-tag--age">18+</span>}
         </span>
 

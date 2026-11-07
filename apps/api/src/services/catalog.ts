@@ -24,6 +24,7 @@ export type CatalogQuery = {
   specKey?: string;
   specValue?: string;
   ids?: string[];
+  condicao?: "novo" | "usado" | "seminovo";
 };
 
 type VariantRow = {
@@ -170,7 +171,11 @@ export async function listProducts(db: Db, input: CatalogQuery) {
         ),
       );
     const ids = matching.map((m) => m.productId);
-    conditions.push(ids.length > 0 ? inArray(schema.products.id, ids) : eq(schema.products.id, "__nomatch__"));
+    conditions.push(ids.length > 0 ? inArray(schema.products.id, ids) : sql`false`);
+  }
+
+  if (input.condicao && ["novo", "usado", "seminovo"].includes(input.condicao)) {
+    conditions.push(eq(schema.products.condicao, input.condicao));
   }
 
   const whereSql = and(...conditions) ?? sql`TRUE`;
@@ -191,19 +196,32 @@ export async function listProducts(db: Db, input: CatalogQuery) {
   }
   const variantWhere = variantFilters.length > 0 ? and(...variantFilters) : undefined;
 
+  // Seleção pública explícita: NUNCA incluir costCents.
+  const publicProductCols = {
+    id: schema.products.id,
+    name: schema.products.name,
+    slug: schema.products.slug,
+    shortDescription: schema.products.shortDescription,
+    description: schema.products.description,
+    technicalDescription: schema.products.technicalDescription,
+    categoryId: schema.products.categoryId,
+    brandId: schema.products.brandId,
+    ageRestricted: schema.products.ageRestricted,
+    featured: schema.products.featured,
+    published: schema.products.published,
+    condicao: schema.products.condicao,
+    estado_conservacao: schema.products.estado_conservacao,
+    itens_inclusos: schema.products.itens_inclusos,
+    garantia_dias: schema.products.garantia_dias,
+    unidade_unica: schema.products.unidade_unica,
+    tags: schema.products.tags,
+    createdAt: schema.products.createdAt,
+    updatedAt: schema.products.updatedAt,
+    publishedAt: schema.products.publishedAt,
+  } as const;
+
   const baseQuery = db
-    .select({
-      id: schema.products.id,
-      name: schema.products.name,
-      slug: schema.products.slug,
-      shortDescription: schema.products.shortDescription,
-      description: schema.products.description,
-      categoryId: schema.products.categoryId,
-      brandId: schema.products.brandId,
-      ageRestricted: schema.products.ageRestricted,
-      featured: schema.products.featured,
-      createdAt: schema.products.createdAt,
-    })
+    .select(publicProductCols)
     .from(schema.products)
     .where(whereSql);
 
@@ -212,18 +230,7 @@ export async function listProducts(db: Db, input: CatalogQuery) {
       return baseQuery.limit(input.limit).offset(offset);
     }
     return db
-      .selectDistinct({
-        id: schema.products.id,
-        name: schema.products.name,
-        slug: schema.products.slug,
-        shortDescription: schema.products.shortDescription,
-        description: schema.products.description,
-        categoryId: schema.products.categoryId,
-        brandId: schema.products.brandId,
-        ageRestricted: schema.products.ageRestricted,
-        featured: schema.products.featured,
-        createdAt: schema.products.createdAt,
-      })
+      .selectDistinct(publicProductCols)
       .from(schema.products)
       .innerJoin(schema.productVariants, eq(schema.productVariants.productId, schema.products.id))
       .leftJoin(schema.inventory, eq(schema.inventory.variantId, schema.productVariants.id))
@@ -395,20 +402,27 @@ export async function listProducts(db: Db, input: CatalogQuery) {
   };
 }
 
-/** Detalhe completo do produto: galeria, ficha, relacionados e disponibilidade. */
+/** Remove campos internos (ex.: custo) de qualquer objeto de produto público. */
+function stripInternalProduct<T extends Record<string, unknown>>(p: T): Omit<T, "costCents" | "cost_cents"> {
+  const { costCents, cost_cents, ...rest } = p as any;
+  return rest;
+}
+
+/** Detalhe completo do produto: galeria, ficha, relacionados, compatíveis e disponibilidade. */
 export async function getProductBySlug(db: Db, slug: string) {
   const rows = await db
     .select()
     .from(schema.products)
     .where(eq(schema.products.slug, slug))
     .limit(1);
-  const product = rows[0];
-  if (!product) return null;
+  const raw = rows[0];
+  if (!raw) return null;
+  const product = stripInternalProduct(raw as Record<string, unknown>);
 
   const variants = await db
     .select()
     .from(schema.productVariants)
-    .where(eq(schema.productVariants.productId, product.id));
+    .where(eq(schema.productVariants.productId, raw.id));
 
   const stockRows = variants.length
     ? await db
@@ -420,20 +434,31 @@ export async function getProductBySlug(db: Db, slug: string) {
   const images = await db
     .select()
     .from(schema.productImages)
-    .where(eq(schema.productImages.productId, product.id))
+    .where(eq(schema.productImages.productId, raw.id))
     .orderBy(asc(schema.productImages.position));
 
   const specs = await db
     .select()
     .from(schema.productSpecs)
-    .where(eq(schema.productSpecs.productId, product.id))
+    .where(eq(schema.productSpecs.productId, raw.id))
     .orderBy(asc(schema.productSpecs.position));
 
   const related = await db
     .select({ productId: schema.relatedProducts.relatedProductId })
     .from(schema.relatedProducts)
-    .where(eq(schema.relatedProducts.productId, product.id))
+    .where(eq(schema.relatedProducts.productId, raw.id))
     .orderBy(asc(schema.relatedProducts.position));
+
+  let compatible: Array<{ productId: string }> = [];
+  try {
+    compatible = await db
+      .select({ productId: schema.compatibleProducts.compatibleProductId })
+      .from(schema.compatibleProducts)
+      .where(eq(schema.compatibleProducts.productId, raw.id))
+      .orderBy(asc(schema.compatibleProducts.position));
+  } catch {
+    compatible = [];
+  }
 
   const relatedProducts = related.length
     ? await db
@@ -454,12 +479,12 @@ export async function getProductBySlug(db: Db, slug: string) {
         .where(inArray(schema.productImages.productId, relatedProducts.map((r) => r.id)))
     : [];
 
-  const brand = product.brandId
-    ? (await db.select().from(schema.brands).where(eq(schema.brands.id, product.brandId)).limit(1))[0]
+  const brand = raw.brandId
+    ? (await db.select().from(schema.brands).where(eq(schema.brands.id, raw.brandId)).limit(1))[0]
     : undefined;
 
   const category = (
-    await db.select().from(schema.categories).where(eq(schema.categories.id, product.categoryId)).limit(1)
+    await db.select().from(schema.categories).where(eq(schema.categories.id, raw.categoryId)).limit(1)
   )[0];
 
   const parent = category?.parentId
@@ -500,6 +525,7 @@ export async function getProductBySlug(db: Db, slug: string) {
       ...r,
       imageUrl: relatedImages.find((i) => i.productId === r.id)?.url ?? null,
     })),
+    compatibleIds: compatible.map((c) => c.productId),
   };
 }
 

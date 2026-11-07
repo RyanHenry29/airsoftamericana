@@ -44,6 +44,8 @@ export function registerStorefrontRoutes(app: FastifyInstance, db: Db): void {
     const limit = Math.min(60, Math.max(1, intParam(q.limit) ?? 24));
     const sort = (SORTS.includes(q.sort as SortKey) ? q.sort : "featured_first") as SortKey;
 
+    const condRaw = (q.condicao ?? q.condition ?? "").trim();
+    const condicao = condRaw === "novo" || condRaw === "usado" || condRaw === "seminovo" ? condRaw : undefined;
     const result = await listProducts(db, {
       category: q.categoria ?? q.category,
       brand: q.brand,
@@ -56,6 +58,7 @@ export function registerStorefrontRoutes(app: FastifyInstance, db: Db): void {
       onlyAvailable: q.disponivel === "1" || q.disponivel === "true",
       specKey: q.specKey,
       specValue: q.specValue,
+      condicao,
     });
 
     reply.send({

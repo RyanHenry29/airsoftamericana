@@ -210,6 +210,8 @@ export const brands = pgTable(
     slug: varchar("slug", { length: 160 }).notNull(),
     logoUrl: text("logo_url"),
     description: text("description").default(""),
+    seoTitle: varchar("seo_title", { length: 160 }),
+    seoDescription: varchar("seo_description", { length: 320 }),
     position: integer("position").notNull().default(0),
     active: boolean("active").notNull().default(true),
   },
@@ -225,6 +227,8 @@ export const categories = pgTable(
     slug: varchar("slug", { length: 160 }).notNull(),
     description: text("description").default(""),
     imageUrl: text("image_url"),
+    seoTitle: varchar("seo_title", { length: 160 }),
+    seoDescription: varchar("seo_description", { length: 320 }),
     ageRestricted: boolean("age_restricted").notNull().default(false),
     active: boolean("active").notNull().default(true),
     position: integer("position").notNull().default(0),
@@ -243,17 +247,28 @@ export const products = pgTable(
     slug: varchar("slug", { length: 160 }).notNull(),
     shortDescription: text("short_description").default(""),
     description: text("description").default(""),
+    technicalDescription: text("technical_description").default(""),
     categoryId: uuid("category_id").notNull().references(() => categories.id),
     brandId: uuid("brand_id").references(() => brands.id),
     ageRestricted: boolean("age_restricted").notNull().default(false),
     featured: boolean("featured").notNull().default(false),
     published: boolean("published").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    /** Custo interno — NUNCA expor em API pública/store. */
+    costCents: integer("cost_cents"),
     condicao: varchar("condicao", { length: 20 }).notNull().default("novo"),
     estado_conservacao: varchar("estado_conservacao", { length: 100 }).default(""),
     itens_inclusos: text("itens_inclusos").default(""),
     garantia_dias: integer("garantia_dias").notNull().default(30),
     unidade_unica: boolean("unidade_unica").notNull().default(false),
+    tags: text("tags").default(""),
+    seoTitle: varchar("seo_title", { length: 200 }),
+    seoDescription: varchar("seo_description", { length: 320 }),
+    seoCanonical: text("seo_canonical"),
+    seoOgImage: text("seo_og_image"),
+    videos: jsonb("videos"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("products_slug_idx").on(t.slug),
@@ -769,6 +784,35 @@ export const relatedProducts = pgTable(
     position: integer("position").notNull().default(0),
   },
   (t) => [uniqueIndex("related_products_pair_idx").on(t.productId, t.relatedProductId)],
+);
+
+export const compatibleProducts = pgTable(
+  "compatible_products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+    compatibleProductId: uuid("compatible_product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => [uniqueIndex("compatible_products_pair_idx").on(t.productId, t.compatibleProductId)],
+);
+
+export const productChangeHistory = pgTable(
+  "product_change_history",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorLabel: varchar("actor_label", { length: 120 }),
+    field: varchar("field", { length: 80 }).notNull(),
+    beforeValue: text("before_value"),
+    afterValue: text("after_value"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [
+    index("product_change_history_product_idx").on(t.productId),
+    index("product_change_history_created_idx").on(t.createdAt),
+  ],
 );
 
 export const supportTickets = pgTable(

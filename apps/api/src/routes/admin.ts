@@ -11,6 +11,7 @@ import { normalizeRole, type Role } from "../lib/rbac.js";
 import { createInvite, listInvites, revokeInvite } from "../services/invites.js";
 import { outboxNotify, roleChangedBody, bulkPriceBody } from "../services/outbox.js";
 import { listAudit } from "../lib/audit.js";
+import { validateAndPreview, confirmAndApply } from "../services/catalog-import.js";
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
 type AdminRequest = FastifyRequest & { user?: { sub?: string; role?: string } };
@@ -705,67 +706,51 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     reply.send({ ok: true });
   });
 
-  // ---------------------------------------------------------------- Importação CSV do catálogo
-  // Formato: slug;nome;sku;preco;categorySlug (cabeçalho opcional ignorado se não bater)
-  app.post("/api/admin/catalog/import", { preHandler: [A, adminGuard("products", "update")] }, async (request, reply) => {
-    const body = (request.body ?? {}) as { file?: string };
-    const file = String(body.file ?? "");
-    const lines = file.replace(/\r\n/g, "\n").split("\n");
-    const errors: Array<{ line: number; message: string }> = [];
-    let created = 0;
-    let updated = 0;
-    const seenSkus = new Set<string>();
-
-    for (let i = 0; i < lines.length; i++) {
-      const raw = lines[i] ?? "";
-      const line = raw.trim();
-      if (!line) continue;
-      const fields = line.split(";").map((f) => f.trim());
-      // ignora cabeçalho comum
-      if (i === 0 && /slug/i.test(fields[0] ?? "") && /sku/i.test(fields[2] ?? "")) continue;
-      if (fields.length < 5) {
-        errors.push({ line: i + 1, message: "Linha inválida: esperava pelo menos 5 campos (slug;nome;sku;preco;categorySlug)" });
-        continue;
-      }
-      const [slug, name, sku, priceStr, categorySlug] = fields;
-      if (!sku) { errors.push({ line: i + 1, message: "SKU ausente" }); continue; }
-      if (seenSkus.has(sku)) { errors.push({ line: i + 1, message: `SKU duplicado no arquivo: ${sku}` }); continue; }
-      seenSkus.add(sku);
-      if (!slug || !name) { errors.push({ line: i + 1, message: "slug e nome são obrigatórios" }); continue; }
-      const price = Number(priceStr);
-      if (!Number.isFinite(price) || price < 0) { errors.push({ line: i + 1, message: "Preço inválido" }); continue; }
-      const priceCents = Math.round(price * 100);
-
-      const catRows = await db.select().from(schema.categories).where(eq(schema.categories.slug, categorySlug ?? "")).limit(1);
-      const category = catRows[0];
-      if (!category) { errors.push({ line: i + 1, message: `Categoria não encontrada: ${categorySlug ?? ""}` }); continue; }
-
-      const existingVariant = await db.select().from(schema.productVariants).where(eq(schema.productVariants.sku, sku)).limit(1);
-      if (existingVariant[0]) {
-        await db.update(schema.productVariants).set({ priceCents, name }).where(eq(schema.productVariants.id, existingVariant[0].id));
-        updated++;
-      } else {
-        // garante produto (por slug)
-        let product = (await db.select().from(schema.products).where(eq(schema.products.slug, slug)).limit(1))[0];
-        if (!product) {
-          product = (await db.insert(schema.products).values({
-            name, slug, description: "", categoryId: category.id, ageRestricted: false, featured: false, published: false,
-          }).returning())[0];
-        }
-        await db.insert(schema.productVariants).values({
-          productId: product!.id, sku, name, priceCents, promoPriceCents: null, weightGrams: 0, active: true,
-        } as any);
-        const inv = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, (await db.select().from(schema.productVariants).where(eq(schema.productVariants.sku, sku)).limit(1))[0]!.id)).limit(1);
-        // inventory criado sob demanda em outros fluxos; aqui mantemos simples
-        created++;
-      }
-    }
-
-    await audit(request, "catalog.imported", "products", undefined);
-    reply.send({ created, updated, errors });
+    // ---------------------------------------------------------------- Importa??o CSV do cat?logo (FASE 3B: preview + confirma??o expl?cita)
+  app.post("/api/admin/catalog/import/preview", { preHandler: [A, adminGuard("products", "update")] }, async (request, reply) => {
+    const body = (request.body ?? {}) as { file?: string; filename?: string; mime?: string };
+    const fileText = String(body.file ?? "");
+    const preview = await validateAndPreview(db, { file: fileText, filename: body.filename, mime: body.mime, sizeBytes: Buffer.byteLength(fileText, "utf8") });
+    await audit(request, "catalog.import.preview", "products", undefined);
+    reply.send(preview);
   });
 
-  // ---------------------------------------------------------------- Preço e estoque da variante
+  app.post("/api/admin/catalog/import/apply", { preHandler: [A, adminGuard("products", "update")] }, async (request, reply) => {
+    const body = (request.body ?? {}) as { file?: string; filename?: string; mime?: string; checksum?: string };
+    const fileText = String(body.file ?? "");
+    const checksum = String(body.checksum ?? "");
+    if (!checksum) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "checksum da pr?-visualiza??o ? obrigat?rio para aplicar." } });
+      return;
+    }
+    const actor = request as AdminRequest;
+    const result = await confirmAndApply(db, {
+      file: fileText,
+      filename: body.filename,
+      mime: body.mime,
+      sizeBytes: Buffer.byteLength(fileText, "utf8"),
+      checksum,
+      actorUserId: actor.user?.sub ?? null,
+      actorLabel: null,
+    });
+    if (result.errors.length && result.created === 0 && result.updated === 0) {
+      const code = result.errors[0]?.code;
+      if (code === "checksum_mismatch") reply.status(409);
+      else if (code === "file_too_large") reply.status(413);
+      else reply.status(400);
+    }
+    await audit(request, "catalog.import.applied", "products", undefined);
+    reply.send(result);
+  });
+
+  // Compatibilidade: legado n?o aplica (evita aplica??o sem preview/confirma??o).
+  app.post("/api/admin/catalog/import", { preHandler: [A, adminGuard("products", "update")] }, async (_request, reply) => {
+    reply.status(400);
+    reply.send({ error: { code: "use_two_step_import", message: "Use /api/admin/catalog/import/preview e /api/admin/catalog/import/apply (pr?-visualiza??o + confirma??o expl?cita)." } });
+  });
+
+// ---------------------------------------------------------------- Preço e estoque da variante
   app.patch("/api/admin/variants/:id", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as {

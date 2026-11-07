@@ -134,7 +134,12 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       priceCurrency: "BRL",
       price: (price / 100).toFixed(2),
       availability: out ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
-      itemCondition: "https://schema.org/NewCondition",
+      itemCondition:
+        product.condicao === "usado"
+          ? "https://schema.org/UsedCondition"
+          : product.condicao === "seminovo"
+            ? "https://schema.org/RefurbishedCondition"
+            : "https://schema.org/NewCondition",
     },
   };
 
@@ -199,12 +204,27 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             )}
 
             <div className="pdp__flags">
+              {product.condicao === "usado" && <span className="pdp__flag">Usado — estado de conservação informado</span>}
+              {product.condicao === "seminovo" && <span className="pdp__flag">Seminovo revisado</span>}
+              {(!product.condicao || product.condicao === "novo") && <span className="pdp__flag">Novo</span>}
               {product.ageRestricted && <span className="pdp__flag">18+ — compra restrita</span>}
               <span className={`pdp__flag ${out ? "is-out" : "is-ok"}`}>
                 {out ? "Sem estoque" : `${product.available} unidades disponíveis`}
               </span>
               {first && <span className="pdp__flag">SKU {first.sku}</span>}
             </div>
+
+            {(product.condicao === "usado" || product.condicao === "seminovo" || product.estado_conservacao || product.itens_inclusos || product.garantia_dias != null) && (
+              <section className="pdp__specs" aria-label="Condição e procedência">
+                <h2 className="pdp__specs-title">Condição e procedência</h2>
+                <dl className="spec-list">
+                  <div className="spec-list__row"><dt>Condição</dt><dd>{product.condicao === "usado" ? "Usado" : product.condicao === "seminovo" ? "Seminovo revisado" : "Novo"}</dd></div>
+                  {product.estado_conservacao ? <div className="spec-list__row"><dt>Estado de conservação</dt><dd>{product.estado_conservacao}</dd></div> : null}
+                  {product.itens_inclusos ? <div className="spec-list__row"><dt>Acessórios incluídos</dt><dd>{product.itens_inclusos}</dd></div> : null}
+                  {product.garantia_dias != null ? <div className="spec-list__row"><dt>Garantia</dt><dd>{product.garantia_dias} dia(s)</dd></div> : null}
+                </dl>
+              </section>
+            )}
 
             {first ? (
               <div className="pdp__buy">

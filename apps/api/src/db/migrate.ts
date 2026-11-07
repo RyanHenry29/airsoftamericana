@@ -923,6 +923,37 @@ export async function migrate(db: Db) {
     CREATE INDEX IF NOT EXISTS "blog_posts_published_at_idx" ON "blog_posts" ("published_at");
   `);
 
+  // FASE 3A — compatíveis e histórico de alterações (aditivo, idempotente)
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "compatible_products" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
+      "compatible_product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
+      "position" integer NOT NULL DEFAULT 0
+    );
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "compatible_products_pair_idx" ON "compatible_products" ("product_id", "compatible_product_id");
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "product_change_history" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
+      "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+      "actor_label" varchar(120),
+      "field" varchar(80) NOT NULL,
+      "before_value" text,
+      "after_value" text,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "product_change_history_product_idx" ON "product_change_history" ("product_id");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "product_change_history_created_idx" ON "product_change_history" ("created_at");
+  `);
+
   // Colunas novas no schema sem tabela nova: o CREATE TABLE IF NOT EXISTS acima
   // não altera tabela existente, então o banco ficaria velho e as queries
   // caem com "column does not exist". Este passo fecha a diferença.

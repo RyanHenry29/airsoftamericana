@@ -44,6 +44,7 @@ type Params = {
   minPrice?: string;
   maxPrice?: string;
   disponivel?: string;
+  condicao?: string;
 };
 
 export default async function CatalogPage({
@@ -60,6 +61,7 @@ export default async function CatalogPage({
   const minPrice = params?.minPrice ?? "";
   const maxPrice = params?.maxPrice ?? "";
   const disponivel = params?.disponivel ?? "";
+  const condicao = params?.condicao ?? "";
 
   const query = new URLSearchParams({ limit: "24", page: String(page), sort });
   if (categoria) query.set("categoria", categoria);
@@ -68,6 +70,7 @@ export default async function CatalogPage({
   if (minPrice) query.set("minPrice", minPrice);
   if (maxPrice) query.set("maxPrice", maxPrice);
   if (disponivel) query.set("disponivel", disponivel);
+  if (condicao) query.set("condicao", condicao);
 
   const [home, data] = await Promise.all([
     storeGet<StoreHome>(`${API_URL}/api/store/home`, {
@@ -118,19 +121,21 @@ export default async function CatalogPage({
     const mn = patch.minPrice !== undefined ? patch.minPrice : minPrice;
     const mx = patch.maxPrice !== undefined ? patch.maxPrice : maxPrice;
     const av = patch.disponivel !== undefined ? patch.disponivel : disponivel;
+    const cd = patch.condicao !== undefined ? patch.condicao : condicao;
     const term = patch.q !== undefined ? patch.q : q;
     if (cat) next.set("categoria", cat);
     if (br) next.set("brand", br);
     if (mn) next.set("minPrice", mn);
     if (mx) next.set("maxPrice", mx);
     if (av) next.set("disponivel", av);
+    if (cd) next.set("condicao", cd);
     if (term) next.set("q", term);
     next.set("sort", so);
     next.set("page", pg);
     return `/catalogo?${next.toString()}`;
   };
 
-  const hasFilter = Boolean(categoria || brand || q || minPrice || maxPrice || disponivel);
+  const hasFilter = Boolean(categoria || brand || q || minPrice || maxPrice || disponivel || condicao);
 
   return (
     <main className="page-shell">
@@ -251,6 +256,27 @@ export default async function CatalogPage({
           )}
 
           <section className="filters__group">
+            <h2 className="filters__title">Condição</h2>
+            <ul className="filters__list">
+              {[
+                { key: "", label: "Todas" },
+                { key: "novo", label: "Novo" },
+                { key: "usado", label: "Usado" },
+                { key: "seminovo", label: "Seminovo revisado" },
+              ].map((c) => (
+                <li key={c.key || "all"}>
+                  <Link
+                    href={buildHref({ condicao: c.key, page: "1" })}
+                    className={`filters__item ${condicao === c.key ? "is-active" : ""}`}
+                  >
+                    {c.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="filters__group">
             <h2 className="filters__title">Disponibilidade</h2>
             <ul className="filters__list">
               <li>
@@ -283,6 +309,7 @@ export default async function CatalogPage({
               {minPrice && <input type="hidden" name="minPrice" value={minPrice} />}
               {maxPrice && <input type="hidden" name="maxPrice" value={maxPrice} />}
               {disponivel && <input type="hidden" name="disponivel" value={disponivel} />}
+              {condicao && <input type="hidden" name="condicao" value={condicao} />}
               <label htmlFor="sort">Ordenar</label>
               <select id="sort" name="sort" defaultValue={sort} onChange={undefined}>
                 {SORTS.map((s) => (
