@@ -8,6 +8,7 @@ import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
 import { adminGuard } from "../lib/rbac.js";
 import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
 import { acceptInvite } from "../services/invites.js";
+import { isLocked, registerFailure, registerSuccess, lockoutKeys } from "../services/lockout.js";
 import { schema } from "../db/index.js";
 import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule } from "../middleware/authRateLimit.js";
 import type { Config } from "../config.js";
@@ -612,12 +613,20 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       return;
     }
     const { email, password } = parsed.data;
+    const keys = lockoutKeys(email, request.ip);
+    if (await isLocked(db, keys)) {
+      await writeAudit(db, request, { action: "auth.admin.login.locked", entity: "user", actorLabel: maskEmail(email) });
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "E-mail ou senha incorretos" } });
+      return;
+    }
     const found = await db.select().from(users).where(eq(users.email, email)).limit(1);
     const user = found[0];
     const verification = user?.passwordHash
       ? await verifyPasswordDetailed(password, user.passwordHash)
       : { ok: false as const };
     if (!user || !user.active || !verification.ok) {
+      await registerFailure(db, keys);
       await writeAudit(db, request, {
         action: "auth.admin.login.failed",
         entity: "user",
@@ -628,6 +637,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       reply.send({ error: { code: "unauthorized", message: "E-mail ou senha incorretos" } });
       return;
     }
+    await registerSuccess(db, keys);
     // Rehash transparente: bcrypt legado → argon2id no primeiro login bem-sucedido.
     if (verification.rehash) {
       await db.update(users).set({ passwordHash: verification.rehash }).where(eq(users.id, user.id));

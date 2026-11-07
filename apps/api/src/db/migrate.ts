@@ -139,6 +139,15 @@ export async function migrate(db: Db) {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "admin_invites_email_idx" ON "admin_invites" ("email");`);
 
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "auth_lockouts" (
+      "key" varchar(320) PRIMARY KEY,
+      "fail_count" integer NOT NULL DEFAULT 0,
+      "locked_until" timestamptz,
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "customers" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "name" varchar(120) NOT NULL,

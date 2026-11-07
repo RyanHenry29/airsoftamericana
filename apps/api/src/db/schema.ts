@@ -155,6 +155,16 @@ export const adminInvites = pgTable(
   ],
 );
 
+export const authLockouts = pgTable(
+  "auth_lockouts",
+  {
+    key: varchar("key", { length: 320 }).primaryKey(), // "acct:<email>" | "ip:<ip>"
+    failCount: integer("fail_count").notNull().default(0),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+);
+
 export const customers = pgTable(
   "customers",
   {
