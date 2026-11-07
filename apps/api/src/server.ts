@@ -12,6 +12,7 @@ import { routes } from "./routes/index.js";
 import { registerBlogRoutes } from "./routes/blog.js";
 import { registerMfaRoutes } from "./routes/mfa.js";
 import { config } from "./config.js";
+import { cloudflareAccessGuard } from "./lib/cloudflareAccess.js";
 
 /**
  * Rotas de acesso com limite dedicado (`authRateLimit`) — a guarda global de
@@ -57,6 +58,8 @@ export async function createServer() {
   });
 
   await app.register(fastifyHelmet);
+  // B.5: Cloudflare Access (opcional) — antes de expor qualquer superfície admin.
+  app.addHook("onRequest", cloudflareAccessGuard);
   // B.3: CSRF em mutações do admin. Produção com CSRF_ENFORCE=false recusa subir (config).
   app.addHook("preHandler", csrfGuard);
   // B.9: painel/admin API nunca indexado.

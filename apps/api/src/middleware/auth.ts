@@ -5,6 +5,7 @@ import { unauthorized, forbidden } from "../lib/errors.js";
 import { config } from "../config.js";
 import { validateSession } from "../services/sessions.js";
 import { normalizeRole } from "../lib/rbac.js";
+import { cloudflareAccessGuard } from "../lib/cloudflareAccess.js";
 import type { Db } from "../db/index.js";
 
 const secret = new TextEncoder().encode(config.JWT_SECRET);
@@ -115,8 +116,10 @@ export async function customerAuthMiddleware(request: FastifyRequest): Promise<v
 }
 
 export function registerAuth(app: FastifyInstance): void {
-  app.addHook("onRequest", async (req) => {
+  app.addHook("onRequest", async (req, reply) => {
     if (req.url.startsWith("/api/admin")) {
+      await cloudflareAccessGuard(req as any, reply);
+      if (reply.sent) return;
       await authMiddleware(req as any);
     } else if (req.url.startsWith("/api/auth/me")) {
       await customerAuthMiddleware(req as any);

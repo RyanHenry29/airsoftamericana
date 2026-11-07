@@ -41,6 +41,9 @@ const envSchema = z.object({
   // painel; as rotas de acesso têm limite próprio e mais estrito.
   RATE_LIMIT_MAX: z.coerce.number().default(600),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
+  // Cloudflare Access (opcional) — defesa em profundidade no admin.
+  CF_ACCESS_TEAM_DOMAIN: z.string().optional().default(""),
+  CF_ACCESS_AUD: z.string().optional().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);
