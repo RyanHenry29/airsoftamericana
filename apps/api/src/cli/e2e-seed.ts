@@ -7,6 +7,7 @@ import { schema } from "../db/index.js";
 import { hashPassword, decryptSecret } from "../lib/crypto.js";
 import { generateTotpSetup, replaceRecoveryCodes } from "../services/mfa.js";
 import { createInvite } from "../services/invites.js";
+import { randomUUID } from "node:crypto";
 
 async function main() {
   const db = await getDb();
@@ -97,6 +98,14 @@ async function main() {
   // DEMO catálogo (FASE 3 E2E) — dados próprios marcados DEMO
   await db.insert(schema.categories).values({ name: "[DEMO] E2E Categoria", slug: "demo-e2e-cat", description: "", ageRestricted: false, active: true, position: 0 } as any).onConflictDoNothing({ target: schema.categories.slug } as any);
   await db.insert(schema.brands).values({ name: "[DEMO] E2E Marca", slug: "demo-e2e-brand", description: "", active: true, position: 0 } as any).onConflictDoNothing({ target: schema.brands.slug } as any);
+  const [ecat] = await db.select({ id: schema.categories.id }).from(schema.categories).where(eq(schema.categories.slug, "demo-e2e-cat")).limit(1);
+  const [ebrand] = await db.select({ id: schema.brands.id }).from(schema.brands).where(eq(schema.brands.slug, "demo-e2e-brand")).limit(1);
+  if (ecat && ebrand) {
+    const pid = randomUUID(), vid = randomUUID();
+    await db.insert(schema.products).values({ id: pid, name: "[DEMO] E2E Produto", slug: "demo-e2e-produto", shortDescription: "DEMO", description: "Produto DEMO para E2E.", categoryId: ecat.id, brandId: ebrand.id, ageRestricted: false, featured: true, published: true, condicao: "novo" } as any).onConflictDoNothing({ target: schema.products.slug } as any);
+    await db.insert(schema.productVariants).values({ id: vid, productId: pid, sku: "DEMO-E2E-SKU-001", name: "Padrao", priceCents: 19900, active: true, weightGrams: 500 } as any).onConflictDoNothing({ target: schema.productVariants.sku } as any);
+    await db.insert(schema.inventory).values({ variantId: vid, physical: 10, reserved: 0, minQuantity: 2 } as any).onConflictDoNothing({ target: schema.inventory.variantId } as any);
+  }
 
   // imprime APENAS identificadores/tokens de convite e secrets de TOTP de TESTE (ambiente isolado E2E)
   // — necessário para os testes determinísticos; não usar em produção.
