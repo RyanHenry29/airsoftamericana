@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "./index.js";
 import { syncSchemaColumns } from "./sync-columns.js";
+import { migrateLegacyRoles } from "./migrate-roles.js";
 
 /**
  * Migrações brutas, idempotentes — drizzle-kit não está configurado no pipeline.
@@ -65,6 +66,7 @@ export async function migrate(db: Db) {
   await db.execute(sql.raw(`ALTER TABLE "users" ALTER COLUMN "role" TYPE varchar(32) USING "role"::text;`));
   await db.execute(sql.raw(`ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'atendimento';`));
   await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "totp_last_used_step" integer;`);
+  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "needs_role_review" boolean NOT NULL DEFAULT false;`);
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "sessions" (
@@ -928,6 +930,9 @@ export async function migrate(db: Db) {
   if (applied.length > 0) {
     console.log(`↻ ${applied.length} coluna(s) adicionada(s): ${applied.join(", ")}`);
   }
+
+  // B.8: mapeamento de papéis legados (idempotente, reversível manualmente).
+  try { await migrateLegacyRoles(db); } catch (e) { console.warn("[migrate] role migration B.8:", (e as Error).message); }
 }
 
 export default migrate;

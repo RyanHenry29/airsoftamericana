@@ -75,6 +75,7 @@ export const users = pgTable(
     mfaEnabled: boolean("mfa_enabled").notNull().default(false),
     totpSecret: text("totp_secret"),
     totpLastUsedStep: integer("totp_last_used_step"),
+    needsRoleReview: boolean("needs_role_review").notNull().default(false),
     active: boolean("active").notNull().default(true),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
