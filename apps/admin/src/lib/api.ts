@@ -79,6 +79,7 @@ export function messageOf(error: unknown, fallback: string): string {
       ? error.message
       : "Seu papel não tem permissão para esta ação.";
   }
+  if (error.status === 429) return "Muitas tentativas. Aguarde antes de tentar novamente.";
   return error.message || fallback;
 }
 

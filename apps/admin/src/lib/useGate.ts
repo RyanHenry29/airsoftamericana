@@ -15,6 +15,6 @@ export function useGateRedirect(error: unknown): void {
   useEffect(() => {
     if (gate === "mfa-setup") router.replace("/mfa/setup");
     else if (gate === "mfa-verify") router.replace("/mfa/verify");
-    else if (gate === "unauth") router.replace("/login");
+    else if (gate === "unauth") router.replace("/login?expired=1");
   }, [gate, router]);
 }

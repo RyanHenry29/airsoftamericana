@@ -37,6 +37,7 @@ export default function MfaSetupPage() {
   const [secret, setSecret] = useState<string>("");
   const [code, setCode] = useState("");
   const [codes, setCodes] = useState<string[] | null>(null);
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -152,6 +153,17 @@ export default function MfaSetupPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function copyCodes() {
+    if (!codes) return;
+    try {
+      await navigator.clipboard.writeText(codes.join("\n"));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Não foi possível copiar automaticamente. Baixe o arquivo.");
+    }
+  }
+
   if (loading) {
     return (
       <main className="px-6 py-24">
@@ -170,9 +182,11 @@ export default function MfaSetupPage() {
           <h1 className="font-display font-black text-4xl md:text-5xl uppercase leading-none tracking-tighter text-white">
             Guarde os códigos de recuperação
           </h1>
-          <p className="font-mono text-xs text-[#666] mt-4">
-            Eles aparecem uma única vez. Cada código libera um acesso quando o
-            aplicativo autenticador estiver indisponível.
+          <p className="font-mono text-xs text-[#dc2626] mt-4 font-bold uppercase tracking-wider">
+            Aviso: estes códigos são exibidos uma única vez e não poderão ser mostrados novamente.
+          </p>
+          <p className="font-mono text-xs text-[#666] mt-2">
+            Cada código funciona uma vez quando o aplicativo autenticador estiver indisponível.
           </p>
         </header>
 
@@ -185,12 +199,15 @@ export default function MfaSetupPage() {
             ))}
           </ul>
           <div className="flex flex-wrap gap-4 mt-8">
+            <button type="button" onClick={copyCodes} className="btn-secondary px-6 py-3 border border-[#8bcf16] text-[#8bcf16]">
+              {copied ? "Copiado" : "Copiar códigos"}
+            </button>
             <button
               type="button"
               onClick={downloadCodes}
-              className="btn-secondary px-6 py-3 border border-[#8bcf16] text-[#8bcf16]"
+              className="btn-secondary px-6 py-3 border border-[#111] text-[#666]"
             >
-              Baixar códigos
+              Baixar arquivo
             </button>
             <button
               type="button"
@@ -200,6 +217,7 @@ export default function MfaSetupPage() {
               Entrar no painel
             </button>
           </div>
+          {error ? <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mt-4">{error}</p> : null}
         </div>
       </main>
     );

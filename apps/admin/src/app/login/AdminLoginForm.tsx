@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   API_URL,
   clearCsrfToken,
@@ -17,9 +17,16 @@ type LoginPayload = {
 
 export function AdminLoginForm() {
   const router = useRouter();
+  const search = useSearchParams();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState({ email: "", password: "" });
+
+  useEffect(() => {
+    if (search.get("expired") === "1") {
+      setError("Sessão expirada. Entre no painel novamente.");
+    }
+  }, [search]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,6 +45,14 @@ export function AdminLoginForm() {
       const json = (await res.json().catch(() => ({}))) as LoginPayload &
         Record<string, unknown>;
       if (!res.ok) {
+        if (res.status === 429) {
+          setError("Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.");
+          return;
+        }
+        if (res.status === 403) {
+          setError(messageOf(parseApiError(json, res.status), "Acesso não permitido."));
+          return;
+        }
         setError(
           messageOf(
             parseApiError(json, res.status),

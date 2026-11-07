@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { Suspense } from "react";
 import { AdminLoginForm } from "./AdminLoginForm";
 
 export default function LoginPage() {
@@ -46,7 +47,9 @@ export default function LoginPage() {
             <p className="text-center text-[#666] mb-8 font-mono text-xs uppercase tracking-widest">
               Identifique-se para continuar
             </p>
-            <AdminLoginForm />
+            <Suspense fallback={null}>
+              <AdminLoginForm />
+            </Suspense>
           </div>
         </section>
       </div>

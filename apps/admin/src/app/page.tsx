@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { Suspense } from "react";
 import { AdminLoginForm } from "./login/AdminLoginForm";
 
 export default function LoginPage() {
@@ -32,7 +33,9 @@ export default function LoginPage() {
 
         {/* Right Side - Form */}
         <section className="bg-[#050505] border border-[#111] p-8 lg:p-12">
-          <AdminLoginForm />
+          <Suspense fallback={null}>
+            <AdminLoginForm />
+          </Suspense>
         </section>
       </div>
     </main>
