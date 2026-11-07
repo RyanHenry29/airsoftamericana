@@ -546,6 +546,23 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     }
   });
 
+  app.post("/api/auth/admin-logout", async (request, reply) => {
+    const presented = (request.cookies as any)?.[ADMIN_SESSION_COOKIE];
+    if (presented) {
+      try {
+        await db.update(schema.sessions).set({ revokedAt: new Date() }).where(eq(schema.sessions.tokenHash, hashToken(String(presented))));
+      } catch {}
+    }
+    reply.clearCookie(ADMIN_SESSION_COOKIE, {
+      path: "/",
+      httpOnly: true,
+      sameSite: "strict",
+      secure: config.NODE_ENV === "production",
+    });
+    await writeAudit(db, request, { action: "auth.admin.logout", entity: "user" });
+    reply.send({ success: true });
+  });
+
   app.post("/api/auth/logout", async (request, reply) => {
     reply.clearCookie("aa_customer", {
       path: "/",
@@ -601,6 +618,8 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         await db.update(schema.sessions).set({ revokedAt: new Date() }).where(eq(schema.sessions.tokenHash, hashToken(String(presented))));
       } catch { /* best-effort */ }
     }
+    // MFA obrigatório (B.2): sessão nasce não verificada; o gate server-side
+    // restringe a rotas de setup/verificação até concluir o MFA.
     const session = await createSession(db, {
       userId: user.id,
       ip: request.ip,
@@ -615,7 +634,11 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       actorLabel: maskEmail(email),
     });
     // Cookie opaco define a sessão — nada sensível no corpo.
-    reply.send({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    reply.send({
+      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      mfaRequired: !!user.mfaEnabled,
+      mfaSetupRequired: !user.mfaEnabled,
+    });
   });
 
   // ---------------------------------------------------------- Admin clientes

@@ -51,6 +51,28 @@ function dbOf(request: FastifyRequest): Db {
  * Valida revogação, expiração absoluta (8h) e ociosa (30 min, rolante).
  * Anexa request.user e request.session.
  */
+const MFA_SETUP_ALLOW = new Set([
+  "/api/admin/csrf",
+  "/api/admin/mfa/status",
+  "/api/admin/mfa/totp/setup",
+  "/api/admin/mfa/totp/confirm",
+  "/api/admin/mfa/webauthn/register/options",
+  "/api/admin/mfa/webauthn/register/verify",
+]);
+const MFA_VERIFY_ALLOW = new Set([
+  "/api/admin/csrf",
+  "/api/admin/mfa/status",
+  "/api/admin/mfa/totp/verify",
+  "/api/admin/mfa/recovery/verify",
+  "/api/admin/mfa/webauthn/auth/options",
+  "/api/admin/mfa/webauthn/auth/verify",
+]);
+
+function pathAllowed(allow: Set<string>, url: string): boolean {
+  const path = url.split("?")[0] ?? url;
+  return allow.has(path);
+}
+
 export async function authMiddleware(request: FastifyRequest): Promise<void> {
   // Idempotente: registerAuth (onRequest) e preHandlers de rota podem ambos chamar.
   if ((request as any).user && (request as any).session) return;
@@ -60,11 +82,17 @@ export async function authMiddleware(request: FastifyRequest): Promise<void> {
   if (!db) throw unauthorized();
   const valid = await validateSession(db, token);
   if (!valid) throw unauthorized("Sessão inválida ou expirada");
-  // Sem MFA verificado, só pode acessar rotas de configuração de MFA (gate server-side).
-  // O gate completo entra no item B.4; aqui anexamos o estado para o guard usar.
   const role = normalizeRole(valid.user.role) ?? valid.user.role;
-  (request as any).user = { sub: valid.user.id, role, type: "access", email: valid.user.email };
+  (request as any).user = { sub: valid.user.id, role, type: "access", email: valid.user.email, mfaEnabled: valid.user.mfaEnabled };
   (request as any).session = valid.session;
+
+  // B.2: gate server-side — MFA obrigatório.
+  const url = request.url;
+  if (!valid.user.mfaEnabled) {
+    if (!pathAllowed(MFA_SETUP_ALLOW, url)) throw forbidden("MFA_SETUP_REQUIRED");
+  } else if (!valid.session.mfaVerifiedAt) {
+    if (!pathAllowed(MFA_VERIFY_ALLOW, url)) throw forbidden("MFA_VERIFY_REQUIRED");
+  }
 }
 
 export function requireRole(...roles: string[]) {

@@ -74,6 +74,7 @@ export const users = pgTable(
     role: varchar("role", { length: 32 }).notNull().default("atendimento"),
     mfaEnabled: boolean("mfa_enabled").notNull().default(false),
     totpSecret: text("totp_secret"),
+    totpLastUsedStep: integer("totp_last_used_step"),
     active: boolean("active").notNull().default(true),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
@@ -99,9 +100,41 @@ export const sessions = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     mfaVerifiedAt: timestamp("mfa_verified_at", { withTimezone: true }),
+    mfaChallenge: text("mfa_challenge"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [index("sessions_user_idx").on(t.userId), uniqueIndex("sessions_token_hash_idx").on(t.tokenHash)],
+);
+
+export const mfaRecoveryCodes = pgTable(
+  "mfa_recovery_codes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [index("mfa_recovery_codes_user_idx").on(t.userId)],
+);
+
+export const webauthnCredentials = pgTable(
+  "webauthn_credentials",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    credentialId: text("credential_id").notNull(),
+    publicKey: text("public_key").notNull(),
+    counter: bigint("counter", { mode: "number" }).notNull().default(0),
+    transports: text("transports"),
+    label: varchar("label", { length: 120 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("webauthn_credentials_user_idx").on(t.userId),
+    uniqueIndex("webauthn_credentials_cred_idx").on(t.credentialId),
+  ],
 );
 
 export const customers = pgTable(

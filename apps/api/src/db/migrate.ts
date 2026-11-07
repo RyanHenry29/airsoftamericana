@@ -64,6 +64,7 @@ export async function migrate(db: Db) {
   // Evolui role: enum legado → varchar(32) para os 7 papéis (B.6/B.8). Idempotente.
   await db.execute(sql.raw(`ALTER TABLE "users" ALTER COLUMN "role" TYPE varchar(32) USING "role"::text;`));
   await db.execute(sql.raw(`ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'atendimento';`));
+  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "totp_last_used_step" integer;`);
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "sessions" (
@@ -86,6 +87,7 @@ export async function migrate(db: Db) {
   await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "last_seen_at" timestamptz;`);
   await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "revoked_at" timestamptz;`);
   await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "mfa_verified_at" timestamptz;`);
+  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "mfa_challenge" text;`);
   await db.execute(sql`ALTER TABLE "sessions" ALTER COLUMN "refresh_token_hash" DROP NOT NULL;`);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "sessions_user_idx" ON "sessions" ("user_id");
@@ -93,6 +95,33 @@ export async function migrate(db: Db) {
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS "sessions_token_hash_idx" ON "sessions" ("token_hash");
   `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "mfa_recovery_codes" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "code_hash" text NOT NULL,
+      "used_at" timestamptz,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "mfa_recovery_codes_user_idx" ON "mfa_recovery_codes" ("user_id");`);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "webauthn_credentials" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "credential_id" text NOT NULL,
+      "public_key" text NOT NULL,
+      "counter" bigint NOT NULL DEFAULT 0,
+      "transports" text,
+      "label" varchar(120),
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "last_used_at" timestamptz
+    );
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "webauthn_credentials_user_idx" ON "webauthn_credentials" ("user_id");`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "webauthn_credentials_cred_idx" ON "webauthn_credentials" ("credential_id");`);
 
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "customers" (

@@ -10,6 +10,7 @@ import { migrate } from "./db/migrate.js";
 import { seed } from "./db/seed.js";
 import { routes } from "./routes/index.js";
 import { registerBlogRoutes } from "./routes/blog.js";
+import { registerMfaRoutes } from "./routes/mfa.js";
 import { config } from "./config.js";
 
 /**
@@ -101,6 +102,7 @@ export async function createServer() {
 
   // API routes - db passed as third parameter
   routes(app, config, db);
+  registerMfaRoutes(app, db);
 
   // Blog editorial (leitura pública + gestão no painel)
   registerBlogRoutes(app, db);
