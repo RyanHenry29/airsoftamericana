@@ -13,7 +13,7 @@ export default defineConfig({
     isolate: false,
     sequence: { concurrent: false },
     pool: "forks",
-    poolOptions: { forks: { singleFork: true, minForks: 1, maxForks: 1 } },
+    forks: { singleFork: true, minForks: 1, maxForks: 1 },
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },
