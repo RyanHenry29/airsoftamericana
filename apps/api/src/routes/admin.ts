@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { canSeeCost } from "../services/product-history.js";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
-import { adminGuard } from "../lib/rbac.js";
+import { adminGuard, normalizeRole, type Role } from "../lib/rbac.js";
 import { csrfTokenFor } from "../lib/csrf.js";
 import { listActiveSessions, revokeAllUserSessions, revokeSession } from "../services/sessions.js";
-import { normalizeRole, type Role } from "../lib/rbac.js";
 import { createInvite, listInvites, revokeInvite } from "../services/invites.js";
 import { outboxNotify, roleChangedBody, bulkPriceBody } from "../services/outbox.js";
 import { listAudit } from "../lib/audit.js";
@@ -98,6 +98,11 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const cookies = (request as any).cookies;
     const raw = cookies?.aa_session ? String(cookies.aa_session) : "";
     reply.send({ token: raw ? csrfTokenFor(raw) : null });
+  });
+
+  app.get("/api/admin/me", { preHandler: [A, adminGuard("dashboard", "read")] }, async (request, reply) => {
+    const u = (request as any).user as { sub?: string; role?: string; email?: string } | undefined;
+    reply.send({ user: u ? { sub: u.sub, role: u.role, email: u.email } : null });
   });
 
   // ---------------------------------------------------------------- Sessões (B.1)
@@ -605,10 +610,11 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
       .select()
       .from(schema.productVariants)
       .where(eq(schema.productVariants.productId, id));
-    const [images, specs, related, stock] = await Promise.all([
+    const [images, specs, related, compatible, stock] = await Promise.all([
       db.select().from(schema.productImages).where(eq(schema.productImages.productId, id)).orderBy(asc(schema.productImages.position)),
       db.select().from(schema.productSpecs).where(eq(schema.productSpecs.productId, id)).orderBy(asc(schema.productSpecs.position)),
       db.select().from(schema.relatedProducts).where(eq(schema.relatedProducts.productId, id)),
+      db.select().from(schema.compatibleProducts).where(eq(schema.compatibleProducts.productId, id)).orderBy(asc(schema.compatibleProducts.position)),
       variants.length
         ? db
             .select()
@@ -621,15 +627,16 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
             )
         : Promise.resolve([]),
     ]);
+    const role = normalizeRole((request as any).user?.role);
+    const prod: any = { ...product };
+    if (!canSeeCost(role)) delete prod.costCents;
     reply.send({
-      product,
-      variants: variants.map((v) => ({
-        ...v,
-        inventory: stock.find((s) => s.variantId === v.id) ?? null,
-      })),
+      product: prod,
+      variants: variants.map((v) => ({ ...v, inventory: stock.find((s) => s.variantId === v.id) ?? null })),
       images,
       specs,
       related,
+      compatible,
     });
   });
 
