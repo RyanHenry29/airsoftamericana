@@ -1,8 +1,7 @@
 # Airsoft Americana — Plataforma E-commerce
 
 Sistema completo de loja virtual + painel administrativo + central de pagamentos/antifraude,
-construído do zero com base no levantamento do site anterior (GM Tático/TiendaNube), para
-**www.airsoftamericana.com.br**.
+construído do, para **www.airsoftamericana.com.br**.
 
 ## Arquitetura
 
