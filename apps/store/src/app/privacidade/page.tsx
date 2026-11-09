@@ -42,6 +42,14 @@ const SECTIONS = [
     ],
   },
   {
+    h: "Cookies e armazenamento local",
+    p: [
+      "Usamos cookies e armazenamento local essenciais para o funcionamento da loja, como manter sua sessão, carrinho e proteções de segurança.",
+      "Cookies ou armazenamentos não essenciais só são ativados quando você aceita no aviso de preferências exibido no site. Você pode recusar os não essenciais.",
+      "Sua escolha fica registrada no seu navegador e pode ser alterada limpando os dados do site/cookies no navegador.",
+    ],
+  },
+  {
     h: "Retenção e segurança",
     p: [
       "Dados de pedidos são mantidos pelo prazo legal fiscal; dados de marketing até o descadastro.",
