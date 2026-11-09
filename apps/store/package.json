@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build",
+    "build": "npm run build -w @airsoft/shared && next build",
     "start": "next start",
     "test": "node -e \"console.log('no tests: @airsoft/store (nenhum arquivo *.test.*/*.spec.* encontrado)')\""
   },

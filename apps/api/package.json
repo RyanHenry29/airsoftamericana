@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/cli.ts",
     "start": "tsx src/cli.ts",
-    "build": "tsc --noEmit",
+    "build": "npm run build -w @airsoft/shared && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",

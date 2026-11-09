@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "npm run build -w @airsoft/shared && next build",
     "start": "next start -p 3001",
     "test": "node -e \"console.log('no tests: @airsoft/admin (nenhum arquivo *.test.*/*.spec.* encontrado)')\"",
     "test:e2e": "playwright test --config ../../playwright.config.ts"
