@@ -1,0 +1,81 @@
+# Deploy monorepo (store + admin + api) na Vercel via CLI.
+# Não depende do Vercel GitHub App — útil quando a conta GitHub está impedida
+# de autorizar integrações de terceiros. Requer só o secret VERCEL_TOKEN.
+name: Deploy Vercel (CLI)
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vercel-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  VERCEL_ORG_ID: team_1jim3HDiYZ6WWCTPqRhnBj0h
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+jobs:
+  deploy-store:
+    name: deploy store (apps/store)
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_9Sugoxxzib3WdiDaXnOFJ8jth4IO
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i -g vercel@latest
+      - name: Link projeto
+        run: |
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+      - run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - run: vercel build --prod --token="$VERCEL_TOKEN"
+      - run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+  deploy-admin:
+    name: deploy admin (apps/admin)
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_Yp59lHvWQUaym3DHvDyDICXmhNdh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i -g vercel@latest
+      - name: Link projeto
+        run: |
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+      - run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - run: vercel build --prod --token="$VERCEL_TOKEN"
+      - run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+  deploy-api:
+    name: deploy api (apps/api)
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_MLk5KPuaIh5shK0cNZum69oXpl13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i -g vercel@latest
+      - name: Link projeto
+        run: |
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+      - run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - run: vercel build --prod --token="$VERCEL_TOKEN"
+      - run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
