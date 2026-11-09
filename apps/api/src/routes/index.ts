@@ -92,6 +92,7 @@ async function cartView(db: Db, cartId: string) {
   const items = await db.select().from(cartItems).where(eq(cartItems.cartId, cartId));
   const view = [];
   let subtotalCents = 0;
+  let ageRestricted = false;
   for (const item of items) {
     const variants = await db.select().from(productVariants).where(eq(productVariants.id, item.variantId)).limit(1);
     const variant = variants[0];
@@ -102,6 +103,12 @@ async function cartView(db: Db, cartId: string) {
     const unitPriceCents = variant.promoPriceCents ?? variant.priceCents;
     const productRow = await db.select().from(products).where(eq(products.id, variant.productId)).limit(1);
     const product = productRow[0];
+    let itemAgeRestricted = !!product?.ageRestricted;
+    if (product?.categoryId) {
+      const catRows = await db.select().from(categories).where(eq(categories.id, product.categoryId)).limit(1);
+      if (catRows[0]?.ageRestricted) itemAgeRestricted = true;
+    }
+    if (itemAgeRestricted) ageRestricted = true;
     subtotalCents += unitPriceCents * item.quantity;
     view.push({
       variantId: variant.id,
@@ -112,9 +119,10 @@ async function cartView(db: Db, cartId: string) {
       unitPriceCents,
       totalCents: unitPriceCents * item.quantity,
       available,
+      ageRestricted: itemAgeRestricted,
     });
   }
-  return { items: view, subtotalCents };
+  return { items: view, subtotalCents, ageRestricted };
 }
 
 // Minimal routes — avoids Fastify method type issues by using reply.send() generically

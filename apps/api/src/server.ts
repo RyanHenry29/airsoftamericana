@@ -39,6 +39,21 @@ export async function createServer() {
   // Middleware plugins
   await app.register(fastifyCookie);
 
+  // Preserva rawBody para verificação de assinatura de webhooks de pagamento.
+  // Substitui o parser JSON padrão mantendo o mesmo comportamento de parse.
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    const raw = typeof body === "string" ? body : String(body ?? "");
+    (req as any).rawBody = raw;
+    try {
+      done(null, raw.length ? JSON.parse(raw) : {});
+    } catch (e) {
+      const err = e as Error & { statusCode?: number };
+      err.statusCode = 400;
+      done(err, undefined);
+    }
+  });
+
   // CORS com lista explícita — nunca "*" com credenciais (skill-71).
   const allowedOrigins = new Set(
     [config.STORE_URL, config.ADMIN_URL]
@@ -121,6 +136,9 @@ export async function createServer() {
 
   // Blog editorial (leitura pública + gestão no painel)
   registerBlogRoutes(app, db);
+
+  const { registerWebhookRoutes } = await import("./routes/webhooks.js");
+  await registerWebhookRoutes(app, db);
 
   // Health check
   app.get("/healthz", async () => {

@@ -70,9 +70,15 @@ export async function handleCheckout(
 
   const products = await db.select().from(schema.products).where(sql`${schema.products.id} IN (${sql.join([...new Set(variants.map((v) => v.productId))].map((id) => sql`${id}`), sql`, `)})`);
   const productMap = new Map(products.map((p) => [p.id, p]));
+  const categoryIds = [...new Set(products.map((p) => p.categoryId).filter(Boolean))] as string[];
+  const categories = categoryIds.length
+    ? await db.select().from(schema.categories).where(sql`${schema.categories.id} IN (${sql.join(categoryIds.map((id) => sql`${id}`), sql`, `)})`)
+    : [];
+  const categoryMap = new Map(categories.map((c) => [c.id, c]));
 
   let subtotalCents = 0;
   let totalWeightGrams = 0;
+  let requiresAgeGate = false;
   const snapshots: { variantId: string; sku: string; name: string; unitPriceCents: number; quantity: number }[] = [];
 
   for (const item of input.items) {
@@ -80,6 +86,9 @@ export async function handleCheckout(
     const product = productMap.get(variant.productId)!;
     if (!product || !product.published) throw badRequest("product_unavailable", `Produto indisponível: ${product?.name ?? variant.name}`);
     if (!variant.active) throw badRequest("variant_inactive", `Variação indisponível: ${variant.name}`);
+    if (product.ageRestricted || categoryMap.get(product.categoryId)?.ageRestricted) {
+      requiresAgeGate = true;
+    }
     const unitPriceCents = variant.promoPriceCents != null ? variant.promoPriceCents : variant.priceCents;
     subtotalCents += unitPriceCents * item.quantity;
     totalWeightGrams += variant.weightGrams * item.quantity;
@@ -149,6 +158,27 @@ export async function handleCheckout(
   const customerRows = await db.select().from(schema.customers).where(eq(schema.customers.id, context.customerId));
   const customer = customerRows[0];
   if (!customer) throw notFound("Cliente não encontrado");
+
+  if (requiresAgeGate) {
+    const ageConfirmed = (input as { ageConfirmed?: boolean }).ageConfirmed === true;
+    let isAdult = false;
+    if (customer.ageVerifiedAt) {
+      isAdult = true;
+    } else if (customer.bornAt) {
+      const born = new Date(customer.bornAt);
+      const now = new Date();
+      let age = now.getFullYear() - born.getFullYear();
+      const m = now.getMonth() - born.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age--;
+      isAdult = age >= 18;
+    }
+    if (!isAdult || !ageConfirmed) {
+      throw badRequest(
+        "age_verification_required",
+        "Este pedido contém itens com restrição 18+. Confirme que você tem 18 anos ou mais para continuar.",
+      );
+    }
+  }
 
   await db.transaction(async (tx) => {
     await tx.insert(schema.orders).values({

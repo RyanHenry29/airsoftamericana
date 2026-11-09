@@ -15,7 +15,7 @@ const OPTIONS: { id: Pay; name: string; desc: string; tag: string }[] = [
   { id: "boleto", name: "Boleto", desc: "Compensa em 1-2 dias úteis", tag: "BL" },
 ];
 
-type CartItem = { variantId: string; quantity: number };
+type CartItem = { variantId: string; quantity: number; ageRestricted?: boolean };
 
 export function CheckoutForm() {
   const router = useRouter();
@@ -24,6 +24,7 @@ export function CheckoutForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartAgeRestricted, setCartAgeRestricted] = useState(false);
   const [needLogin, setNeedLogin] = useState(false);
   const [data, setData] = useState({
     recipient: "",
@@ -37,14 +38,16 @@ export function CheckoutForm() {
     notes: "",
     coupon: "",
     terms: false,
+    ageConfirmed: false,
   });
 
   useEffect(() => {
     async function load() {
       try {
         const res = await fetch(`${API_URL}/api/cart`, { credentials: "include" });
-        const json = (await res.json().catch(() => ({}))) as { items?: CartItem[] };
+        const json = (await res.json().catch(() => ({}))) as { items?: CartItem[]; ageRestricted?: boolean };
         setCartItems(json.items ?? []);
+        setCartAgeRestricted(Boolean(json.ageRestricted));
       } catch {
         /* offline */
       }
@@ -69,6 +72,10 @@ export function CheckoutForm() {
       setError("Aceite os termos de compra para continuar.");
       return;
     }
+    if (cartAgeRestricted && !data.ageConfirmed) {
+      setError("Confirme que você tem 18 anos ou mais para comprar itens com restrição etária.");
+      return;
+    }
     if (cartItems.length === 0) {
       setError("Seu carrinho está vazio. Adicione um item antes de finalizar.");
       return;
@@ -80,7 +87,7 @@ export function CheckoutForm() {
         headers: { "content-type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          items: cartItems,
+          items: cartItems.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
           address: {
             recipient: data.recipient.trim(),
             zip: data.zip.replace(/\D/g, ""),
@@ -96,6 +103,7 @@ export function CheckoutForm() {
           couponCode: data.coupon.trim().toUpperCase() || undefined,
           customerNotes: data.notes.trim() || undefined,
           acceptedTerms: true,
+          ...(cartAgeRestricted ? { ageConfirmed: true } : {}),
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -285,9 +293,20 @@ export function CheckoutForm() {
           </span>
         </label>
 
-        <p className="mt-2 text-[#333] font-mono text-[0.6rem] uppercase tracking-widest">
-          Maior de 18 anos para categorias restritas.
-        </p>
+        {cartAgeRestricted && (
+          <label className="flex items-start gap-3 mt-2 p-3 border border-[var(--border)] bg-[var(--card)]">
+            <input
+              type="checkbox"
+              className="mt-1 w-4 h-4"
+              checked={data.ageConfirmed}
+              onChange={(e) => setData({ ...data, ageConfirmed: e.target.checked })}
+              required
+            />
+            <span className="font-mono text-xs leading-relaxed text-[var(--muted-foreground)]">
+              Confirmo que tenho 18 anos ou mais. Este pedido contém itens com restrição etária (airsoft/pressão) e a venda exige maioridade.
+            </span>
+          </label>
+        )}
 
         {error && (
           <p role="alert" className="mt-4 text-[#dc2626] font-mono text-xs font-bold">{error}</p>

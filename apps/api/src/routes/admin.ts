@@ -12,6 +12,8 @@ import { createInvite, listInvites, revokeInvite } from "../services/invites.js"
 import { outboxNotify, roleChangedBody, bulkPriceBody } from "../services/outbox.js";
 import { listAudit } from "../lib/audit.js";
 import { validateAndPreview, confirmAndApply } from "../services/catalog-import.js";
+import { encryptCredentials, decryptCredentials, clearCredentialFailure } from "../services/payments/types.js";
+import { initAdapters } from "../services/payments/index.js";
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
 type AdminRequest = FastifyRequest & { user?: { sub?: string; role?: string } };
@@ -1060,6 +1062,102 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
     reply.send({ setting: row });
   });
 
+  // ---------------------------------------------------------------- Gateways de pagamento
+  app.get("/api/admin/gateways", { preHandler: [A, adminGuard("settings", "read")] }, async (_request, reply) => {
+    const rows = await db.select().from(schema.gatewayConfigs).orderBy(asc(schema.gatewayConfigs.provider));
+    reply.send({
+      items: rows.map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        enabled: r.enabled,
+        isDefault: r.isDefault,
+        methods: r.methods,
+        captureAfterReview: r.captureAfterReview,
+        require3ds: r.require3ds,
+        pixDiscountPercent: r.pixDiscountPercent,
+        hasCredentials: Boolean(r.credentialsEncrypted),
+        updatedAt: r.updatedAt,
+      })),
+    });
+  });
+
+  app.put("/api/admin/gateways/:provider", { preHandler: [A, adminGuard("settings", "update")] }, async (request, reply) => {
+    const { provider } = request.params as { provider: string };
+    const allowed = new Set(["sandbox", "mercadopago", "pagbank", "cielo"]);
+    if (!allowed.has(provider)) {
+      return reply.status(400).send({ error: { code: "invalid_provider", message: "Provedor inválido." } });
+    }
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const existing = await db.select().from(schema.gatewayConfigs).where(eq(schema.gatewayConfigs.provider, provider)).limit(1);
+    const prev = existing[0];
+
+    const patch: Record<string, unknown> = { provider, updatedAt: new Date(), updatedByUserId: actorOf(request) };
+    if (body.enabled !== undefined) patch.enabled = Boolean(body.enabled);
+    if (body.isDefault !== undefined) patch.isDefault = Boolean(body.isDefault);
+    if (body.methods !== undefined && Array.isArray(body.methods)) patch.methods = body.methods;
+    if (body.captureAfterReview !== undefined) patch.captureAfterReview = Boolean(body.captureAfterReview);
+    if (body.require3ds !== undefined) patch.require3ds = Boolean(body.require3ds);
+    if (body.pixDiscountPercent !== undefined) patch.pixDiscountPercent = Math.max(0, Math.min(100, Math.round(Number(body.pixDiscountPercent) || 0)));
+
+    if (body.credentials && typeof body.credentials === "object" && !Array.isArray(body.credentials)) {
+      const creds = body.credentials as Record<string, string>;
+      const cleaned: Record<string, string> = {};
+      for (const [k, v] of Object.entries(creds)) {
+        if (typeof v === "string" && v.trim()) cleaned[k] = v.trim();
+      }
+      if (Object.keys(cleaned).length > 0) {
+        patch.credentialsEncrypted = encryptCredentials(cleaned);
+        clearCredentialFailure(provider);
+      }
+    }
+
+    // Se este virar default, remove default dos outros
+    if (patch.isDefault === true) {
+      await db.update(schema.gatewayConfigs).set({ isDefault: false }).where(sql`${schema.gatewayConfigs.provider} <> ${provider}`);
+    }
+
+    const [row] = prev
+      ? await db.update(schema.gatewayConfigs).set(patch).where(eq(schema.gatewayConfigs.provider, provider)).returning()
+      : await db
+          .insert(schema.gatewayConfigs)
+          .values({
+            id: randomUUID(),
+            provider,
+            enabled: Boolean(patch.enabled ?? false),
+            isDefault: Boolean(patch.isDefault ?? false),
+            methods: (patch.methods as unknown) ?? ["pix", "cartao", "boleto"],
+            captureAfterReview: Boolean(patch.captureAfterReview ?? false),
+            require3ds: Boolean(patch.require3ds ?? false),
+            pixDiscountPercent: Number(patch.pixDiscountPercent ?? 0),
+            credentialsEncrypted: (patch.credentialsEncrypted as string | null) ?? null,
+            updatedByUserId: actorOf(request),
+          } as never)
+          .returning();
+
+    await audit(request, "gateway.updated", "gateway_configs", row?.id ?? provider);
+    try {
+      await initAdapters(db);
+    } catch {
+      // best-effort refresh
+    }
+    reply.send({
+      gateway: row
+        ? {
+            id: row.id,
+            provider: row.provider,
+            enabled: row.enabled,
+            isDefault: row.isDefault,
+            methods: row.methods,
+            captureAfterReview: row.captureAfterReview,
+            require3ds: row.require3ds,
+            pixDiscountPercent: row.pixDiscountPercent,
+            hasCredentials: Boolean(row.credentialsEncrypted),
+            updatedAt: row.updatedAt,
+          }
+        : null,
+    });
+  });
+
   // ---------------------------------------------------------------- Auditoria e relatórios
   app.get("/api/admin/audit", { preHandler: [A, adminGuard("audit","read")] }, async (request, reply) => {
     const q = request.query as Record<string, string | undefined>;
@@ -1131,5 +1229,122 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
       chargebacks: Number(chargebacks[0]?.count ?? 0),
       topProducts: (topVariants as { rows: unknown[] }).rows,
     });
+  });
+
+  // ------------------------------------------------------------------- Cupons
+  type CouponInput = {
+    code?: string;
+    kind?: string;
+    value?: number;
+    minOrderCents?: number;
+    maxUses?: number | null;
+    startsAt?: string | null;
+    endsAt?: string | null;
+    active?: boolean;
+  };
+
+  function normalizeCouponCode(code: unknown): string {
+    return String(code ?? "").trim().toUpperCase();
+  }
+
+  function validateCouponInput(input: CouponInput, partial = false): string | null {
+    const kind = input.kind;
+    const value = input.value;
+    if (!partial || input.code !== undefined) {
+      const code = normalizeCouponCode(input.code);
+      if (code.length < 3 || code.length > 40) return "Código deve ter entre 3 e 40 caracteres.";
+    }
+    if (!partial || kind !== undefined) {
+      if (!["percentual", "fixo", "frete"].includes(String(kind))) return "Tipo inválido (percentual, fixo, frete).";
+    }
+    if (!partial || value !== undefined) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0) return "Valor inválido.";
+      const k = String(kind ?? "");
+      if (k === "percentual" && (n <= 0 || n > 100)) return "Percentual deve ser entre 1 e 100.";
+      if (k === "fixo" && n <= 0) return "Valor fixo deve ser maior que zero (em centavos).";
+      if (k === "frete" && n !== 0 && value !== undefined) {
+        // frete ignora valor; aceita 0
+      }
+    }
+    if (input.minOrderCents !== undefined && (!Number.isFinite(Number(input.minOrderCents)) || Number(input.minOrderCents) < 0)) {
+      return "Pedido mínimo inválido.";
+    }
+    if (input.maxUses !== undefined && input.maxUses !== null) {
+      if (!Number.isFinite(Number(input.maxUses)) || Number(input.maxUses) < 1) return "Máximo de usos inválido.";
+    }
+    return null;
+  }
+
+  app.get("/api/admin/coupons", { preHandler: [A, adminGuard("coupons", "read")] }, async (_request, reply) => {
+    const rows = await db.select().from(schema.coupons).orderBy(desc(schema.coupons.code));
+    reply.send({ items: rows });
+  });
+
+  app.post("/api/admin/coupons", { preHandler: [A, adminGuard("coupons", "create")] }, async (request, reply) => {
+    const input = (request.body ?? {}) as CouponInput;
+    const err = validateCouponInput(input, false);
+    if (err) return reply.status(400).send({ error: { code: "invalid_input", message: err } });
+    const code = normalizeCouponCode(input.code);
+    const existing = await db.select({ id: schema.coupons.id }).from(schema.coupons).where(eq(schema.coupons.code, code)).limit(1);
+    if (existing[0]) return reply.status(409).send({ error: { code: "conflict", message: "Código de cupom já existe." } });
+    const kind = String(input.kind);
+    const value = kind === "frete" ? 0 : Math.round(Number(input.value));
+    const [row] = await db
+      .insert(schema.coupons)
+      .values({
+        id: randomUUID(),
+        code,
+        kind,
+        value,
+        minOrderCents: Math.max(0, Math.round(Number(input.minOrderCents ?? 0))),
+        maxUses: input.maxUses == null ? null : Math.max(1, Math.round(Number(input.maxUses))),
+        startsAt: input.startsAt ? new Date(input.startsAt) : null,
+        endsAt: input.endsAt ? new Date(input.endsAt) : null,
+        active: input.active !== false,
+      })
+      .returning();
+    await audit(request, "coupon.created", "coupons", row?.id ?? undefined);
+    reply.status(201).send({ coupon: row });
+  });
+
+  app.patch("/api/admin/coupons/:id", { preHandler: [A, adminGuard("coupons", "update")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const input = (request.body ?? {}) as CouponInput;
+    const err = validateCouponInput(input, true);
+    if (err) return reply.status(400).send({ error: { code: "invalid_input", message: err } });
+    const found = await db.select().from(schema.coupons).where(eq(schema.coupons.id, id)).limit(1);
+    const before = found[0];
+    if (!before) return reply.status(404).send({ error: { code: "not_found", message: "Cupom não encontrado." } });
+    const set: Record<string, unknown> = {};
+    if (input.code !== undefined) {
+      const code = normalizeCouponCode(input.code);
+      if (code !== before.code) {
+        const dup = await db.select({ id: schema.coupons.id }).from(schema.coupons).where(eq(schema.coupons.code, code)).limit(1);
+        if (dup[0]) return reply.status(409).send({ error: { code: "conflict", message: "Código de cupom já existe." } });
+        set.code = code;
+      }
+    }
+    if (input.kind !== undefined) set.kind = String(input.kind);
+    if (input.value !== undefined) set.value = String(set.kind ?? before.kind) === "frete" ? 0 : Math.round(Number(input.value));
+    if (input.minOrderCents !== undefined) set.minOrderCents = Math.max(0, Math.round(Number(input.minOrderCents)));
+    if (input.maxUses !== undefined) set.maxUses = input.maxUses == null ? null : Math.max(1, Math.round(Number(input.maxUses)));
+    if (input.startsAt !== undefined) set.startsAt = input.startsAt ? new Date(input.startsAt) : null;
+    if (input.endsAt !== undefined) set.endsAt = input.endsAt ? new Date(input.endsAt) : null;
+    if (input.active !== undefined) set.active = Boolean(input.active);
+    if (Object.keys(set).length === 0) return reply.send({ coupon: before });
+    const [row] = await db.update(schema.coupons).set(set).where(eq(schema.coupons.id, id)).returning();
+    await audit(request, "coupon.updated", "coupons", id);
+    reply.send({ coupon: row });
+  });
+
+  app.delete("/api/admin/coupons/:id", { preHandler: [A, adminGuard("coupons", "delete")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const found = await db.select().from(schema.coupons).where(eq(schema.coupons.id, id)).limit(1);
+    const before = found[0];
+    if (!before) return reply.status(404).send({ error: { code: "not_found", message: "Cupom não encontrado." } });
+    await db.delete(schema.coupons).where(eq(schema.coupons.id, id));
+    await audit(request, "coupon.deleted", "coupons", id);
+    reply.send({ ok: true });
   });
 }

@@ -76,6 +76,8 @@ export const checkoutSchema = z.object({
   acceptedTerms: z.literal(true, {
     message: "É preciso aceitar os termos de compra",
   }),
+  /** Confirmação 18+ — obrigatória quando o carrinho contém itens com restrição etária. */
+  ageConfirmed: z.boolean().optional(),
 });
 
 // ------------------------------------------------------------- Estoque (admin)
