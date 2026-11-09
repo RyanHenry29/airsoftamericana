@@ -8,7 +8,7 @@ import { MegaMenu } from "./components/MegaMenu";
 import { ProductCard } from "./components/ProductCard";
 import { Footer } from "./components/Footer";
 import { NewsletterForm } from "./components/NewsletterForm";
-import { ArrowRight, CreditCard, Headphones, Package, Truck } from "lucide-react";
+// ícones decorativos removidos (cara de IA / template) — foco em texto e dados reais.
 import {
   API_URL,
   formatBRL,
@@ -38,7 +38,7 @@ function SectionHead({
       </div>
       {href && (
         <Link href={href} className="sec-link">
-          {label ?? "Ver tudo"} <ArrowRight size={14} />
+          {label ?? "Ver tudo"}
         </Link>
       )}
     </div>
@@ -97,25 +97,18 @@ export default async function HomePage() {
 
   const benefits = [
     {
-      icon: Truck,
-      title: freeShipping > 0 ? `Frete grátis acima de ${formatBRL(freeShipping)}` : "Frete por CEP",
-      sub: settings.shipping_carriers[0] ?? "Correios PAC e SEDEX",
+      title: freeShipping > 0 ? `Frete grátis acima de ${formatBRL(freeShipping)}` : "Entrega para todo o Brasil",
+      sub: settings.shipping_carriers.length > 0 ? settings.shipping_carriers.join(" / ") : "Frete calculado por CEP no checkout",
     },
-    {
-      icon: CreditCard,
-      title: pixPercent > 0 ? `${pixPercent}% OFF no PIX` : "PIX com desconto",
-      sub: "Aprovação na hora",
-    },
-    {
-      icon: CreditCard,
-      title: `${inst}x sem juros`,
-      sub: "Ou boleto bancário",
-    },
-    {
-      icon: Headphones,
-      title: "Loja física em Americana",
-      sub: "Retirada com equipe de campo",
-    },
+    ...(pixPercent > 0
+      ? [{ title: `PIX −${pixPercent}%`, sub: "Desconto no pagamento à vista" }]
+      : []),
+    ...(inst > 1
+      ? [{ title: `${inst}x sem juros`, sub: "Cartão de crédito" }]
+      : []),
+    ...(settings.address.city
+      ? [{ title: `Loja física em ${settings.address.city}${settings.address.state ? `-${settings.address.state}` : ""}`, sub: settings.service_hours || "Consulte o horário de atendimento" }]
+      : []),
   ];
 
   return (
@@ -187,7 +180,6 @@ export default async function HomePage() {
         <ul className="chips__row">
           {benefits.map((b) => (
             <li key={b.title} className="chip">
-              <b.icon size={18} />
               <span>
                 <strong>{b.title}</strong>
                 <em>{b.sub}</em>
@@ -205,15 +197,13 @@ export default async function HomePage() {
               <li key={dept.id}>
                 <Link href={`/departamento/${dept.slug}`} className="dept-strip__item">
                   {dept.name}
-                  <ArrowRight size={13} />
                 </Link>
               </li>
             ))}
             <li>
               <Link href="/catalogo" className="dept-strip__item dept-strip__item--all">
                 Todos os produtos
-                <ArrowRight size={13} />
-              </Link>
+</Link>
             </li>
           </ul>
         </section>
@@ -284,16 +274,18 @@ export default async function HomePage() {
             <section key={section.id} className="block block--border">
               <div className="inst">
                 <div className="inst__copy">
-                  <span className="sec-kicker">Desde 2012</span>
+                  <span className="sec-kicker">Loja física</span>
                   <h2 className="sec-title">
-                    Loja física em {settings.address.city || "Americana"}/{settings.address.state || "SP"}
+                    {settings.address.city || "Americana"}{settings.address.state ? `/${settings.address.state}` : ""}
                   </h2>
-                  <p>
-                    {settings.address.street}
-                    {settings.address.district ? ` — ${settings.address.district}` : ""}
-                    {settings.address.zip ? ` · CEP ${settings.address.zip}` : ""}
-                  </p>
-                  <p>{settings.service_hours}</p>
+                  {settings.address.street ? (
+                    <p>
+                      {settings.address.street}
+                      {settings.address.district ? ` — ${settings.address.district}` : ""}
+                      {settings.address.zip ? ` · CEP ${settings.address.zip}` : ""}
+                    </p>
+                  ) : null}
+                  {settings.service_hours ? <p>{settings.service_hours}</p> : null}
                   <div className="inst__actions">
                     <Link href="/institucional" className="btn-primary">
                       Conhecer a loja
@@ -305,24 +297,20 @@ export default async function HomePage() {
                 </div>
                 <ul className="inst__facts">
                   <li>
-                    <Package size={18} />
                     <span>
                       <strong>{home.totals.products}</strong> produtos no catálogo
                     </span>
                   </li>
                   <li>
-                    <Truck size={18} />
-                    <span>
-                      <strong>Brasil</strong> entrega para todo o país
-                    </span>
+                    <span>Entrega para todo o Brasil</span>
                   </li>
-                  <li>
-                    <Headphones size={18} />
-                    <span>
-                      <strong>{settings.service_hours ? "Atendimento" : "WhatsApp"}</strong>{" "}
-                      {settings.service_hours}
-                    </span>
-                  </li>
+                  {settings.service_hours ? (
+                    <li>
+                      <span>
+                        <strong>Atendimento</strong> {settings.service_hours}
+                      </span>
+                    </li>
+                  ) : null}
                 </ul>
               </div>
             </section>
