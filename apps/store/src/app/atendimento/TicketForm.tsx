@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_URL = "";
 
 export function TicketForm() {
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });

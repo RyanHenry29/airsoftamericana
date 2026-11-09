@@ -33,7 +33,7 @@ export function ProductCard({ product, settings, compact = false }: Props) {
     if (!firstVariant || busy || out) return;
     setBusy(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/cart/items`, {
+      const res = await fetch(`${""}/api/cart/items`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",

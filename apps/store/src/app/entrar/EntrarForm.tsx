@@ -17,7 +17,7 @@ import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { validateAuthField } from "../lib/authValidation";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+  "";
 
 type ApiError = {
   error?: {

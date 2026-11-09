@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_URL = "";
 
 /** Só aceita caminho interno — nunca redireciona pra fora da loja. */
 function safeNext(raw: string | null): string {

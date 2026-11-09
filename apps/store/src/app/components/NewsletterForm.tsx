@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { CheckCircle2, Send } from "lucide-react";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+  "";
 
 export function NewsletterForm() {
   const [email, setEmail] = useState("");

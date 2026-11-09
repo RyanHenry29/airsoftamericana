@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { ShieldCheck, User, Mail, IdCard, Phone, ArrowRight, LogOut } from "lucide-react";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+  "";
 
 type Customer = { id: string; name: string; email: string; cpf?: string | null; phone?: string | null };
 

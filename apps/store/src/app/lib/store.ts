@@ -1,7 +1,19 @@
 // language: TS, file: apps/store/src/app/lib/store.ts, target: Next.js App Router
 // Cliente da API pública da loja. Tiposderivam do contrato de /api/store/*.
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const isProd = process.env.NODE_ENV === "production";
+const envUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+const ABSOLUTE_API =
+  envUrl && envUrl !== "http://localhost:4000"
+    ? envUrl.replace(/\/+$/, "")
+    : isProd
+      ? "https://airsoftamericana-api.vercel.app"
+      : "http://localhost:4000";
+
+// Client components use relative paths so Next.js rewrites proxy to the API
+// (same-origin cookies). Server components need the absolute URL.
+export const API_URL = typeof window !== "undefined" ? "" : ABSOLUTE_API;
+export const API_SERVER = ABSOLUTE_API;
 
 export type StoreImage = {
   id: string;

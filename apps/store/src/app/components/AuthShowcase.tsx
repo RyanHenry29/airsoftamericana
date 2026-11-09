@@ -26,7 +26,7 @@ const STATIC_FACTS: Record<"entrar" | "cadastro", { k: string; v: string }[]> = 
   ],
 };
 
-const SETTINGS_URL = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/store/settings`;
+const SETTINGS_URL = `${""}/api/store/settings`;
 
 function useCommercialFacts(variant: Variant) {
   const [settings, setSettings] = useState<TopbarSettings>(null);
