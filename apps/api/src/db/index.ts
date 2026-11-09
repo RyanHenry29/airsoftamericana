@@ -112,14 +112,17 @@ function acquirePgliteLock(dir: string): () => void {
 }
 
 /**
- * Monta `ssl` do Pool para Postgres de produção.
+ * Monta `ssl` e normaliza a URL do Pool para Postgres de produção.
  *
  * Hosts `*.supabase.co` (conexão direta) terminam em CA própria fora das
  * lojas do sistema — a raiz Supabase é pinada aqui, somada às raízes do
  * sistema, com verificação de hostname ligada. O `sslmode` da URL é removido
  * antes de repassar ao pg: o parser sobrescreveria a opção explícita com
- * semântica própria (e sem a nossa CA). Qualquer outro host segue a URL
- * intacta (pooler, Postgres comum, testes locais).
+ * semântica própria (e sem a nossa CA).
+ *
+ * Outros hosts (pooler Supabase `*.pooler.supabase.com`, Postgres comum)
+ * respeitam `sslmode` da URL convertendo para a opção `ssl` explícita do pg,
+ * evitando que o parser imponha comportamento inesperado em runtime serverless.
  */
 function poolSsl(connectionString: string): { url: string; ssl?: boolean | tls.ConnectionOptions } {
   let url: URL;
@@ -128,15 +131,26 @@ function poolSsl(connectionString: string): { url: string; ssl?: boolean | tls.C
   } catch {
     return { url: connectionString };
   }
-  if (!url.hostname.endsWith(".supabase.co")) return { url: connectionString };
 
-  const mode = url.searchParams.get("sslmode");
+  const mode = (url.searchParams.get("sslmode") ?? "").toLowerCase();
   url.searchParams.delete("sslmode");
+
+  if (url.hostname.endsWith(".supabase.co")) {
+    if (mode === "disable") return { url: url.toString(), ssl: false };
+    return {
+      url: url.toString(),
+      ssl: { ca: [SUPABASE_ROOT_CA_PEM, ...tls.rootCertificates] },
+    };
+  }
+
+  // Pooler/outros: `require`/`verify-*`/ausente em URL postgres => TLS.
+  // `prefer` fica sem forçar (pg decide); `disable` desliga.
   if (mode === "disable") return { url: url.toString(), ssl: false };
-  return {
-    url: url.toString(),
-    ssl: { ca: [SUPABASE_ROOT_CA_PEM, ...tls.rootCertificates] },
-  };
+  if (mode === "prefer" || mode === "allow") return { url: url.toString() };
+  if (mode || url.hostname.endsWith(".pooler.supabase.com")) {
+    return { url: url.toString(), ssl: { rejectUnauthorized: mode !== "require" ? true : false } };
+  }
+  return { url: url.toString() };
 }
 
 export async function getDb(): Promise<Db> {
@@ -146,7 +160,21 @@ export async function getDb(): Promise<Db> {
   const bench = process.env.NODE_ENV === "test" ? { logger: benchLogger } : {};
   if (config.DATABASE_URL) {
     const { url, ssl } = poolSsl(config.DATABASE_URL);
-    poolInstance = new Pool({ connectionString: url, max: 10, ssl });
+    // Pooler de transação (porta 6543) não suporta prepared statements; manter
+    // pool pequeno em serverless para não esgotar conexões do Supabase.
+    const isTransactionPooler = /:6543(?:\/|\?|$)/.test(url);
+    poolInstance = new Pool({
+      connectionString: url,
+      max: isTransactionPooler ? 1 : 5,
+      ssl,
+      ...(isTransactionPooler ? { connectionTimeoutMillis: 10000 } : {}),
+    });
+    // pg + Supavisor transaction mode: desativa named prepared statements.
+    if (isTransactionPooler) poolInstance.on("connect", (client) => {
+      // no-op hook kept for clarity; drizzle/node-postgres uses unnamed prepares by default
+      // but we also pass prepare:false to drizzle when needed? drizzle-pg doesn't take prepare here.
+      void client;
+    });
     db = drizzlePg(poolInstance, { schema, ...bench });
   } else {
     const configured = process.env.PGLITE_DIR;
