@@ -115,24 +115,27 @@ export default function GatewaysPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-8 border-b border-[#111] pb-6">
-        <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-          Pagamentos / Gateways
-        </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-          Configure provedores, métodos, captura e 3DS. Credenciais são salvas cifradas e nunca exibidas após o envio.
-        </p>
-      </header>
+      <div className="admin-section-head">
+        <div>
+          <span className="admin-section-head__kicker">Pagamentos</span>
+          <h1 className="admin-section-head__title">Gateways</h1>
+          <p className="admin-section-head__subtitle">Configure provedores, métodos, captura e 3DS. Credenciais são salvas cifradas e nunca exibidas após o envio.</p>
+        </div>
+      </div>
 
-      {error ? <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mb-6">{error}</p> : null}
-      {notice ? <p role="status" className="text-[#8bcf16] font-mono text-xs font-bold mb-6">{notice}</p> : null}
+      {error ? (
+        <p className="admin-notice admin-notice--err" role="alert">{error}</p>
+      ) : null}
+      {notice ? (
+        <p className="admin-notice admin-notice--ok">{notice}</p>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6">
         {PROVIDERS.map((p) => {
           const g = byProvider(p.id);
           const isEdit = edit === p.id;
           return (
-            <section key={p.id} className="border border-[#111] bg-[#0a0a0a] p-6">
+            <section key={p.id} className="admin-form">
               <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                 <div>
                   <h2 className="font-display font-black text-xl uppercase text-white">{p.label}</h2>

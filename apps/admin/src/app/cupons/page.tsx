@@ -186,19 +186,22 @@ export default function CuponsPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-8 border-b border-[#111] pb-6">
-        <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-          Cupons
-        </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-          Crie, edite e desative cupons. Tipos: percentual, valor fixo (centavos) ou frete grátis.
-        </p>
-      </header>
+      <div className="admin-section-head">
+        <div>
+          <span className="admin-section-head__kicker">Comercial</span>
+          <h1 className="admin-section-head__title">Cupons</h1>
+          <p className="admin-section-head__subtitle">Crie, edite e desative cupons. Tipos: percentual, valor fixo (centavos) ou frete grátis.</p>
+        </div>
+      </div>
 
-      {error ? <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mb-6">{error}</p> : null}
-      {notice ? <p role="status" className="text-[#8bcf16] font-mono text-xs font-bold mb-6">{notice}</p> : null}
+      {error ? (
+        <p className="admin-notice admin-notice--err" role="alert">{error}</p>
+      ) : null}
+      {notice ? (
+        <p className="admin-notice admin-notice--ok">{notice}</p>
+      ) : null}
 
-      <form onSubmit={editing ? (e) => { e.preventDefault(); saveEdit(editing); } : create} className="border border-[#111] bg-[#0a0a0a] p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-12">
+      <form onSubmit={editing ? (e) => { e.preventDefault(); saveEdit(editing); } : create} className="admin-form grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-12">
         <div className="field">
           <label htmlFor="cp-code">Código</label>
           <input id="cp-code" className="input w-full" required value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="EX: PIX5" />
@@ -242,12 +245,12 @@ export default function CuponsPage() {
       </form>
 
       {items.length === 0 ? (
-        <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
+        <div className="admin-empty">
           <p className="text-[#666] font-mono text-xs">Nenhum cupom cadastrado.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
             <thead>
               <tr>
                 <th>Código</th>
@@ -262,7 +265,7 @@ export default function CuponsPage() {
             </thead>
             <tbody>
               {items.map((c) => (
-                <tr key={c.id} className="group border-b border-[#111]">
+                <tr key={c.id}>
                   <td className="p-3 font-mono text-sm font-bold text-white">{c.code}</td>
                   <td className="p-3 font-mono text-xs text-[#666]">{kindLabels[c.kind as keyof typeof kindLabels] ?? c.kind}</td>
                   <td className="p-3 font-mono text-sm text-white">{fmtValue(c)}</td>
@@ -273,7 +276,7 @@ export default function CuponsPage() {
                     <div>{fmtDate(c.endsAt)}</div>
                   </td>
                   <td className="p-3">
-                    <span className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${c.active ? "border-[#8bcf16] text-[#8bcf16]" : "border-[#333] text-[#333]"}`}>
+                    <span className={`admin-badge ${c.active ? "admin-badge--ok" : "admin-badge--err"}`}>
                       {c.active ? "Ativo" : "Inativo"}
                     </span>
                   </td>

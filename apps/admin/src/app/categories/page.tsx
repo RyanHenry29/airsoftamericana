@@ -136,27 +136,24 @@ export default function CategoriesPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-12 border-b border-[#111] pb-6">
-        <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-          Gestão de Categorias
-        </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-          Árvore do catálogo · restrição de idade 18+ · {items.length} categoria(s)
-        </p>
-      </header>
+      <div className="admin-section-head">
+        <div>
+          <span className="admin-section-head__kicker">Catálogo</span>
+          <h1 className="admin-section-head__title">Gestão de Categorias</h1>
+          <p className="admin-section-head__subtitle">Árvore do catálogo · restrição de idade 18+ · {items.length} categoria(s)</p>
+        </div>
+      </div>
 
       {error ? (
-        <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mb-6">
-          {error}
-        </p>
+        <p className="admin-notice admin-notice--err" role="alert">{error}</p>
       ) : null}
       {notice ? (
-        <p className="text-[#8bcf16] font-mono text-xs font-bold mb-6">{notice}</p>
+        <p className="admin-notice admin-notice--ok">{notice}</p>
       ) : null}
 
       <form
         onSubmit={create}
-        className="border border-[#111] bg-[#0a0a0a] p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-12"
+        className="admin-form grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-12"
       >
         <div className="field">
           <label htmlFor="cat-name">Nome</label>
@@ -212,20 +209,14 @@ export default function CategoriesPage() {
       </form>
 
       {items.length === 0 ? (
-        <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
-          <div className="font-mono font-black text-6xl uppercase tracking-tighter text-[#8bcf16] mb-6 inline-block">
-            0
-          </div>
-          <h2 className="font-display font-black text-3xl uppercase leading-none tracking-tighter text-white mb-4">
-            Nenhuma categoria ainda
-          </h2>
-          <p className="text-[#666] font-mono text-xs max-w-md mx-auto mb-8">
-            As categorias aparecem aqui quando o seed é executado no banco.
-          </p>
+        <div className="admin-empty">
+          <div className="admin-empty__num">0</div>
+          <h2 className="admin-empty__title">Nenhuma categoria ainda</h2>
+          <p className="admin-empty__text">As categorias aparecem aqui quando o seed é executado no banco.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
             <thead>
               <tr>
                 <th>Nome</th>
@@ -250,32 +241,14 @@ export default function CategoriesPage() {
                   </td>
                   <td className="font-mono text-sm text-[#666]">{c.slug}</td>
                   <td>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patch(c.id, { ageRestricted: !c.ageRestricted })
-                      }
-                      className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${
-                        c.ageRestricted
-                          ? "border-[#8bcf16] text-[#8bcf16]"
-                          : "border-[#333] text-[#333]"
-                      }`}
-                    >
+                    <span className={`admin-badge ${c.ageRestricted ? "admin-badge--warn" : "admin-badge--ok"}`}>
                       {c.ageRestricted ? "Sim" : "Não"}
-                    </button>
+                    </span>
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      onClick={() => patch(c.id, { active: !c.active })}
-                      className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${
-                        c.active
-                          ? "border-[#8bcf16] text-[#8bcf16]"
-                          : "border-[#333] text-[#333]"
-                      }`}
-                    >
+                    <span className={`admin-badge ${c.active ? "admin-badge--ok" : "admin-badge--err"}`}>
                       {c.active ? "Sim" : "Não"}
-                    </button>
+                    </span>
                   </td>
                   <td className="font-mono text-sm text-[#666]">{c.position}</td>
                   <td className="flex flex-wrap gap-2 items-center">

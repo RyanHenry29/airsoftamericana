@@ -171,15 +171,20 @@ export default function FraudPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-8 border-b border-[#111] pb-6">
-        <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">Antifraude</h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-          Fila de avaliações, revisão manual, regras de score e watchlist. Revisão pode aplicar transição no pedido quando válida.
-        </p>
-      </header>
+      <div className="admin-section-head">
+        <div>
+          <span className="admin-section-head__kicker">Segurança</span>
+          <h1 className="admin-section-head__title">Antifraude</h1>
+          <p className="admin-section-head__subtitle">Fila de avaliações, revisão manual, regras de score e watchlist. Revisão pode aplicar transição no pedido quando válida.</p>
+        </div>
+      </div>
 
-      {error ? <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mb-6">{error}</p> : null}
-      {notice ? <p role="status" className="text-[#8bcf16] font-mono text-xs font-bold mb-6">{notice}</p> : null}
+      {error ? (
+        <p className="admin-notice admin-notice--err" role="alert">{error}</p>
+      ) : null}
+      {notice ? (
+        <p className="admin-notice admin-notice--ok">{notice}</p>
+      ) : null}
 
       <div className="flex flex-wrap gap-2 mb-8">
         {(["queue", "rules", "watchlist"] as const).map((t) => (
@@ -204,12 +209,12 @@ export default function FraudPage() {
           </div>
 
           {assessments.length === 0 ? (
-            <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
+            <div className="admin-empty">
               <p className="text-[#666] font-mono text-xs">Nenhuma avaliação encontrada{levelFilter ? " para este nível" : ""}.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
                 <thead>
                   <tr>
                     <th>Pedido</th>
@@ -224,7 +229,7 @@ export default function FraudPage() {
                   {assessments.map((row) => {
                     const a = row.assessment;
                     return (
-                      <tr key={a.id} className="border-b border-[#111] align-top">
+                      <tr key={a.id}>
                         <td className="p-3">
                           <div className="font-mono text-sm font-bold text-white">#{row.orderNumber ?? a.orderId.slice(0, 8)}</div>
                           <div className="font-mono text-[0.6rem] text-[#666] mt-1">{brl(row.orderTotalCents)} · {row.orderStatus?.replace(/_/g, " ") ?? "—"}</div>
@@ -235,7 +240,7 @@ export default function FraudPage() {
                           <div className="font-mono text-[0.6rem] text-[#666]">{row.customerEmail ?? "—"}</div>
                         </td>
                         <td className="p-3">
-                          <span className={`font-mono text-[0.65rem] uppercase font-bold border px-2 py-0.5 ${a.level === "alto" ? "border-[#dc2626] text-[#dc2626]" : a.level === "medio" ? "border-[#b5a16a] text-[#b5a16a]" : "border-[#333] text-[#999]"}`}>
+                          <span className={`admin-badge ${a.level === "alto" ? "admin-badge--err" : a.level === "medio" ? "admin-badge--warn" : "admin-badge--ok"}`}>
                             {a.level} ({a.score})
                           </span>
                           {a.autoDecision ? <div className="font-mono text-[0.55rem] text-[#444] mt-1">auto</div> : <div className="font-mono text-[0.55rem] text-[#8bcf16] mt-1">revisado</div>}
@@ -278,7 +283,7 @@ export default function FraudPage() {
 
       {tab === "rules" ? (
         <section>
-          <form onSubmit={saveRule} className="border border-[#111] bg-[#0a0a0a] p-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-8">
+          <form onSubmit={saveRule} className="admin-form grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-8">
             <div className="field">
               <label htmlFor="rl-key">Chave (key)</label>
               <input id="rl-key" className="input w-full" required value={ruleForm.key} onChange={e => setRuleForm({ ...ruleForm, key: e.target.value })} placeholder="ex: high_value" />
@@ -314,22 +319,24 @@ export default function FraudPage() {
           </form>
 
           {rules.length === 0 ? (
-            <div className="border border-[#111] bg-[#0a0a0a] p-8 text-center"><p className="text-[#666] font-mono text-xs">Nenhuma regra cadastrada. O motor pode usar regras padrão do serviço se aplicável.</p></div>
+            <div className="admin-empty">
+              <p className="text-[#666] font-mono text-xs">Nenhuma regra cadastrada. O motor pode usar regras padrão do serviço se aplicável.</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
                 <thead>
                   <tr><th>Key</th><th>Nome</th><th>Peso</th><th>Threshold</th><th>Ação</th><th>Status</th><th></th></tr>
                 </thead>
                 <tbody>
                   {rules.map((r) => (
-                    <tr key={r.key} className="border-b border-[#111]">
+                    <tr key={r.key}>
                       <td className="p-3 font-mono text-xs text-white">{r.key}</td>
                       <td className="p-3 font-mono text-xs text-[#999]">{r.name}</td>
                       <td className="p-3 font-mono text-sm text-white">{r.weight}</td>
                       <td className="p-3 font-mono text-xs text-[#666]">{r.threshold ?? "—"}</td>
                       <td className="p-3 font-mono text-xs text-[#666]">{r.action}</td>
-                      <td className="p-3"><span className={`font-mono text-[0.6rem] uppercase border px-2 py-0.5 ${r.enabled ? "border-[#8bcf16] text-[#8bcf16]" : "border-[#333] text-[#333]"}`}>{r.enabled ? "Ativa" : "Inativa"}</span></td>
+                      <td className="p-3"><span className={`admin-badge ${r.enabled ? "admin-badge--ok" : "admin-badge--err"}`}>{r.enabled ? "Ativa" : "Inativa"}</span></td>
                       <td className="p-3"><button type="button" className="font-mono text-[0.6rem] uppercase border border-[#333] text-[#999] py-1 px-2" onClick={() => setRuleForm({ key: r.key, name: r.name, enabled: r.enabled, weight: r.weight, threshold: r.threshold ?? null, action: r.action })}>Editar</button></td>
                     </tr>
                   ))}
@@ -342,7 +349,7 @@ export default function FraudPage() {
 
       {tab === "watchlist" ? (
         <section>
-          <form onSubmit={addWatch} className="border border-[#111] bg-[#0a0a0a] p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-8">
+          <form onSubmit={addWatch} className="admin-form grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-8">
             <div className="field">
               <label htmlFor="wl-kind">Tipo</label>
               <select id="wl-kind" className="select w-full" value={watchForm.kind} onChange={e => setWatchForm({ ...watchForm, kind: e.target.value })}>
@@ -371,14 +378,18 @@ export default function FraudPage() {
           </form>
 
           {watch.length === 0 ? (
-            <div className="border border-[#111] bg-[#0a0a0a] p-8 text-center"><p className="text-[#666] font-mono text-xs">Watchlist vazia.</p></div>
+            <div className="admin-empty">
+              <p className="text-[#666] font-mono text-xs">Watchlist vazia.</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table>
-                <thead><tr><th>Tipo</th><th>Valor</th><th>Motivo</th><th>Expira</th><th></th></tr></thead>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr><th>Tipo</th><th>Valor</th><th>Motivo</th><th>Expira</th><th></th></tr>
+                </thead>
                 <tbody>
                   {watch.map((w) => (
-                    <tr key={w.id} className="border-b border-[#111]">
+                    <tr key={w.id}>
                       <td className="p-3 font-mono text-xs uppercase text-white">{w.kind}</td>
                       <td className="p-3 font-mono text-xs text-[#999]">{w.value}</td>
                       <td className="p-3 font-mono text-xs text-[#666]">{w.reason}</td>

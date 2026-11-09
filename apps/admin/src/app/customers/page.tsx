@@ -65,19 +65,16 @@ export default function CustomersPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-12 border-b border-[#111] pb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="admin-section-head">
         <div>
-          <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-            Clientes
-          </h1>
-          <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-            Base de clientes da loja · {items.length} encontrado(s)
-          </p>
+          <span className="admin-section-head__kicker">Operação</span>
+          <h1 className="admin-section-head__title">Clientes</h1>
+          <p className="admin-section-head__subtitle">Base de clientes da loja · {items.length} encontrado(s)</p>
         </div>
         <Link href="/customers/new" className="btn-primary px-8 py-3">
           NOVO CLIENTE
         </Link>
-      </header>
+      </div>
 
       <form
         className="mb-10 flex gap-4"
@@ -99,23 +96,15 @@ export default function CustomersPage() {
       </form>
 
       {items.length === 0 ? (
-        <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
-          <div className="font-mono font-black text-6xl uppercase tracking-tighter text-[#8bcf16] mb-6 inline-block">
-            0
-          </div>
-          <h2 className="font-display font-black text-3xl uppercase leading-none tracking-tighter text-white mb-4">
-            Nenhum cliente ainda
-          </h2>
-          <p className="text-[#666] font-mono text-xs max-w-md mx-auto mb-8">
-            Clientes aparecem aqui quando se cadastram na loja ou quando você cadastra manualmente.
-          </p>
-          <Link href="/customers/new" className="btn-primary px-8 py-3">
-            CADASTRAR CLIENTE
-          </Link>
+        <div className="admin-empty">
+          <div className="admin-empty__num">0</div>
+          <h2 className="admin-empty__title">Nenhum cliente ainda</h2>
+          <p className="admin-empty__text">Clientes aparecem aqui quando se cadastram na loja ou quando você cadastra manualmente.</p>
+          <Link href="/customers/new" className="btn-primary px-8 py-3">CADASTRAR CLIENTE</Link>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
             <thead>
               <tr>
                 <th>Nome</th>

@@ -87,38 +87,30 @@ export default function ProductsPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-12 border-b border-[#111] pb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="admin-section-head">
         <div>
-          <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-            Produtos
-          </h1>
-          <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-            CRUD real · {items.length} produto(s)
-          </p>
+          <span className="admin-section-head__kicker">Catálogo</span>
+          <h1 className="admin-section-head__title">Produtos</h1>
+          <p className="admin-section-head__subtitle">CRUD real · {items.length} produto(s) no sistema</p>
         </div>
         <Link href="/products/new" className="btn-primary px-8 py-3">
           NOVO PRODUTO
         </Link>
-      </header>
+      </div>
 
       {items.length === 0 ? (
-        <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
-          <div className="font-mono font-black text-6xl uppercase tracking-tighter text-[#8bcf16] mb-6 inline-block">
-            0
+        <div className="admin-empty">
+          <div className="admin-empty__num">0</div>
+          <h2 className="admin-empty__title">Nenhum produto ainda</h2>
+          <p className="admin-empty__text">Cadastre o primeiro produto para a vitrine não ficar vazia. Use a importação CSV para carregar o catálogo real.</p>
+          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
+            <Link href="/products/new" className="btn-primary px-8 py-3">CADASTRAR PRODUTO</Link>
+            <Link href="/products/import" className="btn-outline px-8 py-3">IMPORTAR CSV</Link>
           </div>
-          <h2 className="font-display font-black text-3xl uppercase leading-none tracking-tighter text-white mb-4">
-            Nenhum produto ainda
-          </h2>
-          <p className="text-[#666] font-mono text-xs max-w-md mx-auto mb-8">
-            Cadastre o primeiro produto para a vitrine não ficar vazia.
-          </p>
-          <Link href="/products/new" className="btn-primary px-8 py-3">
-            CADASTRAR PRODUTO
-          </Link>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
             <thead>
               <tr>
                 <th>Nome</th>
@@ -136,7 +128,7 @@ export default function ProductsPage() {
                   <tr key={p.id} className="group">
                     <td>
                       <div className="font-display font-black text-lg text-white">{p.name}</div>
-                      <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#333] block mt-1">{p.slug}</span>
+                      <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mt-1">{p.slug}</span>
                     </td>
                     <td className="font-mono text-sm font-bold text-white">{price}</td>
                     <td>
@@ -145,7 +137,7 @@ export default function ProductsPage() {
                       </span>
                     </td>
                     <td>
-                      <span className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${p.ageRestricted ? "border-[#8bcf16] text-[#8bcf16]" : "border-[#333] text-[#333]"}`}>
+                      <span className={`admin-badge ${p.ageRestricted ? "admin-badge--warn" : "admin-badge--ok"}`}>
                         {p.ageRestricted ? "Sim" : "Não"}
                       </span>
                     </td>

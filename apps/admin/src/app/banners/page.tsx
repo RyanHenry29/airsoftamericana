@@ -141,19 +141,22 @@ export default function BannersPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-8 border-b border-[#111] pb-6">
-        <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-          Banners da Homepage
-        </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-          O banner com <strong>kind = "hero"</strong> vira o destaque principal da loja. Troque a foto a qualquer hora.
-        </p>
-      </header>
+      <div className="admin-section-head">
+        <div>
+          <span className="admin-section-head__kicker">CMS</span>
+          <h1 className="admin-section-head__title">Banners da Homepage</h1>
+          <p className="admin-section-head__subtitle">O banner com <strong>kind = "hero"</strong> vira o destaque principal da loja. Troque a foto a qualquer hora.</p>
+        </div>
+      </div>
 
-      {error ? <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mb-6">{error}</p> : null}
-      {notice ? <p role="status" className="text-[#8bcf16] font-mono text-xs font-bold mb-6">{notice}</p> : null}
+      {error ? (
+        <p className="admin-notice admin-notice--err" role="alert">{error}</p>
+      ) : null}
+      {notice ? (
+        <p className="admin-notice admin-notice--ok">{notice}</p>
+      ) : null}
 
-      <form onSubmit={create} className="border border-[#111] bg-[#0a0a0a] p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-12">
+      <form onSubmit={create} className="admin-form grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-12">
         <div className="field">
           <label htmlFor="bn-title">Título</label>
           <input id="bn-title" className="input w-full" required value={form.title ?? ""} onChange={e => setForm({ ...form, title: e.target.value })} />
@@ -206,12 +209,12 @@ export default function BannersPage() {
       </form>
 
       {items.length === 0 ? (
-        <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
+        <div className="admin-empty">
           <p className="text-[#666] font-mono text-xs">Nenhum banner cadastrado. Crie o primeiro para ativar o hero da loja.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
             <thead>
               <tr>
                 <th>Imagem</th>
@@ -226,7 +229,7 @@ export default function BannersPage() {
               {items.map((b) => {
                 const isEditing = editing === b.id;
                 return (
-                  <tr key={b.id} className="group border-b border-[#111]">
+                  <tr key={b.id}>
                     <td className="p-3">
                       {b.imageDesktop ? (
                         <img src={b.imageDesktop} alt={b.title} className="w-16 h-16 object-cover border border-[#111]" />
@@ -252,7 +255,7 @@ export default function BannersPage() {
                       {isEditing ? (
                         <label className="font-mono text-xs"><input type="checkbox" checked={form.active ?? true} onChange={e => setForm({ ...form, active: e.target.checked })} /> ativo</label>
                       ) : (
-                        <span className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${b.active ? "border-[#8bcf16] text-[#8bcf16]" : "border-[#333] text-[#333]"}`}>
+                        <span className={`admin-badge ${b.active ? "admin-badge--ok" : "admin-badge--err"}`}>
                           {b.active ? "Sim" : "Não"}
                         </span>
                       )}

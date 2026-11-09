@@ -141,12 +141,11 @@ export default function ChargebacksPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-8 border-b border-[#111] pb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="admin-section-head">
         <div>
-          <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">Chargebacks</h1>
-          <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-            Disputas notificadas por webhook/gateway. Atualize status, registre evidências e exporte PDF para contestação.
-          </p>
+          <span className="admin-section-head__kicker">Financeiro</span>
+          <h1 className="admin-section-head__title">Chargebacks</h1>
+          <p className="admin-section-head__subtitle">Disputas notificadas por webhook/gateway. Atualize status, registre evidências e exporte PDF para contestação.</p>
         </div>
         <div className="field">
           <label htmlFor="cb-filter" className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-1">Filtrar status</label>
@@ -155,18 +154,22 @@ export default function ChargebacksPage() {
             {STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
           </select>
         </div>
-      </header>
+      </div>
 
-      {error ? <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mb-6">{error}</p> : null}
-      {notice ? <p role="status" className="text-[#8bcf16] font-mono text-xs font-bold mb-6">{notice}</p> : null}
+      {error ? (
+        <p className="admin-notice admin-notice--err" role="alert">{error}</p>
+      ) : null}
+      {notice ? (
+        <p className="admin-notice admin-notice--ok">{notice}</p>
+      ) : null}
 
       {items.length === 0 ? (
-        <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
+        <div className="admin-empty">
           <p className="text-[#666] font-mono text-xs">Nenhum chargeback registrado{statusFilter ? " para este filtro" : ""}.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto mb-10">
-          <table>
+        <div className="admin-table-wrap mb-12">
+          <table className="admin-table">
             <thead>
               <tr>
                 <th>Disputa</th>
@@ -179,7 +182,7 @@ export default function ChargebacksPage() {
             </thead>
             <tbody>
               {items.map((c) => (
-                <tr key={c.id} className="border-b border-[#111]">
+                <tr key={c.id}>
                   <td className="p-3">
                     <div className="font-mono text-xs text-white">{c.provider} · {c.providerDisputeId}</div>
                     <div className="font-mono text-[0.6rem] text-[#444] mt-1">{c.reason || "—"}</div>
@@ -187,7 +190,7 @@ export default function ChargebacksPage() {
                   <td className="p-3 font-mono text-xs text-[#666]">{c.orderId.slice(0, 8)}…</td>
                   <td className="p-3 font-mono text-sm font-bold text-white">{brl(c.amountCents)}</td>
                   <td className="p-3">
-                    <span className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${c.status === "ganho" ? "border-[#8bcf16] text-[#8bcf16]" : c.status === "perdido" ? "border-[#dc2626] text-[#dc2626]" : "border-[#333] text-[#999]"}`}>
+                    <span className={`admin-badge ${c.status === "ganho" ? "admin-badge--ok" : c.status === "perdido" ? "admin-badge--err" : "admin-badge--warn"}`}>
                       {c.status.replace(/_/g, " ")}
                     </span>
                   </td>
@@ -206,10 +209,10 @@ export default function ChargebacksPage() {
       )}
 
       {detail ? (
-        <section className="border border-[#111] bg-[#0a0a0a] p-6">
+        <section className="admin-form">
           <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
             <div>
-              <h2 className="font-display font-black text-2xl uppercase text-white">Disputa {detail.chargeback.providerDisputeId}</h2>
+              <h2 className="admin-form__title">Disputa {detail.chargeback.providerDisputeId}</h2>
               <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-1">
                 Pedido {detail.order?.number ?? detail.chargeback.orderId} · {brl(detail.chargeback.amountCents)} · {detail.chargeback.provider}
               </p>

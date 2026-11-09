@@ -21,6 +21,7 @@ type HeaderSettings = {
   installments: number;
   address?: { city?: string; state?: string };
   service_hours?: string;
+  whatsapp?: string;
 };
 
 export function Header() {
@@ -191,6 +192,11 @@ export function Header() {
           <span className="header-topbar__spacer" />
           <span className="header-topbar__group header-topbar__group--info">
             {storePlace ? <span className="header-topbar__item header-topbar__item--muted">{storePlace}</span> : null}
+            {settings?.whatsapp ? (
+              <a href={`https://wa.me/${settings.whatsapp}`} target="_blank" rel="noopener noreferrer" className="header-topbar__item header-topbar__item--muted">
+                WhatsApp
+              </a>
+            ) : null}
             <Link href="/rastreamento" className="header-topbar__link">
               Rastrear pedido
             </Link>

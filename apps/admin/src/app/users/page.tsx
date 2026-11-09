@@ -351,24 +351,26 @@ export default function UsersPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-12 border-b border-[#111] pb-6">
-        <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-          Operadores e acessos
-        </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-          Papéis, MFA, passkeys, convites e sessões
-        </p>
-      </header>
+      <div className="admin-section-head">
+        <div>
+          <span className="admin-section-head__kicker">Acessos</span>
+          <h1 className="admin-section-head__title">Operadores e acessos</h1>
+          <p className="admin-section-head__subtitle">Papéis, MFA, passkeys, convites e sessões</p>
+        </div>
+      </div>
 
       {error ? (
-        <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mb-6">{error}</p>
+        <p className="admin-notice admin-notice--err" role="alert">{error}</p>
       ) : null}
-      {notice ? <p className="text-[#8bcf16] font-mono text-xs font-bold mb-6">{notice}</p> : null}
+      {notice ? (
+        <p className="admin-notice admin-notice--ok">{notice}</p>
+      ) : null}
 
       {regenCodes ? (
-        <section className="mb-14 border border-[#8bcf16] bg-[#050505] p-8 max-w-2xl">
-          <span className="font-mono text-xs uppercase tracking-widest text-[#8bcf16] block mb-3">Códigos de recuperação</span>
-          <p className="font-mono text-xs text-[#dc2626] font-bold uppercase tracking-wider mb-4">
+        <section className="admin-empty mb-12" style={{ borderColor: "var(--primary)" }}>
+          <div className="admin-empty__num" style={{ color: "var(--primary)" }}>{regenCodes.length}</div>
+          <h2 className="admin-empty__title">Códigos de recuperação</h2>
+          <p className="admin-empty__text" style={{ color: "#dc2626", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em" }}>
             Aviso: exibidos uma única vez. Não poderão ser mostrados novamente.
           </p>
           <ul className="grid grid-cols-2 gap-3 font-mono text-sm text-white">
@@ -381,16 +383,23 @@ export default function UsersPage() {
         </section>
       ) : null}
 
-      <section className="mb-14">
-        <span className="font-mono text-xs uppercase tracking-widest text-[#8bcf16] block mb-4">Time do painel</span>
+      <section className="mb-12">
+        <div className="admin-section-head">
+          <div>
+            <span className="admin-section-head__kicker">Time do painel</span>
+            <h2 className="admin-section-head__title">Operadores</h2>
+            <p className="admin-section-head__subtitle">{(data?.items.length ?? 0)} operador(es)</p>
+          </div>
+        </div>
         {(data?.items.length ?? 0) === 0 ? (
-          <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
-            <h2 className="font-display font-black text-2xl uppercase text-white mb-2">Nenhum operador</h2>
-            <p className="text-[#666] font-mono text-xs">Convide o primeiro operador para o painel.</p>
+          <div className="admin-empty">
+            <div className="admin-empty__num">0</div>
+            <h2 className="admin-empty__title">Nenhum operador</h2>
+            <p className="admin-empty__text">Convide o primeiro operador para o painel.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
               <thead>
                 <tr>
                   <th>Nome</th>
@@ -434,7 +443,7 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td>
-                      <span className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${u.mfaEnabled ? "border-[#8bcf16] text-[#8bcf16]" : "border-[#dc2626] text-[#dc2626]"}`}>
+                      <span className={`admin-badge ${u.mfaEnabled ? "admin-badge--ok" : "admin-badge--err"}`}>
                         {u.mfaEnabled ? "Ativo" : "Pendente"}
                       </span>
                     </td>
@@ -448,9 +457,15 @@ export default function UsersPage() {
       </section>
 
       {isSuper ? (
-        <section className="mb-14">
-          <span className="font-mono text-xs uppercase tracking-widest text-[#8bcf16] block mb-4">Convites</span>
-          <form onSubmit={createInvite} className="border border-[#111] bg-[#0a0a0a] p-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end max-w-3xl">
+        <section className="mb-12">
+          <div className="admin-section-head">
+            <div>
+              <span className="admin-section-head__kicker">Convites</span>
+              <h2 className="admin-section-head__title">Convites ativos</h2>
+            </div>
+          </div>
+
+          <form onSubmit={createInvite} className="admin-form grid grid-cols-1 md:grid-cols-3 gap-4 items-end max-w-3xl">
             <div className="field">
               <label htmlFor="invite-email">E-mail</label>
               <input id="invite-email" type="email" required className="input w-full" value={inviteForm.email} onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })} />
@@ -467,20 +482,23 @@ export default function UsersPage() {
           </form>
 
           {invite ? (
-            <div className="border border-[#8bcf16] bg-[#050505] p-6 mt-6 max-w-3xl">
-              <span className="font-mono text-xs uppercase tracking-widest text-[#8bcf16] block mb-3">Convite de {invite.email}</span>
-              <p className="font-mono text-xs text-[#666] mb-3">
+            <div className="admin-empty mt-6" style={{ borderColor: "var(--primary)" }}>
+              <div className="admin-empty__num" style={{ color: "var(--primary)" }}>!</div>
+              <h2 className="admin-empty__title">Convite de {invite.email}</h2>
+              <p className="admin-empty__text">
                 Token de uso único, válido até {fmt(invite.expiresAt)}. Não será exibido novamente após sair desta tela.
               </p>
-              <code className="block font-mono text-xs text-white border border-[#111] bg-[#000] px-3 py-2 break-all">
-                {`${typeof window !== "undefined" ? window.location.origin : ""}/convite?token=${invite.token}`}
-              </code>
+              <div className="mt-4">
+                <code className="block font-mono text-xs text-white border border-[#111] bg-[#000] px-3 py-2 break-all">
+                  {`${typeof window !== "undefined" ? window.location.origin : ""}/convite?token=${invite.token}`}
+                </code>
+              </div>
             </div>
           ) : null}
 
           {invites.length > 0 ? (
-            <div className="overflow-x-auto mt-6">
-              <table>
+            <div className="admin-table-wrap mt-6">
+              <table className="admin-table">
                 <thead>
                   <tr><th>E-mail</th><th>Papel</th><th>Expira</th><th>Status</th><th>Ação</th></tr>
                 </thead>
@@ -505,9 +523,12 @@ export default function UsersPage() {
         </section>
       ) : null}
 
-      <section className="mb-14">
-        <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-          <span className="font-mono text-xs uppercase tracking-widest text-[#8bcf16]">Minhas sessões</span>
+      <section className="mb-12">
+        <div className="admin-section-head">
+          <div>
+            <span className="admin-section-head__kicker">Sessão</span>
+            <h2 className="admin-section-head__title">Minhas sessões</h2>
+          </div>
           {sessions.length > 1 ? (
             <button type="button" onClick={revokeOthers} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626]">
               Revogar outras sessões
@@ -517,8 +538,8 @@ export default function UsersPage() {
         {sessions.length === 0 ? (
           <p className="font-mono text-xs text-[#666]">Nenhuma sessão ativa registrada.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
               <thead>
                 <tr><th>Dispositivo</th><th>IP</th><th>Início</th><th>Último uso</th><th>Expira</th><th>Ação</th></tr>
               </thead>
@@ -547,8 +568,11 @@ export default function UsersPage() {
       </section>
 
       <section>
-        <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-          <span className="font-mono text-xs uppercase tracking-widest text-[#8bcf16]">Minhas passkeys</span>
+        <div className="admin-section-head">
+          <div>
+            <span className="admin-section-head__kicker">Autenticação</span>
+            <h2 className="admin-section-head__title">Minhas passkeys</h2>
+          </div>
           <div className="flex gap-2 flex-wrap">
             <button type="button" onClick={registerPasskey} disabled={busy} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] disabled:text-[#333]">
               {busy ? "Aguarde..." : "Cadastrar passkey"}
@@ -561,8 +585,8 @@ export default function UsersPage() {
         {passkeys.length === 0 ? (
           <p className="font-mono text-xs text-[#666]">Nenhuma passkey registrada. Use "Cadastrar passkey" neste dispositivo compatível (cancelamento e incompatibilidade são tratados).</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
               <thead>
                 <tr><th>Nome</th><th>Criada</th><th>Último uso</th><th>Ações</th></tr>
               </thead>

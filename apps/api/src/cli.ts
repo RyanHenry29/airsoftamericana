@@ -1,4 +1,4 @@
-import { createServer } from "./server.js";
+import { createServer } from "../index.js";
 import { config } from "./config.js";
 
 /**

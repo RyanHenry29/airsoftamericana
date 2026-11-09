@@ -97,27 +97,28 @@ export default function InventoryPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-8 border-b border-[#111] pb-6">
-        <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-          Estoque
-        </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-          Saldo por variante, ajuste manual com motivo e histórico de movimentos. Disponível = físico − reservado.
-        </p>
-      </header>
+      <div className="admin-section-head">
+        <div>
+          <span className="admin-section-head__kicker">Operação</span>
+          <h1 className="admin-section-head__title">Estoque</h1>
+          <p className="admin-section-head__subtitle">Saldo por variante, ajuste manual com motivo e histórico de movimentos. Disponível = físico − reservado.</p>
+        </div>
+      </div>
 
-      {error ? <p role="alert" className="text-[#dc2626] font-mono text-xs font-bold mb-6">{error}</p> : null}
-      {notice ? <p role="status" className="text-[#8bcf16] font-mono text-xs font-bold mb-6">{notice}</p> : null}
+      {error ? (
+        <p className="admin-notice admin-notice--err" role="alert">{error}</p>
+      ) : null}
+      {notice ? (
+        <p className="admin-notice admin-notice--ok">{notice}</p>
+      ) : null}
 
       {low.length > 0 ? (
-        <div className="border border-[#dc2626]/40 bg-[#0a0a0a] p-4 mb-8">
-          <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#dc2626] font-bold">
-            {low.length} item(ns) no mínimo ou abaixo
-          </p>
+        <div className="admin-notice admin-notice--err" role="alert">
+          {low.length} item(ns) no mínimo ou abaixo
         </div>
       ) : null}
 
-      <form onSubmit={submit} className="border border-[#111] bg-[#0a0a0a] p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-12">
+      <form onSubmit={submit} className="admin-form grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-12">
         <div className="field md:col-span-2">
           <label htmlFor="inv-variant">Variante / SKU</label>
           <select id="inv-variant" className="select w-full" required value={form.variantId} onChange={e => setForm({ ...form, variantId: e.target.value })}>
@@ -150,12 +151,14 @@ export default function InventoryPage() {
       </form>
 
       <section className="mb-12">
-        <h2 className="font-display font-black text-xl uppercase text-white mb-4">Saldo por variante</h2>
+        <h2 className="admin-section-head__kicker" style={{ marginBottom: "0.5rem", display: "block" }}>Saldo por variante</h2>
         {items.length === 0 ? (
-          <div className="border border-[#111] bg-[#0a0a0a] p-8 text-center"><p className="text-[#666] font-mono text-xs">Nenhum item de estoque.</p></div>
+          <div className="admin-empty">
+            <p className="text-[#666] font-mono text-xs">Nenhum item de estoque.</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
               <thead>
                 <tr>
                   <th>SKU</th>
@@ -187,12 +190,14 @@ export default function InventoryPage() {
       </section>
 
       <section>
-        <h2 className="font-display font-black text-xl uppercase text-white mb-4">Movimentos recentes</h2>
+        <h2 className="admin-section-head__kicker" style={{ marginBottom: "0.5rem", display: "block" }}>Movimentos recentes</h2>
         {movements.length === 0 ? (
-          <div className="border border-[#111] bg-[#0a0a0a] p-8 text-center"><p className="text-[#666] font-mono text-xs">Nenhum movimento registrado.</p></div>
+          <div className="admin-empty">
+            <p className="text-[#666] font-mono text-xs">Nenhum movimento registrado.</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
               <thead>
                 <tr>
                   <th>Data</th>

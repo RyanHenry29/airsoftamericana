@@ -1,18 +1,20 @@
+// language: TSX, file: apps/store/src/app/checkout/CheckoutForm.tsx, target: Next.js App Router
+// Checkout profissional — dark theme, etapas claras, cálculo no servidor
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ShieldCheck, Truck, Zap } from "lucide-react";
 
-const API_URL =
-  "";
+const API_URL = "";
 
 type Pay = "pix" | "cartao" | "boleto";
 
 const OPTIONS: { id: Pay; name: string; desc: string; tag: string }[] = [
-  { id: "pix", name: "PIX", desc: "5% de desconto na hora", tag: "PX" },
-  { id: "cartao", name: "Cartão", desc: "até 3x sem juros", tag: "CR" },
-  { id: "boleto", name: "Boleto", desc: "Compensa em 1-2 dias úteis", tag: "BL" },
+  { id: "pix", name: "PIX", desc: "Desconto à vista", tag: "PX" },
+  { id: "cartao", name: "Cartão", desc: "Parcelamento sem juros", tag: "CR" },
+  { id: "boleto", name: "Boleto", desc: "Compensa em 1-2 dias", tag: "BL" },
 ];
 
 type CartItem = { variantId: string; quantity: number; ageRestricted?: boolean };
@@ -48,16 +50,11 @@ export function CheckoutForm() {
         const json = (await res.json().catch(() => ({}))) as { items?: CartItem[]; ageRestricted?: boolean };
         setCartItems(json.items ?? []);
         setCartAgeRestricted(Boolean(json.ageRestricted));
-      } catch {
-        /* offline */
-      }
-      // Sessão em cookie httpOnly — confere no /me, sem token no localStorage.
+      } catch { /* offline */ }
       try {
         const me = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" });
         if (!me.ok) setNeedLogin(true);
-      } catch {
-        setNeedLogin(true);
-      }
+      } catch { setNeedLogin(true); }
     }
     load();
   }, []);
@@ -68,18 +65,9 @@ export function CheckoutForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!data.terms) {
-      setError("Aceite os termos de compra para continuar.");
-      return;
-    }
-    if (cartAgeRestricted && !data.ageConfirmed) {
-      setError("Confirme que você tem 18 anos ou mais para comprar itens com restrição etária.");
-      return;
-    }
-    if (cartItems.length === 0) {
-      setError("Seu carrinho está vazio. Adicione um item antes de finalizar.");
-      return;
-    }
+    if (!data.terms) { setError("Aceite os termos de compra para continuar."); return; }
+    if (cartAgeRestricted && !data.ageConfirmed) { setError("Confirme que você tem 18 anos ou mais para comprar itens com restrição etária."); return; }
+    if (cartItems.length === 0) { setError("Seu carrinho está vazio. Adicione um item antes de finalizar."); return; }
     setBusy(true);
     try {
       const res = await fetch(`${API_URL}/api/checkout`, {
@@ -113,232 +101,166 @@ export function CheckoutForm() {
         payment?: { status?: string };
       };
       if (!res.ok) {
-        if (res.status === 401) {
-          setNeedLogin(true);
-          setError("Você precisa entrar na conta para finalizar a compra.");
-          return;
-        }
+        if (res.status === 401) { setNeedLogin(true); setError("Você precisa entrar na conta para finalizar a compra."); return; }
         setError(json.error?.message ?? "Falha ao finalizar. Tente de novo.");
         return;
       }
-      setSuccess(
-        `Pedido ${json.orderNumber ?? ""} criado (${json.status ?? ""}). Pagamento: ${json.payment?.status ?? "pendente"}.`,
-      );
+      setSuccess(`Pedido ${json.orderNumber ?? ""} criado (${json.status ?? ""}). Pagamento: ${json.payment?.status ?? "pendente"}.`);
       router.refresh();
-    } catch {
-      setError("Erro de conexão com a API.");
-    } finally {
-      setBusy(false);
-    }
+    } catch { setError("Erro de conexão com a API."); }
+    finally { setBusy(false); }
   }
 
   return (
-    <form className="grid grid-cols-1 lg:grid-cols-3 gap-10 items-start" onSubmit={onSubmit} noValidate>
-      <div className="lg:col-span-2 space-y-10">
+    <form className="checkout-form" onSubmit={onSubmit} noValidate>
+      <div className="checkout-form__main">
         {needLogin && (
-          <div className="border border-[#e5e7eb] bg-white p-8 rounded-[2px]">
-            <p className="font-display font-black uppercase text-[#111] mb-2">Entre pra finalizar</p>
-            <p className="text-[#666] font-mono text-xs mb-6">
-              O checkout exige conta para criar o pedido e reservar o estoque.
-            </p>
-            <div className="flex gap-4">
-              <Link href="/entrar" className="btn-primary px-8 py-3">
-                ENTRAR
-              </Link>
-              <Link href="/cadastro" className="font-mono text-xs uppercase tracking-widest text-[#8bcf16] hover:text-[#a6f51b] transition-colors underline underline-offset-4">
-                Criar conta
-              </Link>
+          <div className="checkout-alert">
+            <p className="checkout-alert__title">Entre pra finalizar</p>
+            <p className="checkout-alert__text">O checkout exige conta para criar o pedido e reservar o estoque.</p>
+            <div className="checkout-alert__actions">
+              <Link href="/entrar" className="btn-primary">ENTRAR</Link>
+              <Link href="/cadastro" className="btn-ghost">Criar conta</Link>
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="field">
-            <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">Quem vai receber</label>
-            <input
-              id="recipient"
-              className="input"
-              autoComplete="name"
-              value={data.recipient}
-              onChange={set("recipient")}
-            />
-          </div>
-          <div className="field">
-            <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">CEP</label>
-            <input
-              id="zip"
-              className="input"
-              inputMode="numeric"
-              placeholder="00000-000"
-              autoComplete="postal-code"
-              value={data.zip}
-              onChange={set("zip")}
-            />
-          </div>
-          <div className="field md:col-span-2">
-            <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">Rua</label>
-            <input
-              id="street"
-              className="input"
-              autoComplete="address-line1"
-              value={data.street}
-              onChange={set("street")}
-            />
-          </div>
-          <div className="field">
-            <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">Número</label>
-            <input
-              id="number"
-              className="input"
-              value={data.number}
-              onChange={set("number")}
-            />
-          </div>
-          <div className="field">
-            <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">Complemento (opcional)</label>
-            <input
-              id="complement"
-              className="input"
-              value={data.complement}
-              onChange={set("complement")}
-            />
-          </div>
-          <div className="field">
-            <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">Bairro</label>
-            <input
-              id="neighborhood"
-              className="input"
-              autoComplete="address-level2"
-              value={data.neighborhood}
-              onChange={set("neighborhood")}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-6">
-            <div className="field">
-              <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">Cidade</label>
-              <input
-                id="city"
-                className="input"
-                autoComplete="address-level2"
-                value={data.city}
-                onChange={set("city")}
-              />
+        <section className="checkout-section" aria-labelledby="endereco-title">
+          <h2 id="endereco-title" className="checkout-section__title">Endereço de entrega</h2>
+          <div className="checkout-grid">
+            <div className="checkout-field">
+              <label htmlFor="recipient" className="checkout-label">Quem vai receber</label>
+              <input id="recipient" className="checkout-input" autoComplete="name" value={data.recipient} onChange={set("recipient")} required />
             </div>
-            <div className="field">
-              <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">UF</label>
-              <input
-                id="state"
-                className="input"
-                maxLength={2}
-                placeholder="SP"
-                value={data.state}
-                onChange={set("state")}
-              />
+            <div className="checkout-field">
+              <label htmlFor="zip" className="checkout-label">CEP</label>
+              <input id="zip" className="checkout-input" inputMode="numeric" placeholder="00000-000" autoComplete="postal-code" value={data.zip} onChange={set("zip")} required />
+            </div>
+            <div className="checkout-field checkout-field--full">
+              <label htmlFor="street" className="checkout-label">Rua</label>
+              <input id="street" className="checkout-input" autoComplete="address-line1" value={data.street} onChange={set("street")} required />
+            </div>
+            <div className="checkout-field">
+              <label htmlFor="number" className="checkout-label">Número</label>
+              <input id="number" className="checkout-input" value={data.number} onChange={set("number")} required />
+            </div>
+            <div className="checkout-field">
+              <label htmlFor="complement" className="checkout-label">Complemento (opcional)</label>
+              <input id="complement" className="checkout-input" value={data.complement} onChange={set("complement")} />
+            </div>
+            <div className="checkout-field">
+              <label htmlFor="neighborhood" className="checkout-label">Bairro</label>
+              <input id="neighborhood" className="checkout-input" autoComplete="address-level2" value={data.neighborhood} onChange={set("neighborhood")} required />
+            </div>
+            <div className="checkout-field">
+              <label htmlFor="city" className="checkout-label">Cidade</label>
+              <input id="city" className="checkout-input" autoComplete="address-level2" value={data.city} onChange={set("city")} required />
+            </div>
+            <div className="checkout-field">
+              <label htmlFor="state" className="checkout-label">UF</label>
+              <input id="state" className="checkout-input" maxLength={2} placeholder="SP" value={data.state} onChange={set("state")} required />
             </div>
           </div>
-        </div>
+        </section>
 
-        <fieldset className="border border-[#e5e7eb] bg-white p-8 rounded-[2px]">
-          <legend className="font-mono text-xs uppercase tracking-widest text-[#8bcf16] mb-6">
-            Forma de pagamento
-          </legend>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <section className="checkout-section" aria-labelledby="pagamento-title">
+          <h2 id="pagamento-title" className="checkout-section__title">Forma de pagamento</h2>
+          <div className="checkout-pay-options" role="radiogroup" aria-label="Escolha a forma de pagamento">
             {OPTIONS.map((o) => (
               <button
                 key={o.id}
                 type="button"
-                className={`flex flex-col items-center gap-2 p-4 border rounded-0 ${pay === o.id ? "border-[#8bcf16] bg-[#8bcf16]/10 text-[#8bcf16]" : "border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors"}`}
-                aria-pressed={pay === o.id}
+                role="radio"
+                aria-checked={pay === o.id}
+                className={`checkout-pay-option ${pay === o.id ? "is-active" : ""}`}
                 onClick={() => setPay(o.id)}
               >
-                <span className="font-display font-black text-lg uppercase">{o.tag}</span>
-                <span className="font-mono text-[0.6rem] uppercase tracking-tighter text-[#111]">{o.name}</span>
-                <span className="font-mono text-[0.55rem] uppercase tracking-tighter text-[#333]">{o.desc}</span>
+                <span className="checkout-pay-tag">{o.tag}</span>
+                <span className="checkout-pay-name">{o.name}</span>
+                <span className="checkout-pay-desc">{o.desc}</span>
               </button>
             ))}
           </div>
-        </fieldset>
+        </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="field">
-            <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">Cupom (opcional)</label>
-            <input
-              id="coupon"
-              className="input"
-              placeholder="Ex: PIX5"
-              value={data.coupon}
-              onChange={set("coupon")}
-            />
+        <section className="checkout-section" aria-labelledby="extras-title">
+          <h2 id="extras-title" className="checkout-section__title">Extras</h2>
+          <div className="checkout-grid">
+            <div className="checkout-field">
+              <label htmlFor="coupon" className="checkout-label">Cupom (opcional)</label>
+              <input id="coupon" className="checkout-input" placeholder="Ex: PIX5" value={data.coupon} onChange={set("coupon")} />
+            </div>
+            <div className="checkout-field">
+              <label htmlFor="notes" className="checkout-label">Observações (opcional)</label>
+              <input id="notes" className="checkout-input" value={data.notes} onChange={set("notes")} />
+            </div>
           </div>
-          <div className="field">
-            <label className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">Observações (opcional)</label>
-            <input
-              id="notes"
-              className="input"
-              value={data.notes}
-              onChange={set("notes")}
-            />
-          </div>
-        </div>
+        </section>
 
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            className="mt-1 w-4 h-4 border border-[#111] rounded-0 bg-[#000] text-[#8bcf16] focus:ring-[#8bcf16]"
-            checked={data.terms}
-            onChange={(e) => setData({ ...data, terms: e.target.checked })}
-          />
-          <span className="font-mono text-xs leading-relaxed text-[#666]">
-            Li e aceito os termos de compra e a política de entrega/troca. (Versão 1.0 — registrada com horário e IP no pedido.)
-          </span>
-        </label>
-
-        {cartAgeRestricted && (
-          <label className="flex items-start gap-3 mt-2 p-3 border border-[var(--border)] bg-[var(--card)]">
+        <fieldset className="checkout-terms">
+          <legend className="checkout-terms__legend">Confirmações</legend>
+          <label className="checkout-checkbox">
             <input
               type="checkbox"
-              className="mt-1 w-4 h-4"
-              checked={data.ageConfirmed}
-              onChange={(e) => setData({ ...data, ageConfirmed: e.target.checked })}
+              className="checkout-checkbox__input"
+              checked={data.terms}
+              onChange={(e) => setData({ ...data, terms: e.target.checked })}
               required
             />
-            <span className="font-mono text-xs leading-relaxed text-[var(--muted-foreground)]">
-              Confirmo que tenho 18 anos ou mais. Este pedido contém itens com restrição etária (airsoft/pressão) e a venda exige maioridade.
+            <span className="checkout-checkbox__text">
+              Li e aceito os termos de compra e a política de entrega/troca. (Versão 1.0 — registrada com horário e IP no pedido.)
             </span>
           </label>
-        )}
 
-        {error && (
-          <p role="alert" className="mt-4 text-[#dc2626] font-mono text-xs font-bold">{error}</p>
-        )}
-        {success && (
-          <p role="status" className="mt-4 text-[#8bcf16] font-mono text-xs font-bold">{success}</p>
-        )}
+          {cartAgeRestricted && (
+            <label className="checkout-checkbox checkout-checkbox--age">
+              <input
+                type="checkbox"
+                className="checkout-checkbox__input"
+                checked={data.ageConfirmed}
+                onChange={(e) => setData({ ...data, ageConfirmed: e.target.checked })}
+                required
+              />
+              <span className="checkout-checkbox__text">
+                Confirmo que tenho 18 anos ou mais. Este pedido contém itens com restrição etária (airsoft/pressão) e a venda exige maioridade.
+              </span>
+            </label>
+          )}
+        </fieldset>
+
+        {error && <p className="checkout-error" role="alert">{error}</p>}
+        {success && <p className="checkout-success" role="status">{success}</p>}
       </div>
 
-      <aside className="border border-[#e5e7eb] bg-white p-8 sticky top-24 rounded-[2px]">
-        <span className="font-mono text-xs uppercase tracking-widest text-[#8bcf16] block mb-4">Resumo do pedido</span>
-        <div className="flex justify-between items-baseline mb-6">
-          <span className="font-mono text-xs uppercase tracking-widest text-[#666]">Itens</span>
-          <span className="font-display font-black text-2xl text-[#111]">
-            {cartItems.reduce((a, i) => a + i.quantity, 0)} item(ns)
-          </span>
-        </div>
-        <div className="flex justify-between items-baseline mb-6">
-          <span className="font-mono text-xs uppercase tracking-widest text-[#666]">Pagamento</span>
-          <span className="font-display font-black text-2xl text-[#8bcf16] uppercase">{pay.toUpperCase()}</span>
-        </div>
-        <div className="flex justify-between items-baseline mb-8 border-t border-[#111] pt-4">
-          <span className="font-display font-black text-2xl text-[#111]">Total</span>
-          <b className="font-display font-black text-2xl text-[#8bcf16]">a calcular</b>
+      <aside className="checkout-summary" aria-labelledby="resumo-title">
+        <h2 id="resumo-title" className="checkout-summary__title">Resumo do pedido</h2>
+
+        <div className="checkout-summary__row">
+          <span className="checkout-summary__label">Itens</span>
+          <span className="checkout-summary__value">{cartItems.reduce((a, i) => a + i.quantity, 0)} item(ns)</span>
         </div>
 
-        <button type="submit" className="w-full btn-primary py-4 text-base disabled:opacity-50 disabled:cursor-not-allowed" disabled={busy}>
+        <div className="checkout-summary__row">
+          <span className="checkout-summary__label">Pagamento</span>
+          <span className="checkout-summary__value checkout-summary__value--highlight">{pay.toUpperCase()}</span>
+        </div>
+
+        <div className="checkout-summary__row checkout-summary__row--total">
+          <span className="checkout-summary__label">Total</span>
+          <strong className="checkout-summary__value checkout-summary__value--total">a calcular</strong>
+        </div>
+
+        <button type="submit" className="btn-primary checkout-submit" disabled={busy}>
           {busy ? "Finalizando..." : "Finalizar compra"}
         </button>
-        <p className="mt-4 text-[#333] font-mono text-[0.6rem] uppercase tracking-widest leading-relaxed">
-          Preços, frete e totais recalculados no servidor. Você confirma só depois.
-        </p>
+
+        <p className="checkout-note">Preços, frete e totais recalculados no servidor. Você confirma só depois.</p>
+
+        <div className="checkout-perks">
+          <div className="checkout-perk"><ShieldCheck size={18} aria-hidden="true" /><span>Compra protegida</span></div>
+          <div className="checkout-perk"><Truck size={18} aria-hidden="true" /><span>Envio para todo o Brasil</span></div>
+          <div className="checkout-perk"><Zap size={18} aria-hidden="true" /><span>PIX com desconto</span></div>
+        </div>
       </aside>
     </form>
   );

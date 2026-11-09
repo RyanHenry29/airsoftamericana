@@ -86,32 +86,23 @@ export default function OrdersPage() {
 
   return (
     <main className="px-6 pb-24">
-      <header className="mb-12 border-b border-[#111] pb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="admin-section-head">
         <div>
-          <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
-            Gestão de Pedidos
-          </h1>
-          <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
-            Visualizar, alterar status, reembolso
-          </p>
+          <span className="admin-section-head__kicker">Operação</span>
+          <h1 className="admin-section-head__title">Gestão de Pedidos</h1>
+          <p className="admin-section-head__subtitle">Visualizar, alterar status, reembolso</p>
         </div>
-      </header>
+      </div>
 
       {items.length === 0 ? (
-        <div className="border border-[#111] bg-[#0a0a0a] p-12 text-center">
-          <div className="font-mono font-black text-6xl uppercase tracking-tighter text-[#8bcf16] mb-6 inline-block">
-            0
-          </div>
-          <h2 className="font-display font-black text-3xl uppercase leading-none tracking-tighter text-white mb-4">
-            Nenhum pedido ainda
-          </h2>
-          <p className="text-[#666] font-mono text-xs max-w-md mx-auto mb-8">
-            Os pedidos aparecem aqui à medida que os clientes finalizam a compra.
-          </p>
+        <div className="admin-empty">
+          <div className="admin-empty__num">0</div>
+          <h2 className="admin-empty__title">Nenhum pedido ainda</h2>
+          <p className="admin-empty__text">Os pedidos aparecem aqui à medida que os clientes finalizam a compra.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
             <thead>
               <tr>
                 <th>Pedido</th>
@@ -127,24 +118,24 @@ export default function OrdersPage() {
                 <tr key={o.id} className="group">
                   <td>
                     <div className="font-mono text-sm font-bold text-white">#{o.number}</div>
-                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#333] block mt-1">
+                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mt-1">
                       {new Date(o.createdAt).toLocaleString("pt-BR")}
                     </span>
                   </td>
                   <td>
                     <div className="font-mono text-sm text-white">{o.customerName}</div>
-                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#333] block mt-1">
+                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mt-1">
                       {o.customerEmail}
                     </span>
                   </td>
                   <td className="font-mono text-sm font-bold text-[#8bcf16]">{brl(o.totalCents)}</td>
                   <td>
-                    <span className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${o.status === "pagamento_aprovado" ? "border-[#8bcf16] text-[#8bcf16]" : o.status.includes("cancel") || o.status.includes("reembols") ? "border-[#dc2626] text-[#dc2626]" : "border-[#333] text-[#333]"}`}>
+                    <span className={`admin-badge ${o.status === "pagamento_aprovado" ? "admin-badge--ok" : o.status.includes("cancel") || o.status.includes("reembols") ? "admin-badge--err" : "admin-badge--warn"}`}>
                       {o.status.replace(/_/g, " ").toUpperCase()}
                     </span>
                   </td>
                   <td>
-                    <span className={`font-mono text-[0.6rem] uppercase font-bold border px-2 py-0.5 ${o.riskLevel === "alto" ? "border-[#dc2626] text-[#dc2626]" : o.riskLevel === "medio" ? "border-[#8bcf16]/50 text-[#8bcf16]" : "border-[#333] text-[#333]"}`}>
+                    <span className={`admin-badge ${o.riskLevel === "alto" ? "admin-badge--err" : o.riskLevel === "medio" ? "admin-badge--warn" : "admin-badge--ok"}`}>
                       {o.riskLevel.toUpperCase()} ({o.riskScore})
                     </span>
                   </td>

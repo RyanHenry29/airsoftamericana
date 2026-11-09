@@ -27,6 +27,66 @@ const infoLinks = [
 
 const paymentMethods = ["Visa", "Mastercard", "Elo", "Hipercard", "American Express", "Boleto", "PIX"];
 
+function paymentSvg(method: string): React.ReactElement {
+  switch (method) {
+    case "Visa":
+      return (
+        <svg viewBox="0 0 160 100" width="80" height="50" aria-label="Visa">
+          <rect width="160" height="100" rx="4" fill="#1A1F71"/>
+          <text x="80" y="62" font-family="sans-serif" font-weight="bold" font-size="36" fill="#FFFFFF" text-anchor="middle" letter-spacing="-1">VISA</text>
+        </svg>
+      );
+    case "Mastercard":
+      return (
+        <svg viewBox="0 0 160 100" width="80" height="50" aria-label="Mastercard">
+          <rect width="160" height="100" rx="4" fill="#000000"/>
+          <circle cx="60" cy="50" r="38" fill="#EB001B" opacity="0.9"/>
+          <circle cx="100" cy="50" r="38" fill="#F79E1B" opacity="0.9"/>
+          <text x="80" y="62" font-family="sans-serif" font-weight="bold" font-size="28" fill="#FFFFFF" text-anchor="middle" letter-spacing="-0.5">mastercard</text>
+        </svg>
+      );
+    case "Elo":
+      return (
+        <svg viewBox="0 0 160 100" width="80" height="50" aria-label="Elo">
+          <rect width="160" height="100" rx="4" fill="#0066CC"/>
+          <text x="80" y="62" font-family="sans-serif" font-weight="bold" font-size="36" fill="#FFFFFF" text-anchor="middle">ELO</text>
+        </svg>
+      );
+    case "Hipercard":
+      return (
+        <svg viewBox="0 0 160 100" width="80" height="50" aria-label="Hipercard">
+          <rect width="160" height="100" rx="4" fill="#FFFFFF"/>
+          <text x="80" y="62" font-family="sans-serif" font-weight="bold" font-size="28" fill="#E61E2A" text-anchor="middle">HIPERCARD</text>
+        </svg>
+      );
+    case "American Express":
+      return (
+        <svg viewBox="0 0 160 100" width="80" height="50" aria-label="American Express">
+          <rect width="160" height="100" rx="4" fill="#006FCF"/>
+          <text x="80" y="56" font-family="sans-serif" font-weight="bold" font-size="24" fill="#FFFFFF" text-anchor="middle">AMERICAN</text>
+          <text x="80" y="76" font-family="sans-serif" font-weight="bold" font-size="24" fill="#FFFFFF" text-anchor="middle">EXPRESS</text>
+        </svg>
+      );
+    case "Boleto":
+      return (
+        <svg viewBox="0 0 160 100" width="80" height="50" aria-label="Boleto Bancário">
+          <rect width="160" height="100" rx="4" fill="#000000"/>
+          <text x="80" y="62" font-family="sans-serif" font-weight="bold" font-size="28" fill="#FFFFFF" text-anchor="middle">BOLETO</text>
+        </svg>
+      );
+    case "PIX":
+      return (
+        <svg viewBox="0 0 160 100" width="80" height="50" aria-label="PIX">
+          <rect width="160" height="100" rx="4" fill="#000000"/>
+          <circle cx="80" cy="50" r="36" fill="none" stroke="#00D44B" strokeWidth="4"/>
+          <text x="80" y="60" font-family="sans-serif" font-weight="bold" font-size="32" fill="#00D44B" text-anchor="middle">PIX</text>
+        </svg>
+      );
+    default:
+      return <span>{method}</span>;
+  }
+}
+
 function socialUrl(kind: "instagram" | "whatsapp", value: string | undefined): string | null {
   if (!value) return null;
   const v = value.trim();
@@ -208,8 +268,8 @@ export function Footer({ settings }: { settings: CommercialSettings }) {
         <span className="footer__age">Produtos com restrição de idade: 18+</span>
         <div className="footer__payments">
           {paymentMethods.map((m) => (
-            <span key={m} className="footer__payment-chip">
-              {m}
+            <span key={m} className="footer__payment-chip" title={m}>
+              {paymentSvg(m)}
             </span>
           ))}
         </div>
