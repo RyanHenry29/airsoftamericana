@@ -7,7 +7,12 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, Search, ShoppingCart, User, X } from "lucide-react";
-import { API_URL, formatBRL, type StoreSuggestion } from "../lib/store";
+import {
+  API_URL,
+  fetchWithTimeout,
+  formatBRL,
+  type StoreSuggestion,
+} from "../lib/store";
 import { DeptStrip } from "./DeptStrip";
 
 type HeaderSettings = {
@@ -57,14 +62,18 @@ export function Header() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`${API_URL}/api/cart`, { credentials: "include" });
+        const res = await fetchWithTimeout(`${API_URL}/api/cart`, {
+          credentials: "include",
+        });
         const json = (await res.json().catch(() => ({}))) as { items?: { quantity: number }[] };
         setCount((json.items ?? []).reduce((a, i) => a + i.quantity, 0));
       } catch {
         /* offline */
       }
       try {
-        const me = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" });
+        const me = await fetchWithTimeout(`${API_URL}/api/auth/me`, {
+          credentials: "include",
+        });
         if (me.ok) {
           const json = (await me.json()) as { customer?: { name: string; email: string } };
           setCustomer(json.customer ?? null);
@@ -88,7 +97,9 @@ export function Header() {
   useEffect(() => {
     async function loadSettings() {
       try {
-        const res = await fetch(`${API_URL}/api/store/settings`, { cache: "no-store" });
+        const res = await fetchWithTimeout(`${API_URL}/api/store/settings`, {
+          cache: "no-store",
+        });
         const json = (await res.json().catch(() => ({}))) as {
           free_shipping_from_cents?: number;
           pix_discount_percent?: number;
@@ -119,7 +130,9 @@ export function Header() {
     }
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_URL}/api/store/search/suggestions?q=${encodeURIComponent(term)}`);
+        const res = await fetchWithTimeout(
+          `${API_URL}/api/store/search/suggestions?q=${encodeURIComponent(term)}`,
+        );
         if (res.ok) setSuggestions((await res.json()) as StoreSuggestion);
       } catch {
         setSuggestions(null);

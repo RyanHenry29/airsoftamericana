@@ -201,10 +201,28 @@ export type StoreSuggestion = {
  * ("http://localhost:4000/api/store/home") — evita a URL duplicada que
  * engolia a falha e devolvia o objeto fallback vazio.
  */
+/** Fetch com timeout para não travar o SSR (nem o cliente) quando a API não responde. */
+export async function fetchWithTimeout(
+  url: string,
+  opts: RequestInit = {},
+  ms = 8000,
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(url, { ...opts, signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 export async function storeGet<T>(path: string, fallback: T): Promise<T> {
   const url = /^https?:\/\//i.test(path) ? path : `${API_URL}${path}`;
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetchWithTimeout(url, { cache: "no-store" });
     if (!res.ok) {
       console.error(`[store] ${res.status} ${res.statusText} em ${url}`);
       return fallback;
