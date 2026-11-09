@@ -39,3 +39,4 @@ temp_base/
 .DS_Store
 
 .vercel
+.env*
