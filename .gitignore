@@ -1,30 +1,39 @@
+# === Dependencias e builds ===
 node_modules/
 dist/
 .next/
+coverage/
+
+# === Logs ===
 *.log
+logs/
+
+# === Ambiente / secrets (nunca versionar .env) ===
 .env
 .env.local
 !.env.example
+
+# === Dados locais (PGlite dev/E2E - nunca versionar) ===
 data/
-*.db
-*.dbj
-coverage/
-.DS_Store
-
-mirror/
-temp_base/
-logs/
-
-# PGlite lock/test data (n�o versionar)
-*.pglite.lock
+apps/api/data/
+data-e2e/
 data-test/
 data-test-root/
 apps/api/data-test/
 vitest/data-test-root/
-apps/api/data/
+*.db
+*.dbj
+*.pglite.lock
 
-# Playwright E2E artifacts (gerados por execução local; relatório HTML em CI se necessário)
-playwright-report/
+# === Artefatos de teste E2E (gerados por execucao local) ===
 test-results/
+playwright-report/
 blob-report/
 playwright/.cache/
+
+# === Referencias locais nao versionadas (nunca commitar) ===
+mirror/
+temp_base/
+
+# === SO ===
+.DS_Store

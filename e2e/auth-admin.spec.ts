@@ -2,7 +2,7 @@ import { test, expect, type Page, type CDPSession } from "@playwright/test";
 import { API, totpFromSecretBase32, secretFromOtpauth } from "./helpers";
 
 /**
- * Dados de teste esperados (semeados por scripts/e2e-seed.mjs em DB isolado):
+ * Dados de teste esperados (semeados por `npm run e2e:seed -w @airsoft/api` em DB isolado):
  * - admin-sem-mfa@e2e.local / Senha123!  (mfaEnabled=false, ativo)
  * - admin-mfa@e2e.local     / Senha123!  (mfaEnabled=true, TOTP conhecido via env E2E_TOTP_SECRET)
  * - invite válido/expirado criados pelo seed (tokens em env E2E_INVITE_TOKEN / E2E_INVITE_EXPIRED_TOKEN)

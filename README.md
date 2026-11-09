@@ -14,6 +14,8 @@ airsoftamericana-saas/
 ├── apps/api            # Fastify + Drizzle (PGlite em dev / Postgres em prod) + TypeScript
 ├── apps/store          # Loja pública (Next.js 16, porta 3000)
 ├── apps/admin          # Painel administrativo (Next.js 16, porta 3001)
+├── e2e/                # Specs Playwright + helpers
+├── scripts/            # Automações oficiais (verify, patches históricos, wrappers Windows)
 └── docs/API.md         # Contrato da API — fonte de verdade
 ```
 
@@ -40,12 +42,30 @@ npm run dev:admin      # admin em :3001
 
 Produção: defina `DATABASE_URL` (Postgres), `JWT_SECRET`, `GATEWAY_SECRETS_KEY` — ver `.env.example`.
 
+Windows (atalhos): `iniciar.bat` sobe API + loja + admin e abre o navegador;
+`scripts\windows\fechar.bat` encerra as três portas.
+
 ## Testes
 
 ```powershell
 npm test               # suites por workspace (concorrência de estoque, transições, volume, webhook, fraude, checkout)
 npm run typecheck
+npm run verify         # typecheck de todos os workspaces + testes + checagem de locks PGlite (comando de fechamento oficial)
 ```
+
+E2E (Playwright — requer as portas 4000/3001 livres, mata processos antigos):
+
+```powershell
+scripts\windows\e2e-full.cmd   # recria o banco data-e2e, sobe API+admin, exporta os env E2E_* e roda a suíte
+```
+
+Wrappers auxiliares em `scripts\windows\`: `subir-api-e2e.cmd`, `subir-admin-e2e.cmd`
+(sobem só um serviço com banco isolado), `rodar-e2e.cmd` (roda a suíte contra serviços
+já no ar), `sincronizar-relogio.bat` (NTP do Windows, necessário p/ TOTP em máquina com
+relógio errado). A API do E2E sobe com `NODE_ENV=test` + `E2E_READY=1` — é o modo que o
+bypass de rate limit de `authRateLimit.ts` exige para a suíte não estourar o balde de
+login; sem isso, o teste 15 devolve 429. A suíte E2E consome estado (MFA, recovery,
+convites): sempre banco novo + seed antes de rodar (o `e2e-full.cmd` faz isso).
 
 ## Docs
 
@@ -60,4 +80,4 @@ npm run typecheck
 - `docs/legacy-zero-dep/` — protótipo antigo zerado (zip + extração `loja/`); arquivado, sem build ativo
 - `scripts/patches/` — patches únicos aplicados à store (histórico)
 - `docs/brand/LOGO.png` — arte original da marca
-- `mirror/` — espelho estático do site antigo, referência de auditoria (fora do git por filename; não é código do novo sistema)
+- `mirror/` — **removido da workspace em 2026-11-09** (era captura estática SaveWeb2Zip do site antigo; não é código do novo sistema). O inventário de capacidades observadas fica em `docs/FEATURES_INVENTORY.md` e `docs/AUDITORIA-FASE1-GMTATICO.md`. Regra permanece: nunca copiar código, texto, imagem ou nome de classe de sites de terceiros.

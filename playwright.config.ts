@@ -3,7 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * E2E FASE 2 — autenticação administrativa.
  * Requer API (porta 4000, PGLITE_DIR isolado) e Admin (porta 3001) em execução
- * com dados de teste semeados por `node scripts/e2e-seed.mjs`.
+ * com dados de teste semeados por `npm run e2e:seed --workspace @airsoft/api`
+ * (também executado por `scripts/windows/e2e-full.cmd`, que exporta os env `E2E_*`).
  * Execução: `npm run test:e2e` (sobe servidores via webServer quando possível).
  */
 export default defineConfig({
