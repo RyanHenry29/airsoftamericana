@@ -198,7 +198,7 @@ export default function BannersPage() {
         </div>
         <div className="field">
           <label htmlFor="bn-position">Posição</label>
-          <input id="bn-position" className="input w-full" type="number" min={0} value={form.position ?? 0} onChange={e => setForm({ ...form, position: e.target.value })} />
+          <input id="bn-position" className="input w-full" type="number" min={0} value={form.position ?? 0} onChange={e => setForm({ ...form, position: Number(e.target.value) })} />
         </div>
         <div className="md:col-span-4 flex items-end">
           <button type="submit" className="btn-primary px-6 py-2" disabled={busy}>{busy ? "Criando…" : "Criar banner"}</button>
@@ -245,7 +245,7 @@ export default function BannersPage() {
                       )}
                     </td>
                     <td className="p-3 font-mono text-xs text-[#666]">
-                      {kindLabels[b.kind ?? "hero"] ?? b.kind}
+                      {kindLabels[(b.kind as keyof typeof kindLabels) ?? "hero"] ?? b.kind}
                     </td>
                     <td className="p-3 font-mono text-sm text-[#666]">{b.position ?? 0}</td>
                     <td className="p-3">
