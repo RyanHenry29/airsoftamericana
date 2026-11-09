@@ -34,15 +34,11 @@ body:has(.auth-shell) {
 .auth-hero { position: relative; overflow: hidden; background: var(--base); color: #f4f5f2; padding: clamp(1.75rem, 3.5vw, 3rem) clamp(1.25rem, 4vw, 3.75rem); display: flex; flex-direction: column; justify-content: space-between; gap: clamp(1.5rem, 3vw, 2.5rem); }
 @media (max-width: 1024px) { .auth-hero { border-bottom: 1px solid var(--border); } }
 .auth-hero::before {
-  content: ""; position: absolute; inset: 0; opacity: 0.08; pointer-events: none;
-  background-image: linear-gradient(rgb(255 255 255 / 0.55) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.55) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse 85% 85% at 78% 28%, #000 0%, transparent 78%);
+  content: ""; position: absolute; inset: 0; opacity: 0.04; pointer-events: none;
+  background-image: linear-gradient(rgb(255 255 255 / 0.4) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.4) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
-.auth-hero::after {
-  content: ""; position: absolute; inset: auto -10% -35% -20%; height: 70%; pointer-events: none;
-  background: radial-gradient(closest-side, rgb(139 207 22 / 0.16), transparent 70%);
-}
+.auth-hero::after { content: none; }
 .auth-crosshair { position: absolute; right: -80px; top: -80px; opacity: 0.15; pointer-events: none; }
 
 /* Retícula do manifesto — cantoneiras de mira */
@@ -63,7 +59,7 @@ body:has(.auth-shell) {
 .auth-brand__sub { font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.2em; color: #929890; margin-top: 0.35rem; }
 
 /* Ficha técnica industrial */
-.spec-plate { position: relative; border: 1px solid rgb(200 203 200 / 0.14); background: rgb(10 12 10 / 0.7); backdrop-filter: blur(6px); padding: 1.1rem 1.25rem 0.75rem; max-width: 30rem; }
+.spec-plate { position: relative; border: 1px solid rgb(200 203 200 / 0.14); background: #0a0c0a; padding: 1.1rem 1.25rem 0.75rem; max-width: 30rem; }
 .spec-plate::before, .spec-plate::after {
   content: ""; position: absolute; width: 10px; height: 10px; border: 1px solid var(--primary); opacity: 0.75;
 }
@@ -78,7 +74,7 @@ body:has(.auth-shell) {
 @media (prefers-reduced-motion: reduce) { .spec-plate__v--skeleton { animation: none; opacity: 0.35; } }
 
 /* Carimbo 18+ */
-.age-stamp { position: relative; width: 74px; height: 74px; border: 1.5px dashed rgb(139 207 22 / 0.6); border-radius: 50%; display: grid; place-items: center; color: var(--primary); transform: rotate(-9deg); flex: none; }
+.age-stamp { position: relative; width: 74px; height: 74px; border: 1.5px solid rgb(139 207 22 / 0.55); border-radius: var(--radius, 2px); display: grid; place-items: center; color: var(--primary); transform: rotate(-6deg); flex: none; }
 .age-stamp span { font-family: var(--font-display, "Barlow Condensed", "Oswald", sans-serif); font-weight: 700; font-size: 1.6rem; line-height: 1; }
 .age-stamp small { position: absolute; bottom: 0.7rem; font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace); font-size: 0.5rem; letter-spacing: 0.16em; color: #929890; }
 
@@ -91,11 +87,7 @@ body:has(.auth-shell) {
 
 /* Painel do formulário */
 .auth-panel { position: relative; background: #070807; border-left: 1px solid var(--border); display: flex; align-items: center; justify-content: center; padding: clamp(2rem, 4vw, 3.5rem) clamp(1.25rem, 4vw, 4rem); }
-.auth-panel::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
-  background-image: linear-gradient(rgb(255 255 255 / 0.025) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.025) 1px, transparent 1px);
-  background-size: 28px 28px;
-}
+.auth-panel::before { content: none; }
 .auth-panel__inner { position: relative; width: 100%; max-width: 27rem; }
 .auth-panel__inner::before, .auth-panel__inner::after { content: ""; position: absolute; width: 14px; height: 14px; border: 1px solid rgb(139 207 22 / 0.45); pointer-events: none; }
 .auth-panel__inner::before { top: -9px; left: -9px; border-right: 0; border-bottom: 0; }

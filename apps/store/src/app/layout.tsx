@@ -9,6 +9,7 @@ import "./css/pdp.css";
 import "./css/pages.css";
 import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, Inter } from "next/font/google";
+import { CookieConsent } from "./components/CookieConsent";
 import { API_URL, formatBRL } from "./lib/store";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airsoftamericana.com.br";
@@ -134,6 +135,7 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
         />
         {children}
+        <CookieConsent />
       </body>
     </html>
   );

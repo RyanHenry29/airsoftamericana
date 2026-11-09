@@ -107,37 +107,6 @@
   .chip:first-child { border-top: 0; }
 }
 
-/* ————— Faixa de departamentos ————— */
-.dept-strip { border-bottom: 1px solid var(--line); }
-.dept-strip__row {
-  width: 100%;
-  max-width: var(--shell);
-  margin-inline: auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.25rem;
-  list-style: none;
-  margin: 0;
-  padding: 0 clamp(1rem, 4vw, 2.5rem);
-}
-.dept-strip__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.9rem 0.85rem;
-  font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 0.82rem;
-  color: #f4f5f2;
-  text-decoration: none;
-  border-bottom: 2px solid transparent;
-  transition: color 0.2s ease, border-color 0.2s ease;
-}
-.dept-strip__item:hover { color: var(--primary); border-color: var(--primary); }
-.dept-strip__item--all { color: var(--primary); }
-
 /* ————— Cartões de departamento ————— */
 .dept-cards {
   display: grid;

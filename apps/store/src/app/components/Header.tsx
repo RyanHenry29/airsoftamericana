@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, Search, ShoppingCart, User, X } from "lucide-react";
 import { API_URL, formatBRL, type StoreSuggestion } from "../lib/store";
+import { DeptStrip } from "./DeptStrip";
 
 type HeaderSettings = {
   free_shipping_from_cents: number;
@@ -306,6 +307,10 @@ export function Header() {
         >
           {menuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
+      </div>
+
+      <div className="wrap">
+        <DeptStrip />
       </div>
 
       {menuOpen && (
