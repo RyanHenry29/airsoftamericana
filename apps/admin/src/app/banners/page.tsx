@@ -238,8 +238,10 @@ export default function BannersPage() {
                       {isEditing ? (
                         <input className="input" value={form.title ?? b.title} onChange={e => setForm({ ...form, title: e.target.value })} />
                       ) : (
-                        <div className="font-mono text-sm font-bold text-white">{b.title}</div>
-                        {b.subtitle && <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] mt-1">{b.subtitle}</span>}
+                        <>
+                          <div className="font-mono text-sm font-bold text-white">{b.title}</div>
+                          {b.subtitle ? <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] mt-1 block">{b.subtitle}</span> : null}
+                        </>
                       )}
                     </td>
                     <td className="p-3 font-mono text-xs text-[#666]">
