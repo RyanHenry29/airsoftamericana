@@ -14,6 +14,9 @@ import { listAudit } from "../lib/audit.js";
 import { validateAndPreview, confirmAndApply } from "../services/catalog-import.js";
 import { encryptCredentials, decryptCredentials, clearCredentialFailure } from "../services/payments/types.js";
 import { initAdapters } from "../services/payments/index.js";
+import { listChargebacks, getChargebackWithEvidence, updateChargebackStatus, addEvidence, exportEvidencePdf } from "../services/chargebacks.js";
+import { transitionOrder } from "../services/orders.js";
+import { canTransition, type OrderStatus } from "@airsoft/shared";
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
 type AdminRequest = FastifyRequest & { user?: { sub?: string; role?: string } };
@@ -1229,6 +1232,231 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
       chargebacks: Number(chargebacks[0]?.count ?? 0),
       topProducts: (topVariants as { rows: unknown[] }).rows,
     });
+  });
+
+  // ------------------------------------------------------------------- Antifraude
+  app.get("/api/admin/fraud/assessments", { preHandler: [A, adminGuard("fraud", "read")] }, async (request, reply) => {
+    const q = request.query as Record<string, string | undefined>;
+    const limit = Math.min(200, Math.max(1, Number(q.limit ?? 100) || 100));
+    const level = (q.level ?? "").trim();
+    const rows = await db.select({
+      assessment: schema.fraudAssessments,
+      orderNumber: schema.orders.number,
+      orderStatus: schema.orders.status,
+      orderTotalCents: schema.orders.totalCents,
+      customerName: schema.customers.name,
+      customerEmail: schema.customers.email,
+    })
+      .from(schema.fraudAssessments)
+      .leftJoin(schema.orders, eq(schema.fraudAssessments.orderId, schema.orders.id))
+      .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
+      .orderBy(desc(schema.fraudAssessments.createdAt))
+      .limit(limit);
+    const items = level ? rows.filter((r) => r.assessment.level === level) : rows;
+    reply.send({ items });
+  });
+
+  app.post("/api/admin/fraud/assessments/:id/review", { preHandler: [A, adminGuard("fraud", "update")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { action?: string; note?: string; applyOrderTransition?: boolean };
+    const action = String(body.action ?? "").trim(); // approve | reject | hold
+    if (!["approve", "reject", "hold"].includes(action)) {
+      return reply.status(400).send({ error: { code: "invalid_input", message: "action deve ser approve, reject ou hold" } });
+    }
+    const found = await db.select().from(schema.fraudAssessments).where(eq(schema.fraudAssessments.id, id)).limit(1);
+    const assessment = found[0];
+    if (!assessment) return reply.status(404).send({ error: { code: "not_found", message: "Avaliação não encontrada" } });
+
+    const actorId = actorOf(request);
+    await db.update(schema.fraudAssessments).set({
+      reviewedByUserId: actorId,
+      reviewNote: body.note ? String(body.note).slice(0, 2000) : assessment.reviewNote,
+      autoDecision: false,
+    }).where(eq(schema.fraudAssessments.id, id));
+
+    await db.insert(schema.fraudReviewEvents).values({
+      id: randomUUID(),
+      assessmentId: id,
+      action,
+      note: body.note ? String(body.note) : null,
+      reviewerId: actorId,
+      createdAt: new Date(),
+    } as never);
+
+    let orderTransition: { attempted: boolean; to?: string; ok?: boolean; reason?: string } = { attempted: false };
+    if (body.applyOrderTransition !== false && assessment.orderId) {
+      const orderRows = await db.select().from(schema.orders).where(eq(schema.orders.id, assessment.orderId)).limit(1);
+      const order = orderRows[0];
+      if (order) {
+        const to = action === "approve" ? "pagamento_aprovado" : action === "reject" ? "cancelado" : null;
+        if (to && canTransition(order.status as OrderStatus, to as OrderStatus)) {
+          try {
+            await transitionOrder(db, {
+              orderId: order.id,
+              to: to as OrderStatus,
+              reason: `Revisão antifraude: ${action}${body.note ? ` — ${String(body.note).slice(0, 120)}` : ""}`,
+              actorUserId: actorId ?? undefined,
+              actorLabel: (request as any).user?.email ?? "admin",
+              ip: request.ip,
+            });
+            orderTransition = { attempted: true, to, ok: true };
+          } catch (e) {
+            orderTransition = { attempted: true, to, ok: false, reason: e instanceof Error ? e.message : "falha" };
+          }
+        } else if (to) {
+          orderTransition = { attempted: true, to, ok: false, reason: `transição inválida de ${order.status} para ${to}` };
+        }
+      }
+    }
+
+    await audit(request, "fraud.reviewed", "fraud_assessments", id);
+    reply.send({ ok: true, orderTransition });
+  });
+
+  app.get("/api/admin/fraud/rules", { preHandler: [A, adminGuard("fraud", "read")] }, async (_request, reply) => {
+    const rows = await db.select().from(schema.fraudRules).orderBy(asc(schema.fraudRules.key));
+    reply.send({ items: rows });
+  });
+
+  app.put("/api/admin/fraud/rules/:key", { preHandler: [A, adminGuard("fraud", "update")] }, async (request, reply) => {
+    const { key } = request.params as { key: string };
+    const body = (request.body ?? {}) as { name?: string; enabled?: boolean; weight?: number; threshold?: number | null; action?: string };
+    if (!key || key.length > 60) return reply.status(400).send({ error: { code: "invalid_input", message: "key inválida" } });
+    const [row] = await db
+      .insert(schema.fraudRules)
+      .values({
+        id: randomUUID(),
+        key,
+        name: String(body.name ?? key),
+        enabled: body.enabled !== false,
+        weight: Math.max(0, Math.min(100, Math.round(Number(body.weight ?? 10)))),
+        threshold: body.threshold == null ? null : Math.round(Number(body.threshold)),
+        action: String(body.action ?? "soma"),
+        updatedAt: new Date(),
+      } as never)
+      .onConflictDoUpdate({
+        target: schema.fraudRules.key,
+        set: {
+          name: body.name !== undefined ? String(body.name) : sql`${schema.fraudRules.name}`,
+          enabled: body.enabled !== undefined ? Boolean(body.enabled) : sql`${schema.fraudRules.enabled}`,
+          weight: body.weight !== undefined ? Math.max(0, Math.min(100, Math.round(Number(body.weight)))) : sql`${schema.fraudRules.weight}`,
+          threshold: body.threshold !== undefined ? (body.threshold == null ? null : Math.round(Number(body.threshold))) : sql`${schema.fraudRules.threshold}`,
+          action: body.action !== undefined ? String(body.action) : sql`${schema.fraudRules.action}`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    await audit(request, "fraud.rule_upserted", "fraud_rules", row?.id ?? key);
+    reply.send({ rule: row });
+  });
+
+  app.get("/api/admin/fraud/watchlist", { preHandler: [A, adminGuard("fraud", "read")] }, async (_request, reply) => {
+    const rows = await db.select().from(schema.watchlist).orderBy(desc(schema.watchlist.createdAt));
+    reply.send({ items: rows });
+  });
+
+  app.post("/api/admin/fraud/watchlist", { preHandler: [A, adminGuard("fraud", "update")] }, async (request, reply) => {
+    const body = (request.body ?? {}) as { kind?: string; value?: string; reason?: string; expiresAt?: string | null };
+    const kind = String(body.kind ?? "").trim().toLowerCase();
+    const value = String(body.value ?? "").trim().toLowerCase();
+    const reason = String(body.reason ?? "").trim();
+    if (!["email", "cpf", "ip", "phone", "device"].includes(kind)) return reply.status(400).send({ error: { code: "invalid_input", message: "kind inválido (email, cpf, ip, phone, device)" } });
+    if (!value) return reply.status(400).send({ error: { code: "invalid_input", message: "value é obrigatório" } });
+    if (reason.length < 3) return reply.status(400).send({ error: { code: "invalid_input", message: "reason é obrigatório (mín. 3 caracteres)" } });
+    const [row] = await db
+      .insert(schema.watchlist)
+      .values({
+        id: randomUUID(),
+        kind,
+        value,
+        reason,
+        addedByUserId: actorOf(request),
+        expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+        createdAt: new Date(),
+      } as never)
+      .onConflictDoNothing()
+      .returning();
+    await audit(request, "fraud.watchlist_added", "watchlist", row?.id ?? `${kind}:${value}`);
+    reply.status(201).send({ item: row ?? { kind, value, reason, duplicate: true } });
+  });
+
+  app.delete("/api/admin/fraud/watchlist/:id", { preHandler: [A, adminGuard("fraud", "update")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    await db.delete(schema.watchlist).where(eq(schema.watchlist.id, id));
+    await audit(request, "fraud.watchlist_removed", "watchlist", id);
+    reply.send({ ok: true });
+  });
+
+  // ------------------------------------------------------------------- Chargebacks
+  app.get("/api/admin/chargebacks", { preHandler: [A, adminGuard("chargebacks", "read")] }, async (request, reply) => {
+    const q = request.query as Record<string, string | undefined>;
+    const status = (q.status ?? "").trim() || undefined;
+    const items = await listChargebacks(db, status);
+    reply.send({ items });
+  });
+
+  app.get("/api/admin/chargebacks/:id", { preHandler: [A, adminGuard("chargebacks", "read")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const detail = await getChargebackWithEvidence(db, id);
+      reply.send(detail);
+    } catch (e) {
+      const err = e as { status?: number; code?: string; message?: string };
+      return reply.status(err?.status ?? 404).send({ error: { code: err?.code ?? "not_found", message: err?.message ?? "Chargeback não encontrado" } });
+    }
+  });
+
+  app.patch("/api/admin/chargebacks/:id", { preHandler: [A, adminGuard("chargebacks", "update")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { status?: string; note?: string };
+    const status = String(body.status ?? "").trim();
+    if (!status) return reply.status(400).send({ error: { code: "invalid_input", message: "status é obrigatório" } });
+    try {
+      await updateChargebackStatus(db, {
+        id,
+        status,
+        note: body.note ? String(body.note) : undefined,
+        actorUserId: actorOf(request) ?? "",
+        actorLabel: (request as any).user?.email ?? null,
+        ip: request.ip,
+      });
+      const detail = await getChargebackWithEvidence(db, id);
+      reply.send(detail);
+    } catch (e) {
+      const err = e as { status?: number; code?: string; message?: string };
+      return reply.status(err?.status ?? 400).send({ error: { code: err?.code ?? "bad_request", message: err?.message ?? "Falha ao atualizar chargeback" } });
+    }
+  });
+
+  app.post("/api/admin/chargebacks/:id/evidence", { preHandler: [A, adminGuard("chargebacks", "update")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { kind?: string; label?: string; content?: unknown; fileUrl?: string };
+    const kind = String(body.kind ?? "documento").trim();
+    const label = String(body.label ?? "").trim();
+    if (!label) return reply.status(400).send({ error: { code: "invalid_input", message: "label é obrigatório" } });
+    await addEvidence(db, {
+      chargebackId: id,
+      kind,
+      label,
+      content: body.content,
+      fileUrl: body.fileUrl ? String(body.fileUrl) : undefined,
+      actorUserId: actorOf(request) ?? "",
+    });
+    const detail = await getChargebackWithEvidence(db, id);
+    reply.send(detail);
+  });
+
+  app.get("/api/admin/chargebacks/:id/export", { preHandler: [A, adminGuard("chargebacks", "read")] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      const pdf = await exportEvidencePdf(db, id);
+      reply.header("Content-Type", "application/pdf");
+      reply.header("Content-Disposition", `attachment; filename="chargeback-${id}.pdf"`);
+      return reply.send(pdf);
+    } catch (e) {
+      const err = e as { status?: number; code?: string; message?: string };
+      return reply.status(err?.status ?? 404).send({ error: { code: err?.code ?? "not_found", message: err?.message ?? "Falha ao exportar evidências" } });
+    }
   });
 
   // ------------------------------------------------------------------- Cupons
