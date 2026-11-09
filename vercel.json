@@ -1,12 +1,9 @@
 {
   "version": 2,
   "builds": [
-    { "src": "apps/store/package.json", "use": "@vercel/nextjs" },
-    { "src": "apps/api/api/index.ts", "use": "@vercel/node", "config": { "maxDuration": 60 } }
+    { "src": "apps/store/package.json", "use": "@vercel/nextjs" }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/apps/api/api/index.ts" },
-    { "src": "/(.*?)\\.(?:ico|svg|png|jpg|jpeg|gif|webp|woff|woff2|ttf|eot|otf)$", "dest": "/apps/store/$1" },
     { "src": "/(.*)", "dest": "/apps/store/$1" }
   ]
 }
