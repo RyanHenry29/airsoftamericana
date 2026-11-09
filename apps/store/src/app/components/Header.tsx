@@ -9,14 +9,23 @@ import { useRouter } from "next/navigation";
 import { Menu, Search, ShoppingCart, User, X } from "lucide-react";
 import { API_URL, formatBRL, type StoreSuggestion } from "../lib/store";
 
+type HeaderSettings = {
+  free_shipping_from_cents: number;
+  pix_discount_percent: number;
+  installments: number;
+  address?: { city?: string; state?: string };
+  service_hours?: string;
+};
+
 export function Header() {
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
+  const [topbarVisible, setTopbarVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [q, setQ] = useState("");
   const [suggestions, setSuggestions] = useState<StoreSuggestion | null>(null);
   const [count, setCount] = useState(0);
-  const [settings, setSettings] = useState<{ free_shipping_from_cents: number; pix_discount_percent: number; installments: number } | null>(null);
+  const [settings, setSettings] = useState<HeaderSettings | null>(null);
   const [customer, setCustomer] = useState<{ name: string; email: string } | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
@@ -25,6 +34,23 @@ export function Header() {
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Topbar: some ao rolar para fora do hero; volta só quando o hero reaparece.
+  useEffect(() => {
+    const hero = document.querySelector<HTMLElement>(".hero, .dept-hero, .inst-hero, .auth-hero");
+    if (!hero) {
+      const onTop = () => setTopbarVisible(window.scrollY < 60);
+      onTop();
+      window.addEventListener("scroll", onTop, { passive: true });
+      return () => window.removeEventListener("scroll", onTop);
+    }
+    const io = new IntersectionObserver(
+      (entries) => setTopbarVisible(Boolean(entries[0]?.isIntersecting)),
+      { threshold: 0.08 }
+    );
+    io.observe(hero);
+    return () => io.disconnect();
   }, []);
 
   useEffect(() => {
@@ -62,8 +88,20 @@ export function Header() {
     async function loadSettings() {
       try {
         const res = await fetch(`${API_URL}/api/store/settings`, { cache: "no-store" });
-        const json = (await res.json().catch(() => ({}))) as { free_shipping_from_cents?: number; pix_discount_percent?: number; installments?: number };
-        setSettings({ free_shipping_from_cents: json.free_shipping_from_cents ?? 0, pix_discount_percent: json.pix_discount_percent ?? 0, installments: json.installments ?? 1 });
+        const json = (await res.json().catch(() => ({}))) as {
+          free_shipping_from_cents?: number;
+          pix_discount_percent?: number;
+          installments?: number;
+          address?: { city?: string; state?: string };
+          service_hours?: string;
+        };
+        setSettings({
+          free_shipping_from_cents: json.free_shipping_from_cents ?? 0,
+          pix_discount_percent: json.pix_discount_percent ?? 0,
+          installments: json.installments ?? 1,
+          address: json.address ?? undefined,
+          service_hours: json.service_hours ?? undefined,
+        });
       } catch {
         /* offline */
       }
@@ -105,38 +143,50 @@ export function Header() {
     router.push(`/busca?q=${encodeURIComponent(term)}`);
   }
 
+  const storePlace =
+    settings?.address?.city && settings?.address?.state
+      ? `Loja física · ${settings.address.city}-${settings.address.state}`
+      : settings?.address?.city
+        ? `Loja física · ${settings.address.city}`
+        : null;
+
   return (
-    <header className={`site-header ${scrolled ? "is-scrolled" : ""}`}>
-      <div className="header-topbar">
+    <header className={`site-header ${scrolled ? "is-scrolled" : ""} ${topbarVisible ? "" : "is-topbar-hidden"}`}>
+      <div className="header-topbar" aria-hidden={!topbarVisible}>
         <div className="header-topbar__inner">
-          <span className="header-topbar__item">
-            <span className="dot-live" /> Entrega para todo o Brasil
-          </span>
-          {/* Condições só com número real do banco — sem fallback inventado
-              (o site antigo exibia R$700 numa página e R$699 noutra). */}
-          {settings && settings.free_shipping_from_cents > 0 && (
+          <span className="header-topbar__group header-topbar__group--conditions" aria-label="Condições comerciais">
             <span className="header-topbar__item">
-              Frete grátis acima de {formatBRL(settings.free_shipping_from_cents)}
+              <span className="dot-live" aria-hidden /> Entrega para todo o Brasil
             </span>
-          )}
-          {settings && settings.pix_discount_percent > 0 && (
-            <span className="header-topbar__item header-topbar__item--accent">
-              PIX −{settings.pix_discount_percent}% na hora
-            </span>
-          )}
-          {settings && settings.installments > 1 && (
-            <span className="header-topbar__item">{settings.installments}x sem juros</span>
-          )}
+            {/* Condições só com número real do banco — sem fallback inventado
+                (o site antigo exibia R$700 numa página e R$699 noutra). */}
+            {settings && settings.free_shipping_from_cents > 0 && (
+              <span className="header-topbar__item">
+                Frete grátis acima de {formatBRL(settings.free_shipping_from_cents)}
+              </span>
+            )}
+            {settings && settings.pix_discount_percent > 0 && (
+              <span className="header-topbar__item header-topbar__item--accent">
+                PIX −{settings.pix_discount_percent}% na hora
+              </span>
+            )}
+            {settings && settings.installments > 1 && (
+              <span className="header-topbar__item">{settings.installments}x sem juros</span>
+            )}
+          </span>
           <span className="header-topbar__spacer" />
-          <Link href="/rastreamento" className="header-topbar__link">
-            Rastrear pedido
-          </Link>
-          <Link href="/atendimento" className="header-topbar__link">
-            Atendimento
-          </Link>
-          <Link href="/institucional" className="header-topbar__link">
-            A loja
-          </Link>
+          <span className="header-topbar__group header-topbar__group--info">
+            {storePlace ? <span className="header-topbar__item header-topbar__item--muted">{storePlace}</span> : null}
+            <Link href="/rastreamento" className="header-topbar__link">
+              Rastrear pedido
+            </Link>
+            <Link href="/atendimento" className="header-topbar__link">
+              Atendimento
+            </Link>
+            <Link href="/institucional" className="header-topbar__link">
+              A loja
+            </Link>
+          </span>
         </div>
       </div>
 
