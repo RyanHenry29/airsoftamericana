@@ -605,6 +605,102 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     reply.send({ success: true });
   });
 
+  // ---------------------------------------------------- Auth cliente (Google/Supabase)
+  // O navegador autentica no Supabase (provedor Google) e envia o access_token.
+  // A API verifica o token no Supabase (GET /auth/v1/user) — nunca confia em
+  // identidade vinda só do cliente —, localiza/cria o cliente pelo e-mail
+  // verificado e emite o cookie aa_customer (mesma sessão das demais rotas).
+  app.post(
+    "/api/auth/google",
+    { preHandler: authRateLimit(loginRateLimitRule(config)) },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as { accessToken?: unknown };
+      const accessToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
+      if (!accessToken) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "Token de acesso ausente" } });
+        return;
+      }
+
+      let sbUser: { email?: string | null; email_confirmed_at?: string | null; confirmed_at?: string | null; user_metadata?: Record<string, unknown> };
+      try {
+        const res = await fetch(`${config.SUPABASE_URL}/auth/v1/user`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            apikey: config.SUPABASE_PUBLISHABLE_KEY,
+          },
+        });
+        if (!res.ok) {
+          reply.status(401);
+          reply.send({ error: { code: "unauthorized", message: "Sessão do Google inválida ou expirada. Tente entrar de novo." } });
+          return;
+        }
+        sbUser = (await res.json()) as typeof sbUser;
+      } catch {
+        reply.status(502);
+        reply.send({ error: { code: "upstream_error", message: "Não foi possível validar o acesso agora. Tente de novo." } });
+        return;
+      }
+
+      const rawEmail = typeof sbUser.email === "string" ? sbUser.email.trim().toLowerCase() : "";
+      const confirmed = sbUser.email_confirmed_at || sbUser.confirmed_at;
+      if (!rawEmail || !confirmed) {
+        reply.status(401);
+        reply.send({ error: { code: "unauthorized", message: "Conta Google sem e-mail verificado." } });
+        return;
+      }
+
+      const meta = sbUser.user_metadata ?? {};
+      const name =
+        (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+        (typeof meta.name === "string" && meta.name.trim()) ||
+        rawEmail.split("@")[0] ||
+        "Cliente";
+
+      let found = await db.select().from(customers).where(eq(customers.email, rawEmail)).limit(1);
+      let customer = found[0];
+      let created = false;
+
+      if (!customer) {
+        let inserted: (typeof customers.$inferSelect)[] = [];
+        try {
+          inserted = await db
+            .insert(customers)
+            .values({ name, email: rawEmail, passwordHash: null })
+            .onConflictDoNothing({ target: customers.email })
+            .returning();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!message.includes("duplicate key")) throw error;
+          inserted = [];
+        }
+        customer = inserted[0];
+        if (!customer) {
+          found = await db.select().from(customers).where(eq(customers.email, rawEmail)).limit(1);
+          customer = found[0];
+        } else {
+          created = true;
+        }
+      }
+
+      if (!customer) {
+        reply.status(500);
+        reply.send({ error: { code: "internal", message: "Não foi possível concluir o acesso." } });
+        return;
+      }
+
+      const token = await signJwt({ sub: customer.id, role: "customer", type: "customer" });
+      reply.setCookie("aa_customer", token, customerCookie(60 * 60 * 24 * 7));
+      await writeAudit(db, request, {
+        action: created ? "auth.google_register" : "auth.google_login",
+        entity: "customer",
+        entityId: customer.id,
+        actorLabel: maskEmail(rawEmail),
+      });
+      reply.send({ customer: publicCustomer(customer), created });
+    },
+  );
+
   // ---------------------------------------------------------- Auth admin (users)
   //
   // Sessão do painel: cookie HttpOnly e NADA no corpo da resposta. Token no

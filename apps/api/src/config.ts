@@ -50,6 +50,12 @@ const envSchema = z.object({
   // Cloudflare Access (opcional) — defesa em profundidade no admin.
   CF_ACCESS_TEAM_DOMAIN: z.string().optional().default(""),
   CF_ACCESS_AUD: z.string().optional().default(""),
+  // Supabase Auth (login/cadastro com Google). URL + chave publicável do
+  // projeto; a chave é pública por desenho (RLS protege os dados). A API usa
+  // para verificar o access token do usuário via /auth/v1/user antes de emitir
+  // a sessão aa_customer — nunca confia em identidade vinda só do navegador.
+  SUPABASE_URL: z.string().default("https://psswdwsvybsqrflhpuqx.supabase.co"),
+  SUPABASE_PUBLISHABLE_KEY: z.string().default("sb_publishable_xDuOZLY4jP46jtlBkGcJgw_MxLCPZYS"),
 });
 
 const parsed = envSchema.safeParse(process.env);

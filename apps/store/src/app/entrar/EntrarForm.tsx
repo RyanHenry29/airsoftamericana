@@ -13,6 +13,7 @@ import {
   Mail,
   ShieldCheck,
 } from "lucide-react";
+import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { validateAuthField } from "../lib/authValidation";
 
 const API_URL =
@@ -135,6 +136,11 @@ export function EntrarForm() {
           </Link>
           .
         </p>
+      </div>
+
+      <GoogleSignInButton label="Continuar com Google" />
+      <div className="auth-divider" aria-hidden="true">
+        ou
       </div>
 
       <div className="auth-field">

@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   User,
 } from "lucide-react";
+import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import {
   maskCpf,
   maskPhone,
@@ -208,6 +209,11 @@ export function CadastroForm() {
           Sem taxa e sem assinatura. Preenche, guarda a senha e a ficha fica
           pronta pro primeiro pedido.
         </p>
+      </div>
+
+      <GoogleSignInButton label="Cadastrar com Google" />
+      <div className="auth-divider" aria-hidden="true">
+        ou preencha a ficha
       </div>
 
       {/* 01 — Identificação */}
