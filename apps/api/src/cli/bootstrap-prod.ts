@@ -131,7 +131,7 @@ async function seedProductionData(db: Db): Promise<{ adminPassword?: string }> {
             state: "SP",
             zip: "13477-225",
           },
-          service_hours: "Segunda a sexta 09h às 18h · Sábado 09h às 12h · Domingo fechado",
+          service_hours: "Segunda a sexta 10:00–12:00 e 13:00–17:30 · Sábado 09:00–12:00 · Domingo fechado",
           social: { instagram: "airsoft_americana", whatsapp: "5519984504992" },
           announcement: "ENTREGA PARA TODO O BRASIL",
         },
