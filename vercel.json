@@ -1,6 +1,9 @@
 {
   "version": 2,
   "builds": [
-    { "src": "apps/store/package.json", "use": "@vercel/nextjs" }
+    { "src": "apps/api/api/index.ts", "use": "@vercel/node", "config": { "maxDuration": 60 } }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "/apps/api/api/index.ts" }
   ]
 }
