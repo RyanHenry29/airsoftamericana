@@ -194,7 +194,11 @@ export function Footer({ settings }: { settings: CommercialSettings }) {
                   WhatsApp
                 </a>
               ) : null}
-              <span className="footer__social-handle">@airsoftamericana</span>
+              {settings.social?.instagram && !/^https?:\/\//i.test(settings.social.instagram.trim()) ? (
+                <span className="footer__social-handle">
+                  {settings.social.instagram.trim().startsWith("@") ? settings.social.instagram.trim() : `@${settings.social.instagram.trim()}`}
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
