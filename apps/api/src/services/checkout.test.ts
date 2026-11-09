@@ -50,16 +50,22 @@ beforeAll(async () => {
 
 async function getCustomerId() {
   const rows = await db.select().from(schema.customers).where(eq(schema.customers.email, customerEmail));
+  const adult = { ageVerifiedAt: new Date(), bornAt: new Date("1990-01-01T00:00:00.000Z") };
   if (rows.length === 0) {
-    const inserted = await db.insert(schema.customers).values({
-      name: "Cliente Demo",
-      email: customerEmail,
-      passwordHash: "hash",
-      cpf: "12345678901",
-      phone: "19999999999",
-    }).returning();
+    const inserted = await db
+      .insert(schema.customers)
+      .values({
+        name: "Cliente Demo",
+        email: customerEmail,
+        passwordHash: "hash",
+        cpf: "12345678901",
+        phone: "19999999999",
+        ...(adult as any),
+      })
+      .returning();
     return inserted[0]!.id;
   }
+  await db.update(schema.customers).set(adult as any).where(eq(schema.customers.id, rows[0]!.id));
   return rows[0]!.id;
 }
 
@@ -143,7 +149,8 @@ describe("checkout service", () => {
         address: addr("100"),
         paymentMethod: "pix",
         acceptedTerms: true,
-      },
+        ageConfirmed: true,
+      } as any,
       { customerId, ip: "127.0.0.1", correlationId: "test-001" },
     );
 
@@ -175,7 +182,8 @@ describe("checkout service", () => {
           address: addr("100"),
           paymentMethod: "pix",
           acceptedTerms: true,
-        },
+          ageConfirmed: true,
+        } as any,
         { customerId, ip: "127.0.0.1", correlationId: "test-002" },
       ),
     ).rejects.toMatchObject({ code: "insufficient_stock", status: 409 });
@@ -201,7 +209,8 @@ describe("checkout service", () => {
         address: addr("100"),
         paymentMethod: "pix",
         acceptedTerms: true,
-      },
+        ageConfirmed: true,
+      } as any,
       { customerId, ip: "127.0.0.1", correlationId: "test-003" },
     );
 
@@ -249,7 +258,8 @@ describe("checkout service", () => {
         address: addr("100"),
         paymentMethod: "pix",
         acceptedTerms: true,
-      },
+        ageConfirmed: true,
+      } as any,
       { customerId, ip: "127.0.0.1", correlationId: "test-004" },
     );
 
@@ -278,7 +288,8 @@ describe("checkout service", () => {
           paymentMethod: "pix",
           couponCode: "NAOEXISTE",
           acceptedTerms: true,
-        },
+          ageConfirmed: true,
+        } as any,
         { customerId, ip: "127.0.0.1", correlationId: "test-005" },
       ),
     ).rejects.toMatchObject({ code: "invalid_coupon", status: 400 });

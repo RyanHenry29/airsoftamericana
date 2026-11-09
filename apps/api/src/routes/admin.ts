@@ -1249,7 +1249,7 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
     })
       .from(schema.fraudAssessments)
       .leftJoin(schema.orders, eq(schema.fraudAssessments.orderId, schema.orders.id))
-      .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
+      .leftJoin(schema.customers, eq((schema.orders as any).customerId, schema.customers.id))
       .orderBy(desc(schema.fraudAssessments.createdAt))
       .limit(limit);
     const items = level ? rows.filter((r) => r.assessment.level === level) : rows;
