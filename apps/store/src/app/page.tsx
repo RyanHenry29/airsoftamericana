@@ -123,27 +123,61 @@ export default async function HomePage() {
       <Header />
       <MegaMenu departments={home.departments} />
 
-      {/* HERO — full-bleed com foto real do catálogo */}
+      {/* HERO — padrão comercial: texto pesado à esquerda, confiança e CTA, imagem à direita */}
       {hero && (
-        <section className="hero-full">
-          <Image
-            src={hero.imageDesktop ?? "/produtos/e0c3dc6a62a7f830.webp"}
-            alt={hero.title}
-            fill
-            priority
-            sizes="100vw"
-            className="hero-full__img"
-          />
-          <div className="hero-full__scrim" />
-          <div className="hero-full__body">
-            {hero.eyebrow && <span className="hero-full__eyebrow">{hero.eyebrow}</span>}
-            <h1 className="hero-full__title">{hero.title}</h1>
-            {hero.subtitle && <p className="hero-full__sub">{hero.subtitle}</p>}
-            {hero.ctaLabel && (
-              <Link href={hero.link ?? "/catalogo"} className="btn-primary btn-lg">
-                {hero.ctaLabel}
-              </Link>
-            )}
+        <section className="hero" aria-labelledby="hero-title">
+          <div className="hero__grid">
+            <div className="hero__copy">
+              {hero.eyebrow && (
+                <span className="hero__eyebrow">{hero.eyebrow}</span>
+              )}
+              <h1 id="hero-title" className="hero__title">
+                {hero.title}
+              </h1>
+              {hero.subtitle && (
+                <p className="hero__sub">{hero.subtitle}</p>
+              )}
+              <div className="hero__facts">
+                {freeShipping > 0 && (
+                  <span className="hero__fact">
+                    Frete grátis acima de {formatBRL(freeShipping)} · {settings.shipping_carriers[0] ?? "Correios PAC/SEDEX"}
+                  </span>
+                )}
+                {pixPercent > 0 && (
+                  <span className="hero__fact">
+                    PIX −{pixPercent}% na hora · Aprovação imediata
+                  </span>
+                )}
+                {inst > 1 && (
+                  <span className="hero__fact">
+                    {inst}x sem juros no cartão
+                  </span>
+                )}
+              </div>
+              {hero.ctaLabel && (
+                <Link href={hero.link ?? "/catalogo"} className="btn-primary btn-lg">
+                  {hero.ctaLabel}
+                </Link>
+              )}
+              {hero.link && (
+                <Link
+                  href="/catalogo"
+                  className="btn-secondary hero__secondary"
+                >
+                  Ver catálogo completo
+                </Link>
+              )}
+            </div>
+            <div className="hero__image">
+              <Image
+                src={hero.imageDesktop ?? "/produtos/e0c3dc6a62a7f830.webp"}
+                alt={hero.title}
+                fill
+                priority
+                sizes="(max-width: 1024px) 100vw, 560px"
+                className="hero__img"
+              />
+            </div>
           </div>
         </section>
       )}

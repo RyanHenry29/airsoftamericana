@@ -17,6 +17,7 @@ export function Header() {
   const [suggestions, setSuggestions] = useState<StoreSuggestion | null>(null);
   const [count, setCount] = useState(0);
   const [settings, setSettings] = useState<{ free_shipping_from_cents: number; pix_discount_percent: number; installments: number } | null>(null);
+  const [customer, setCustomer] = useState<{ name: string; email: string } | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -35,10 +36,21 @@ export function Header() {
       } catch {
         /* offline */
       }
+      try {
+        const me = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" });
+        if (me.ok) {
+          const json = (await me.json()) as { customer?: { name: string; email: string } };
+          setCustomer(json.customer ?? null);
+        } else {
+          setCustomer(null);
+        }
+      } catch {
+        setCustomer(null);
+      }
     }
     load();
 
-    // O carrinho pode mudar em outra tela (PDP, catalogo). Recarrega ao voltar para esta aba.
+    // O carrinho e a sessão podem mudar em outra tela. Recarrega ao voltar para esta aba.
     const onFocus = () => load();
     window.addEventListener("focus", onFocus);
     return () => {
@@ -215,10 +227,17 @@ export function Header() {
         </div>
 
         <nav className="header-actions" aria-label="Conta e carrinho">
-          <Link href="/entrar" className="header-action">
-            <User size={20} />
-            <span className="header-action__label">Entrar</span>
-          </Link>
+          {customer ? (
+            <Link href="/conta" className="header-action header-action--account">
+              <User size={20} />
+              <span className="header-action__label">{customer.name.split(" ")[0]}</span>
+            </Link>
+          ) : (
+            <Link href="/entrar" className="header-action">
+              <User size={20} />
+              <span className="header-action__label">Entrar</span>
+            </Link>
+          )}
           <Link href="/cart" className="header-action">
             <span className="header-action__cart">
               <ShoppingCart size={20} />
