@@ -55,7 +55,7 @@ export async function generateMetadata() {
   return {
     metadataBase: new URL(SITE_URL),
     title: {
-      default: "Airsoft Americana — Airsoft, Tiro Esportivo e Equipamentos Táticos",
+      default: "Airsoft Americana",
       template: "%s | Airsoft Americana",
     },
     description: baseDesc,
@@ -66,7 +66,7 @@ export async function generateMetadata() {
       locale: "pt_BR",
       url: SITE_URL,
       siteName: "Airsoft Americana",
-      title: "Airsoft Americana — Airsoft, Tiro Esportivo e Equipamentos Táticos",
+      title: "Airsoft Americana",
       description: `Airsoft, tiro esportivo e equipamentos táticos. ${pixBit}${inst}x sem juros e envio nacional.`,
       // og:image / og:image:alt vêm da convenção app/opengraph-image.tsx (1200×630),
       // não do logo quadrado do site antigo.

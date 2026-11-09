@@ -6,6 +6,10 @@ import { AdminNav } from "./AdminNav";
 export const metadata = {
   title: "Airsoft Americana - Painel Administrativo",
   description: "Painel administrativo da loja Airsoft Americana",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
