@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -74,6 +74,25 @@ export function EntrarForm() {
 
   const pending = Object.values(errors).filter(Boolean).length;
   const blocked = pending > 0 && (touched.email || touched.password);
+
+  // Já tem sessão? Vai direto pra conta (Image 3) sem mostrar o formulário de login.
+  useEffect(() => {
+    let alive = true;
+    async function check() {
+      try {
+        const res = await fetch(`${API_URL}/api/auth/me`, {
+          credentials: "include",
+        });
+        if (alive && res.ok) router.push("/conta");
+      } catch {
+        /* offline — deixa o formulário à vista */
+      }
+    }
+    check();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const set = (field: "email" | "password") => (value: string) =>
     setValues((current) => ({ ...current, [field]: value }));

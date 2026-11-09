@@ -311,7 +311,7 @@ export default async function CatalogPage({
               {disponivel && <input type="hidden" name="disponivel" value={disponivel} />}
               {condicao && <input type="hidden" name="condicao" value={condicao} />}
               <label htmlFor="sort">Ordenar</label>
-              <select id="sort" name="sort" defaultValue={sort} onChange={undefined}>
+              <select id="sort" name="sort" defaultValue={sort}>
                 {SORTS.map((s) => (
                   <option key={s.key} value={s.key}>
                     {s.label}

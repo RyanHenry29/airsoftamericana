@@ -169,8 +169,8 @@ export function CadastroForm() {
           name: values.name.trim(),
           email: values.email.trim().toLowerCase(),
           password: values.password,
-          cpf: values.cpf.replace(/\D/g, "") || undefined,
-          phone: values.phone.replace(/\D/g, "") || undefined,
+          cpf: (() => { const d = values.cpf.replace(/\D/g, ""); return d.length === 11 ? d : undefined; })(),
+          phone: (() => { const d = values.phone.replace(/\D/g, ""); return d.length >= 8 && d.length <= 11 ? d : undefined; })(),
         }),
       });
 

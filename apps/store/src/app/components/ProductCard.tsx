@@ -1,7 +1,12 @@
 // language: TSX, file: apps/store/src/app/components/ProductCard.tsx, target: Next.js App Router
 // Card de produto no padrão da referência: foto real, preço, condição PIX e parcelamento.
+// Inclui botão direto "Adicionar ao carrinho" para converter da grade.
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { ShoppingCart } from "lucide-react";
 import type { CommercialSettings, StoreProduct } from "../lib/store";
 import { formatBRL, installmentsFor, pixPrice } from "../lib/store";
 
@@ -20,6 +25,30 @@ export function ProductCard({ product, settings, compact = false }: Props) {
   const pix = pixPrice(price, settings);
   const inst = installmentsFor(price, settings);
   const out = product.available <= 0;
+  const firstVariant = product.variants?.[0];
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function addToCart() {
+    if (!firstVariant || busy || out) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}/api/cart/items`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ variantId: firstVariant.id, quantity: 1 }),
+      });
+      if (res.ok) {
+        setDone(true);
+        setTimeout(() => setDone(false), 1500);
+      }
+    } catch {
+      /* offline */
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <li className="pcard-item">
@@ -76,6 +105,27 @@ export function ProductCard({ product, settings, compact = false }: Props) {
             {product.available <= 5 ? `Últimas ${product.available} un.` : "Em estoque"}
           </span>
         )}
+
+        {!out && firstVariant ? (
+          <button
+            type="button"
+            className="pcard-add"
+            onClick={addToCart}
+            disabled={busy}
+            aria-label={`Adicionar ${product.name} ao carrinho`}
+          >
+            {busy ? (
+              <ShoppingCart size={14} className="animate-spin" aria-hidden="true" />
+            ) : done ? (
+              <span className="text-[10px] font-black">OK</span>
+            ) : (
+              <>
+                <ShoppingCart size={14} aria-hidden="true" />
+                <span>Adicionar</span>
+              </>
+            )}
+          </button>
+        ) : null}
       </div>
     </li>
   );

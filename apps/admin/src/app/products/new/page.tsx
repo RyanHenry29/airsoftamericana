@@ -18,9 +18,9 @@ export default function NewProductPage() {
   const [data, setData] = useState({
     name: "",
     slug: "",
+    sku: "",
     categoryId: "",
     brandId: "",
-    sku: "",
     price: "",
     promo: "",
     stock: "10",
@@ -57,7 +57,7 @@ export default function NewProductPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if ((data.condicao==="usado"||data.condicao==="seminovo") && !data.estadoConservacao.trim()) { setError("Produtos usados/seminovos exigem estado de conserva??o."); return; }
+    if ((data.condicao==="usado"||data.condicao==="seminovo") && !data.estadoConservacao.trim()) { setError("Produtos usados/seminovos exigem estado de conservação."); return; }
     setBusy(true);
     try {
       const res = await adminFetch("/api/admin/products", {
@@ -185,8 +185,8 @@ export default function NewProductPage() {
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="field"><label htmlFor="condicao">Condi??o</label><select id="condicao" className="select" value={data.condicao} onChange={e=>setData({...data,condicao:e.target.value})}><option value="novo">Novo</option><option value="usado">Usado</option><option value="seminovo">Seminovo</option></select></div>
-          <div className="field"><label htmlFor="conserv">Conserva??o {(data.condicao!=="novo") && <span className="text-[#dc2626]">*</span>}</label><input id="conserv" className="input" value={data.estadoConservacao} onChange={e=>setData({...data,estadoConservacao:e.target.value})} aria-required={data.condicao!=="novo"} /></div>
+          <div className="field"><label htmlFor="condicao">Condição</label><select id="condicao" className="select" value={data.condicao} onChange={e=>setData({...data,condicao:e.target.value})}><option value="novo">Novo</option><option value="usado">Usado</option><option value="seminovo">Seminovo</option></select></div>
+          <div className="field"><label htmlFor="conserv">Conservação {(data.condicao!=="novo") && <span className="text-[#dc2626]">*</span>}</label><input id="conserv" className="input" value={data.estadoConservacao} onChange={e=>setData({...data,estadoConservacao:e.target.value})} aria-required={data.condicao!=="novo"} /></div>
           <div className="field"><label htmlFor="garantia">Garantia (dias)</label><input id="garantia" className="input" type="number" min={0} value={data.garantiaDias} onChange={e=>setData({...data,garantiaDias:e.target.value})} /></div>
         </div>
         <div className="field"><label htmlFor="acess">Acess?rios inclu?dos</label><input id="acess" className="input" value={data.acessoriosIncluidos} onChange={e=>setData({...data,acessoriosIncluidos:e.target.value})} /></div>

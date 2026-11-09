@@ -100,10 +100,13 @@ async function cartView(db: Db, cartId: string) {
     const inv = availRows[0];
     const available = inv ? inv.physical - inv.reserved : 0;
     const unitPriceCents = variant.promoPriceCents ?? variant.priceCents;
+    const productRow = await db.select().from(products).where(eq(products.id, variant.productId)).limit(1);
+    const product = productRow[0];
     subtotalCents += unitPriceCents * item.quantity;
     view.push({
       variantId: variant.id,
       sku: variant.sku,
+      slug: product?.slug ?? variant.sku,
       name: variant.name,
       quantity: item.quantity,
       unitPriceCents,

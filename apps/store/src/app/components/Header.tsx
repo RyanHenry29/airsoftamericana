@@ -37,6 +37,13 @@ export function Header() {
       }
     }
     load();
+
+    // O carrinho pode mudar em outra tela (PDP, catalogo). Recarrega ao voltar para esta aba.
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   useEffect(() => {
@@ -208,7 +215,7 @@ export function Header() {
         </div>
 
         <nav className="header-actions" aria-label="Conta e carrinho">
-          <Link href="/conta" className="header-action">
+          <Link href="/entrar" className="header-action">
             <User size={20} />
             <span className="header-action__label">Entrar</span>
           </Link>

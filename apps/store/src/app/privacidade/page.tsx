@@ -70,7 +70,7 @@ export default function PrivacidadePage() {
           ))}
         </div>
         <p className="mt-14 text-sm text-white/50 border-t border-[var(--border)] pt-6">
-          Dúvidas sobre este documento: <Link href="/contato" className="sec-link !text-sm">fale com a gente</Link>.
+          Dúvidas sobre este documento: <Link href="/atendimento" className="sec-link !text-sm">fale com a gente</Link>.
         </p>
       </div>
     </main>

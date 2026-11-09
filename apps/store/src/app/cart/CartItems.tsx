@@ -9,6 +9,7 @@ const API_URL =
 type Item = {
   variantId: string;
   sku: string;
+  slug: string;
   name: string;
   quantity: number;
   unitPriceCents: number;
@@ -109,7 +110,7 @@ export function CartItems() {
         {items.map((item) => (
           <li key={item.variantId} className="border border-[#e5e7eb] bg-white p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
             <div className="flex flex-col gap-2">
-              <Link href={`/${item.sku ?? item.variantId}`} className="font-display font-black text-xl uppercase leading-none tracking-tight text-[#111] group-hover:text-[#8bcf16] transition-colors">
+              <Link href={`/${item.slug}`} className="font-display font-black text-xl uppercase leading-none tracking-tight text-[#111] group-hover:text-[#8bcf16] transition-colors">
                 {item.name}
               </Link>
               <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666]">
