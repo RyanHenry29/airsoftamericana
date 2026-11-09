@@ -1,10 +1,9 @@
 {
   "version": 2,
-  "name": "airsoftamericana-api",
   "builds": [
-    { "src": "apps/api/api/index.ts", "use": "@vercel/node", "config": { "maxDuration": 60 } }
+    { "src": "apps/store/package.json", "use": "@vercel/nextjs" }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "/apps/api/api/index.ts" }
+    { "src": "/(.*)", "dest": "/apps/store/$1" }
   ]
 }
