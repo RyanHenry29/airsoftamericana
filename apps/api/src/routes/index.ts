@@ -185,7 +185,13 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   // ---------------------------------------------------------- Carrinho (cookie aa_cart)
   function setCartCookie(reply: { setCookie: (n: string, v: string, o: object) => void }, sessionKey: string) {
-    reply.setCookie("aa_cart", sessionKey, { path: "/", httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 * 7 });
+    reply.setCookie("aa_cart", sessionKey, {
+      path: "/",
+      httpOnly: true,
+      sameSite: config.COOKIE_SAMESITE,
+      secure: config.NODE_ENV === "production" || config.COOKIE_SAMESITE === "none",
+      maxAge: 60 * 60 * 24 * 7,
+    });
   }
 
   app.get("/api/cart", async (request, reply) => {
@@ -411,8 +417,8 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   const customerCookie = (maxAgeSeconds: number) => ({
     path: "/",
     httpOnly: true,
-    sameSite: "lax" as const,
-    secure: config.NODE_ENV === "production",
+    sameSite: config.COOKIE_SAMESITE,
+    secure: config.NODE_ENV === "production" || config.COOKIE_SAMESITE === "none",
     maxAge: maxAgeSeconds,
   });
 
@@ -581,8 +587,8 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     reply.clearCookie(ADMIN_SESSION_COOKIE, {
       path: "/",
       httpOnly: true,
-      sameSite: "strict",
-      secure: config.NODE_ENV === "production",
+      sameSite: config.COOKIE_SAMESITE,
+      secure: config.NODE_ENV === "production" || config.COOKIE_SAMESITE === "none",
     });
     await writeAudit(db, request, { action: "auth.admin.logout", entity: "user" });
     reply.send({ success: true });
@@ -592,8 +598,8 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     reply.clearCookie("aa_customer", {
       path: "/",
       httpOnly: true,
-      sameSite: "lax",
-      secure: config.NODE_ENV === "production",
+      sameSite: config.COOKIE_SAMESITE,
+      secure: config.NODE_ENV === "production" || config.COOKIE_SAMESITE === "none",
     });
     await writeAudit(db, request, { action: "auth.logout", entity: "customer" });
     reply.send({ success: true });

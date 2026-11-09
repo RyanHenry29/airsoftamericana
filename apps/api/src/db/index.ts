@@ -2,12 +2,14 @@ import { drizzle as drizzlePglite, type PgliteDatabase } from "drizzle-orm/pglit
 import { drizzle as drizzlePg, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { PGlite } from "@electric-sql/pglite";
 import { Pool } from "pg";
+import tls from "node:tls";
 import path from "node:path";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
 import * as schema from "./schema.js";
+import { SUPABASE_ROOT_CA_PEM } from "./supabase-root-ca.js";
 import { benchLogger } from "../lib/query-bench.js";
 
 /**
@@ -109,13 +111,42 @@ function acquirePgliteLock(dir: string): () => void {
   throw new Error(`Não foi possível travar o diretório do PGlite em ${dir}.`);
 }
 
+/**
+ * Monta `ssl` do Pool para Postgres de produção.
+ *
+ * Hosts `*.supabase.co` (conexão direta) terminam em CA própria fora das
+ * lojas do sistema — a raiz Supabase é pinada aqui, somada às raízes do
+ * sistema, com verificação de hostname ligada. O `sslmode` da URL é removido
+ * antes de repassar ao pg: o parser sobrescreveria a opção explícita com
+ * semântica própria (e sem a nossa CA). Qualquer outro host segue a URL
+ * intacta (pooler, Postgres comum, testes locais).
+ */
+function poolSsl(connectionString: string): { url: string; ssl?: boolean | tls.ConnectionOptions } {
+  let url: URL;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    return { url: connectionString };
+  }
+  if (!url.hostname.endsWith(".supabase.co")) return { url: connectionString };
+
+  const mode = url.searchParams.get("sslmode");
+  url.searchParams.delete("sslmode");
+  if (mode === "disable") return { url: url.toString(), ssl: false };
+  return {
+    url: url.toString(),
+    ssl: { ca: [SUPABASE_ROOT_CA_PEM, ...tls.rootCertificates] },
+  };
+}
+
 export async function getDb(): Promise<Db> {
   if (db) return db;
 
   // Em teste, logger no-op ativa contagem só quando benchStart() é chamado (benchmark/N+1).
   const bench = process.env.NODE_ENV === "test" ? { logger: benchLogger } : {};
   if (config.DATABASE_URL) {
-    poolInstance = new Pool({ connectionString: config.DATABASE_URL, max: 10 });
+    const { url, ssl } = poolSsl(config.DATABASE_URL);
+    poolInstance = new Pool({ connectionString: url, max: 10, ssl });
     db = drizzlePg(poolInstance, { schema, ...bench });
   } else {
     const configured = process.env.PGLITE_DIR;

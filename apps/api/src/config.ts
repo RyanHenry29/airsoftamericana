@@ -13,6 +13,12 @@ const envSchema = z.object({
   GATEWAY_SECRETS_KEY: z.string().optional().default(""),
   STORE_URL: z.string().default("http://localhost:3000"),
   ADMIN_URL: z.string().default("http://localhost:3001"),
+  // SameSite dos cookies de sessão/carrinho. Padrão "strict" (mesmo domínio).
+  // "none" (exige Secure) só para fases em que loja, painel e API ficam em
+  // domínios registráveis diferentes (ex.: *.vercel.app) — nesse caso o
+  // navegador trata cada subdomínio como site distinto. Com domínio próprio
+  // (subdomínios do mesmo registrável) volte ao padrão e remova a variável.
+  COOKIE_SAMESITE: z.enum(["strict", "lax", "none"]).default("strict"),
   STORE_NAME: z.string().default("Airsoft Americana"),
   STORE_WHATSAPP: z.string().default(""),
   GATEWAY_ACTIVE: z.string().default("sandbox"),

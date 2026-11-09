@@ -30,6 +30,10 @@ export async function createServer() {
     logger: {
       level: config.LOG_LEVEL,
     },
+    // Confia no X-Forwarded-For do proxy de borda (Vercel em produção).
+    // Sem isso request.ip vira o IP do infraestrutura e a guarda de rate
+    // limit dividia uma única cota entre todos os usuários.
+    trustProxy: true,
   });
 
   // Middleware plugins
@@ -97,7 +101,12 @@ export async function createServer() {
   app.decorate("db", db as any);
 
   if (config.NODE_ENV !== "test") {
-    await migrate(db);
+    // Em produção as migrações rodam no bootstrap de deploy (papel DDL
+    // dedicado, `npm run db:bootstrap`); a API conecta com papel de menor
+    // privilégio e não executa DDL. Em dev/test o PGlite local migra no boot.
+    if (config.NODE_ENV !== "production") {
+      await migrate(db);
+    }
     // B.6/B.8: em produção, recusa subir se o usuário DB pode mutar audit_logs.
     await assertAuditLogsAppendOnly(db, config.NODE_ENV);
     // Only seed in development, not in test (tests have their own seed)

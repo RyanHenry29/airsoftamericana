@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
+import { config } from "../config.js";
 
 export const SESSION_ABSOLUTE_MS = 8 * 60 * 60 * 1000; // 8h
 export const SESSION_IDLE_MS = 30 * 60 * 1000; // 30 min
@@ -143,8 +144,9 @@ export function adminSessionCookieOptions(isProd: boolean) {
   return {
     path: "/",
     httpOnly: true,
-    sameSite: "strict" as const,
-    secure: isProd,
+    sameSite: config.COOKIE_SAMESITE,
+    // SameSite=None exige Secure em qualquer ambiente (regra do navegador).
+    secure: isProd || config.COOKIE_SAMESITE === "none",
     // cookie vive até o absolute; servidor também invalida
     maxAge: Math.floor(SESSION_ABSOLUTE_MS / 1000),
   };
