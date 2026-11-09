@@ -2,8 +2,5 @@
   "version": 2,
   "builds": [
     { "src": "apps/store/package.json", "use": "@vercel/nextjs" }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "/apps/store/$1" }
   ]
 }
