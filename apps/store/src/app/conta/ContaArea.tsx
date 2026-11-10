@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight,
   ClipboardList,
+  Eye,
   Headset,
   IdCard,
   Lock,
@@ -17,9 +18,12 @@ import {
   Package,
   Phone,
   ShieldCheck,
+  ShoppingCart,
   Truck,
 } from "lucide-react";
 import { API_URL, fetchWithTimeout } from "../lib/store";
+import { OrderDetailModal } from "./OrderDetailModal";
+import { PAY_LABEL, STATUS_LABEL, brl, dateBr } from "./order-labels";
 
 type Customer = {
   id: string;
@@ -66,37 +70,6 @@ function menuFor(authed: boolean): MenuItem[] {
   return items;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  aguardando_pagamento: "Aguardando pagamento",
-  pagamento_em_processamento: "Pagamento em processamento",
-  em_analise_antifraude: "Em análise antifraude",
-  aguardando_revisao_manual: "Aguardando revisão",
-  pagamento_aprovado: "Pagamento aprovado",
-  separacao: "Em separação",
-  preparando_envio: "Preparando envio",
-  enviado: "Enviado",
-  entregue: "Entregue",
-  cancelado: "Cancelado",
-  reembolsado: "Reembolsado",
-  em_disputa: "Em disputa",
-  chargeback_recebido: "Chargeback recebido",
-};
-
-const PAY_LABEL: Record<string, string> = {
-  pix: "PIX",
-  cartao: "Cartão",
-  boleto: "Boleto",
-};
-
-function brl(cents: number) {
-  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function dateBr(iso: string) {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
-}
-
 /** 000.000.000-00 — só formata quando o CPF tem os 11 dígitos. */
 function formatCpf(value: string | null | undefined) {
   if (!value) return null;
@@ -119,6 +92,7 @@ export function ContaArea() {
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [modal, setModal] = useState<{ number: string; mode: "espiar" | "comprar" } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -317,6 +291,22 @@ export function ContaArea() {
                     </span>
                     <span className="conta-order__pay">{o.paymentMethod ? (PAY_LABEL[o.paymentMethod] ?? "—") : "—"}</span>
                     <span className="conta-order__total">{brl(o.totalCents)}</span>
+                    <div className="conta-order__actions">
+                      <button
+                        type="button"
+                        className="conta-order__btn"
+                        onClick={() => setModal({ number: o.number, mode: "espiar" })}
+                      >
+                        <Eye size={13} strokeWidth={2} aria-hidden="true" /> ESPIAR
+                      </button>
+                      <button
+                        type="button"
+                        className="conta-order__btn conta-order__btn--buy"
+                        onClick={() => setModal({ number: o.number, mode: "comprar" })}
+                      >
+                        <ShoppingCart size={13} strokeWidth={2} aria-hidden="true" /> COMPRAR
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ol>
@@ -364,6 +354,14 @@ export function ContaArea() {
           </section>
         </main>
       </div>
+
+      {modal && (
+        <OrderDetailModal
+          orderNumber={modal.number}
+          mode={modal.mode}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   );
 }

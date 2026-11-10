@@ -4,9 +4,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AtSign, CreditCard, Mail, MessageCircle, QrCode, RefreshCcw, Truck } from "lucide-react";
+import { AtSign, Mail, MessageCircle } from "lucide-react";
 import type { CommercialSettings } from "../lib/store";
-import { formatBRL, type Company } from "../lib/store";
+import type { Company } from "../lib/store";
 import { PaymentMarks } from "./PaymentMarks";
 import { COOKIE_PREFS_EVENT } from "./CookieConsent";
 
@@ -93,54 +93,12 @@ export function Footer({
     }
   }
 
-  const pix = settings.pix_discount_percent ?? 0;
-  const inst = settings.installments ?? 1;
-  const free = settings.free_shipping_from_cents ?? 0;
-  const minInst = settings.min_installment_cents ?? 0;
   const year = new Date().getFullYear();
   const instagram = socialUrl("instagram", settings.social?.instagram);
   const whatsapp = socialUrl("whatsapp", settings.social?.whatsapp || settings.whatsapp);
 
   return (
     <footer className="footer">
-      <div className="footer__topbar">
-        <div className="footer__topbar-inner">
-          <div className="footer__promise">
-            <Truck size={20} strokeWidth={2} aria-hidden="true" />
-            <span className="footer__promise-text">
-              <b>{free > 0 ? "Frete Grátis" : "Envio para todo o Brasil"}</b>
-              <small>{free > 0 ? `Acima de ${formatBRL(free)}` : "Consulte o prazo no checkout"}</small>
-            </span>
-          </div>
-          <div className="footer__promise">
-            <CreditCard size={20} strokeWidth={2} aria-hidden="true" />
-            <span className="footer__promise-text">
-              <b>{inst > 1 ? `${inst}x Sem Juros` : "Pagamento Facilitado"}</b>
-              <small>
-                {minInst > 0
-                  ? `Parcela mínima ${formatBRL(minInst)}`
-                  : inst > 1 && settings.installment_interest_free !== false
-                    ? "Sem juros no cartão"
-                    : "Cartão, PIX e boleto"}
-              </small>
-            </span>
-          </div>
-          <div className="footer__promise">
-            <QrCode size={20} strokeWidth={2} aria-hidden="true" />
-            <span className="footer__promise-text">
-              <b>{pix > 0 ? `${pix}% de Desconto` : "Pagamento via PIX"}</b>
-              <small>{pix > 0 ? "No pagamento via PIX" : "Aprovação na hora"}</small>
-            </span>
-          </div>
-          <div className="footer__promise">
-            <RefreshCcw size={20} strokeWidth={2} aria-hidden="true" />
-            <span className="footer__promise-text">
-              <b>Trocas e Devoluções</b>
-              <small>Conforme a política de trocas</small>
-            </span>
-          </div>
-        </div>
-      </div>
       <div className="footer__grid">
         <div className="footer__col footer__col--brand">
           <p className="footer__brand">

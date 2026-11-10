@@ -1,4 +1,4 @@
-import { eq, sql, and, gte, lt, count, sum } from "drizzle-orm";
+import { eq, sql, and, gte, lt, count, sum, inArray } from "drizzle-orm";
 import { canTransition, type OrderStatus, RESERVED_STATUSES } from "@airsoft/shared";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
@@ -8,6 +8,91 @@ import { releaseStock } from "./inventory.js";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Detalhe do pedido para o cliente (ESPIAR/COMPRAR).
+ * Devolve o pedido + itens enriquecidos: cada item ganha productSlug e as
+ * variantes ativas do produto (id + nome + preço) para o cliente escolher
+ * a cor/tamanho antes de recomprar. Itens de produto removido do catálogo
+ * ficam com productSlug null (o COMPRAR some, o ESPIAR continua útil).
+ * Lança notFound se o pedido não existir ou não pertence ao cliente.
+ */
+export async function getOrderDetailForCustomer(
+  db: Db,
+  input: { orderId: string; customerId: string },
+): Promise<{
+  order: typeof schema.orders.$inferSelect;
+  items: Array<{
+    id: string;
+    variantId: string;
+    sku: string;
+    name: string;
+    quantity: number;
+    unitPriceCents: number;
+    totalCents: number;
+    productSlug: string | null;
+    variants: Array<{ id: string; name: string; priceCents: number }>;
+  }>;
+}> {
+  const [order] = await db
+    .select()
+    .from(schema.orders)
+    .where(and(eq(schema.orders.id, input.orderId), eq(schema.orders.customerId, input.customerId)))
+    .limit(1);
+  if (!order) throw notFound("Pedido não encontrado");
+
+  const items = await db
+    .select({
+      id: schema.orderItems.id,
+      variantId: schema.orderItems.variantId,
+      sku: schema.orderItems.sku,
+      name: schema.orderItems.name,
+      quantity: schema.orderItems.quantity,
+      unitPriceCents: schema.orderItems.unitPriceCents,
+      totalCents: schema.orderItems.totalCents,
+      productId: schema.products.id,
+      productSlug: schema.products.slug,
+    })
+    .from(schema.orderItems)
+    .leftJoin(schema.productVariants, eq(schema.productVariants.id, schema.orderItems.variantId))
+    .leftJoin(schema.products, eq(schema.products.id, schema.productVariants.productId))
+    .where(eq(schema.orderItems.orderId, order.id));
+
+  // Variantes ativas dos produtos envolvidos — uma query para todos os itens.
+  const productIds = [...new Set(items.map((i) => i.productId).filter((v): v is string => Boolean(v)))];
+  const siblingRows = productIds.length
+    ? await db
+        .select({
+          id: schema.productVariants.id,
+          name: schema.productVariants.name,
+          priceCents: schema.productVariants.priceCents,
+          productId: schema.productVariants.productId,
+        })
+        .from(schema.productVariants)
+        .where(and(inArray(schema.productVariants.productId, productIds), eq(schema.productVariants.active, true)))
+    : [];
+  const variantsByProduct = new Map<string, Array<{ id: string; name: string; priceCents: number }>>();
+  for (const v of siblingRows) {
+    const list = variantsByProduct.get(v.productId) ?? [];
+    list.push({ id: v.id, name: v.name, priceCents: v.priceCents });
+    variantsByProduct.set(v.productId, list);
+  }
+
+  return {
+    order,
+    items: items.map((i) => ({
+      id: i.id,
+      variantId: i.variantId,
+      sku: i.sku,
+      name: i.name,
+      quantity: i.quantity,
+      unitPriceCents: i.unitPriceCents,
+      totalCents: i.totalCents,
+      productSlug: i.productSlug ?? null,
+      variants: i.productId ? (variantsByProduct.get(i.productId) ?? []) : [],
+    })),
+  };
 }
 
 export async function transitionOrder(

@@ -3,7 +3,7 @@ import { asc, and, count, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { hashPassword, verifyPasswordDetailed } from "../lib/crypto.js";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
-import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customers, inventory, inventoryMovements, newsletterSubscribers, orderItems, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
+import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customers, inventory, inventoryMovements, newsletterSubscribers, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
 import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
 import { adminGuard, normalizeRole } from "../lib/rbac.js";
 import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
@@ -16,7 +16,7 @@ import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRat
 import type { Config } from "../config.js";
 import { registerSchema, loginSchema, adminCustomerSchema, checkoutSchema, cartItemSchema, orderStatusSchema, stockMovementSchema, productSchema, orderVolumeLimitsSchema, gatewayConfigSchema, chargebackStatusSchema } from "@airsoft/shared";
 import { handleCheckout } from "../services/checkout.js";
-import { transitionOrder } from "../services/orders.js";
+import { transitionOrder, getOrderDetailForCustomer } from "../services/orders.js";
 import { validateCoupon } from "../services/coupons.js";
 import { calculateShipping } from "../services/shipping.js";
 import { getFreeShippingFromCents } from "../services/settings.js";
@@ -421,8 +421,9 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       reply.send({ error: { code: "not_found", message: "Pedido não encontrado" } });
       return;
     }
-    const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
-    reply.send({ order, items });
+    // ESPIAR/COMPRAR: pedido + itens com slug do produto e variantes ativas.
+    const detail = await getOrderDetailForCustomer(db, { orderId: order.id, customerId: customer.id });
+    reply.send({ order: detail.order, items: detail.items });
   });
 
   // ---------------------------------------------------------- Auth cliente
