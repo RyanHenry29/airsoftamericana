@@ -42,12 +42,8 @@ export function CookieConsent() {
         <div className="cookie-consent__text">
           <p className="cookie-consent__title">Cookies e armazenamento local</p>
           <p className="cookie-consent__desc">
-            Usamos cookies e armazenamento local essenciais para funcionamento da loja (sessão, carrinho e segurança).
-            Cookies não essenciais só serão usados se você aceitar. Você pode revisar os detalhes na{" "}
-            <Link href="/privacidade" className="cookie-consent__link">
-              Política de Privacidade
-            </Link>
-            .
+            Usamos armazenamento essencial para sessão, carrinho e segurança. Itens não essenciais só com sua permissão.{" "}
+            <Link href="/privacidade" className="cookie-consent__link">Privacidade</Link>.
           </p>
         </div>
         <div className="cookie-consent__actions">

@@ -268,3 +268,37 @@ export function productImage(product: {
   const first = product.images?.[0]?.url;
   return first && first.length > 0 ? first : null;
 }
+
+/** Fallback neutro: uma página nunca quebra por API fora do ar. */
+export const EMPTY_SETTINGS: CommercialSettings = {
+  pix_discount_percent: 0,
+  installments: 1,
+  installment_interest_free: false,
+  min_installment_cents: 0,
+  free_shipping_from_cents: 0,
+  shipping_carriers: [],
+  whatsapp: "",
+  email: "",
+  address: { street: "", district: "", city: "", state: "", zip: "" },
+  service_hours: "",
+  social: { instagram: "", whatsapp: "" },
+  announcement: "",
+};
+
+export const EMPTY_HOME: StoreHome = {
+  banners: [],
+  sections: [],
+  departments: [],
+  brands: [],
+  featured: [],
+  news: [],
+  sale: [],
+  bestsellers: [],
+  settings: EMPTY_SETTINGS,
+  totals: { products: 0 },
+};
+
+/** Home da vitrine (também é a fonte das condições comerciais das páginas). */
+export async function loadHome(): Promise<StoreHome> {
+  return storeGet<StoreHome>(`${API_URL}/api/store/home`, EMPTY_HOME);
+}

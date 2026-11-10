@@ -10,19 +10,9 @@ import { Menu, Search, ShoppingCart, User, X } from "lucide-react";
 import {
   API_URL,
   fetchWithTimeout,
-  formatBRL,
   type StoreSuggestion,
 } from "../lib/store";
 import { DeptStrip } from "./DeptStrip";
-
-type HeaderSettings = {
-  free_shipping_from_cents: number;
-  pix_discount_percent: number;
-  installments: number;
-  address?: { city?: string; state?: string };
-  service_hours?: string;
-  whatsapp?: string;
-};
 
 export function Header() {
   const router = useRouter();
@@ -32,7 +22,6 @@ export function Header() {
   const [q, setQ] = useState("");
   const [suggestions, setSuggestions] = useState<StoreSuggestion | null>(null);
   const [count, setCount] = useState(0);
-  const [settings, setSettings] = useState<HeaderSettings | null>(null);
   const [customer, setCustomer] = useState<{ name: string; email: string } | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
@@ -95,33 +84,6 @@ export function Header() {
     };
   }, []);
 
-  useEffect(() => {
-    async function loadSettings() {
-      try {
-        const res = await fetchWithTimeout(`${API_URL}/api/store/settings`, {
-          cache: "no-store",
-        });
-        const json = (await res.json().catch(() => ({}))) as {
-          free_shipping_from_cents?: number;
-          pix_discount_percent?: number;
-          installments?: number;
-          address?: { city?: string; state?: string };
-          service_hours?: string;
-        };
-        setSettings({
-          free_shipping_from_cents: json.free_shipping_from_cents ?? 0,
-          pix_discount_percent: json.pix_discount_percent ?? 0,
-          installments: json.installments ?? 1,
-          address: json.address ?? undefined,
-          service_hours: json.service_hours ?? undefined,
-        });
-      } catch {
-        /* offline */
-      }
-    }
-    loadSettings();
-  }, []);
-
   // Sugestões de busca: debounce de 220 ms contra a API.
   useEffect(() => {
     const term = q.trim();
@@ -158,66 +120,24 @@ export function Header() {
     router.push(`/busca?q=${encodeURIComponent(term)}`);
   }
 
-  const storePlace =
-    settings?.address?.city && settings?.address?.state
-      ? `Loja física · ${settings.address.city}-${settings.address.state}`
-      : settings?.address?.city
-        ? `Loja física · ${settings.address.city}`
-        : null;
-
   return (
     <header className={`site-header ${scrolled ? "is-scrolled" : ""} ${topbarVisible ? "" : "is-topbar-hidden"}`}>
+      {/* Faixa única de condição — uma linha só, centralizada. */}
       <div className="header-topbar" aria-hidden={!topbarVisible}>
         <div className="header-topbar__inner">
-          <span className="header-topbar__group header-topbar__group--conditions" aria-label="Condições comerciais">
-            <span className="header-topbar__item">
-              <span className="dot-live" aria-hidden /> Entrega para todo o Brasil
-            </span>
-            {/* Condições só com número real do banco — sem fallback inventado
-                (o site antigo exibia R$700 numa página e R$699 noutra). */}
-            {settings && settings.free_shipping_from_cents > 0 && (
-              <span className="header-topbar__item">
-                Frete grátis acima de {formatBRL(settings.free_shipping_from_cents)}
-              </span>
-            )}
-            {settings && settings.pix_discount_percent > 0 && (
-              <span className="header-topbar__item header-topbar__item--accent">
-                PIX −{settings.pix_discount_percent}% na hora
-              </span>
-            )}
-            {settings && settings.installments > 1 && (
-              <span className="header-topbar__item">{settings.installments}x sem juros</span>
-            )}
-          </span>
-          <span className="header-topbar__spacer" />
-          <span className="header-topbar__group header-topbar__group--info">
-            {storePlace ? <span className="header-topbar__item header-topbar__item--muted">{storePlace}</span> : null}
-            {settings?.whatsapp ? (
-              <a href={`https://wa.me/${settings.whatsapp}`} target="_blank" rel="noopener noreferrer" className="header-topbar__item header-topbar__item--muted">
-                WhatsApp
-              </a>
-            ) : null}
-            <Link href="/rastreamento" className="header-topbar__link">
-              Rastrear pedido
-            </Link>
-            <Link href="/atendimento" className="header-topbar__link">
-              Atendimento
-            </Link>
-            <Link href="/institucional" className="header-topbar__link">
-              A loja
-            </Link>
+          <span className="header-topbar__item">
+            <span className="dot-live" aria-hidden /> Entrega para todo o Brasil
           </span>
         </div>
       </div>
 
       <div className="header-main">
         <Link href="/" className="brand" aria-label="Airsoft Americana — página inicial">
-          <Image src="/logo.png" alt="Airsoft Americana" width={56} height={56} className="brand__logo" priority />
+          <Image src="/logo.png" alt="Airsoft Americana" width={84} height={84} className="brand__logo" priority />
           <span className="brand__text">
             <span className="brand__name">
               AIRSOFT <span className="brand__accent">AMERICANA</span>
             </span>
-            <span className="brand__tag">Airsoft · Tiro Esportivo · Loadout</span>
           </span>
         </Link>
 
@@ -328,14 +248,18 @@ export function Header() {
         </button>
       </div>
 
-      <div className="wrap">
-        <DeptStrip />
-      </div>
+      <DeptStrip />
 
       {menuOpen && (
         <nav className="header-mobile" aria-label="Menu principal">
           <Link href="/catalogo" onClick={() => setMenuOpen(false)}>
             Catálogo completo
+          </Link>
+          <Link href="/guia" onClick={() => setMenuOpen(false)}>
+            Guias
+          </Link>
+          <Link href="/blog" onClick={() => setMenuOpen(false)}>
+            Blog
           </Link>
           <Link href="/conta" onClick={() => setMenuOpen(false)}>
             Minha conta

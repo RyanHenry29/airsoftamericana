@@ -4,17 +4,27 @@
 // → Orientação ("Começando no airsoft?") → Provas de confiança → Guias → Rodapé
 import Image from "next/image";
 import Link from "next/link";
+import {
+  Clock,
+  CreditCard,
+  PackageSearch,
+  QrCode,
+  RefreshCcw,
+  Store,
+  Truck,
+} from "lucide-react";
 import { Header } from "./components/Header";
 import { MegaMenu } from "./components/MegaMenu";
 import { ProductCard } from "./components/ProductCard";
 import { Footer } from "./components/Footer";
-import { NewsletterForm } from "./components/NewsletterForm";
+
 import {
   API_URL,
   formatBRL,
   installmentsFor,
   pixPrice,
   storeGet,
+  type CommercialSettings,
   type StoreHome,
   type StoreProduct,
   type StoreDepartment,
@@ -98,11 +108,15 @@ export default async function HomePage() {
     totals: { products: 0 },
   });
 
-  const { settings } = home;
+  const settingsFromHome = home.settings ?? ({} as CommercialSettings);
+  const settings = {
+    ...settingsFromHome,
+    address: settingsFromHome.address ?? ({} as CommercialSettings["address"]),
+  };
   const hero = home.banners[0] ?? null;
-  const freeShipping = settings.free_shipping_from_cents;
-  const pixPercent = settings.pix_discount_percent;
-  const inst = settings.installments;
+  const freeShipping = settings?.free_shipping_from_cents ?? 0;
+  const pixPercent = settings?.pix_discount_percent ?? 0;
+  const inst = settings?.installments ?? 1;
 
   // Hero usa apenas o primeiro banner ativo
   const heroContent = hero ? {
@@ -112,6 +126,50 @@ export default async function HomePage() {
     link: hero.link || "/catalogo",
     image: hero.imageDesktop || "/produtos/e0c3dc6a62a7f830.webp",
   } : null;
+
+  // Provas de confiança: estrutura única (rótulo + valor) — dado real do banco,
+  // sem métrica inventada e sem texto verde solto no meio da frase.
+  const trust: { label: string; value: string; Icon: typeof Truck }[] = [
+    {
+      label: "Catálogo",
+      value:
+        home.totals.products > 0
+          ? `${home.totals.products} produtos publicados`
+          : "Em atualização — fale com a equipe",
+      Icon: PackageSearch,
+    },
+    { label: "Entrega", value: "Para todo o Brasil", Icon: Truck },
+    ...(settings.service_hours
+      ? [{ label: "Atendimento", value: settings.service_hours, Icon: Clock }]
+      : []),
+    {
+      label: "PIX",
+      value:
+        pixPercent > 0
+          ? `${pixPercent}% de desconto à vista`
+          : "Transferência direta, sem intermediários",
+      Icon: QrCode,
+    },
+    ...(inst > 1
+      ? [
+          {
+            label: "Cartão",
+            value: `${inst}x${settings.installment_interest_free !== false ? " sem juros" : ""} no cartão`,
+            Icon: CreditCard,
+          },
+        ]
+      : []),
+    ...(settings.address?.city
+      ? [
+          {
+            label: "Loja física",
+            value: `${settings.address.city}/${settings.address.state ?? ""}`.replace(/\/$/, ""),
+            Icon: Store,
+          },
+        ]
+      : []),
+    { label: "Trocas", value: "Devoluções conforme o CDC", Icon: RefreshCcw },
+  ];
 
   return (
     <main id="conteudo" className="page-shell">
@@ -266,58 +324,30 @@ export default async function HomePage() {
       )}
 
       {/* ============================================================
-           ORIENTAÇÃO — "Começando no airsoft?" caminho guiado
+           GUIA — link para página dedicada (conteúdo movido da home)
            ============================================================ */}
-      <section className="block block--border" aria-labelledby="orientacao-title">
+      <section className="block block--border" aria-labelledby="guia-title">
         <div className="sec-head">
           <div>
             <span className="sec-kicker">Precisa de ajuda?</span>
-            <h2 id="orientacao-title" className="sec-title">Começando no airsoft?</h2>
+            <h2 id="guia-title" className="sec-title">Começando no airsoft?</h2>
           </div>
-          <Link href="/atendimento" className="sec-link">Falar com especialista</Link>
+          <Link href="/guia/primeiro-jogo" className="sec-link">Ver guia completo</Link>
         </div>
-        <div className="orientacao-grid">
-          <article className="orientacao-card">
-            <div className="orientacao-icon" aria-hidden="true">🛡️</div>
-            <h3>1. Proteção ocular</h3>
-            <p>Óculos ou máscara com certificação de impacto (ANSI Z87.1+). Obrigatório em qualquer partida.</p>
-            <Link href="/catalogo?categoria=protecao-ocular" className="orientacao-link">Ver proteções →</Link>
-          </article>
-          <article className="orientacao-card">
-            <div className="orientacao-icon" aria-hidden="true">🔫</div>
-            <h3>2. Réplica ideal</h3>
-            <p>AEG para início (fácil manutenção), GBBR para realismo, HPA para performance. Escolha pelo seu estilo de jogo.</p>
-            <Link href="/catalogo?categoria=replicas" className="orientacao-link">Ver réplicas →</Link>
-          </article>
-          <article className="orientacao-card">
-            <div className="orientacao-icon" aria-hidden="true">⚪</div>
-            <h3>3. BBs de qualidade</h3>
-            <p>0.20g a 0.28g de marcas confiáveis. BBs ruins travam o cano e estragam o hop-up.</p>
-            <Link href="/catalogo?categoria=bbs" className="orientacao-link">Ver BBs →</Link>
-          </article>
-          <article className="orientacao-card">
-            <div className="orientacao-icon" aria-hidden="true">🔋</div>
-            <h3>4. Bateria e carregador</h3>
-            <p>LiPo 7.4V ou 11.1V com carregador balanceador. Nunca carregue sem supervisão.</p>
-            <Link href="/catalogo?categoria=baterias" className="orientacao-link">Ver baterias →</Link>
-          </article>
-          <article className="orientacao-card">
-            <div className="orientacao-icon" aria-hidden="true">🔧</div>
-            <h3>5. Manutenção básica</h3>
-            <p>Óleo de silicone, graxa branca, chave allen. Limpe o cano e lubrifique a gearbox periodicamente.</p>
-            <Link href="/catalogo?categoria=manutencao" className="orientacao-link">Ver ferramentas →</Link>
-          </article>
-          <article className="orientacao-card">
-            <div className="orientacao-icon" aria-hidden="true">🎒</div>
-            <h3>6. Fardamento e carga</h3>
-            <p>Cinto tático, coldre, pouches para mags, mochila de hidratação. Conforto define sua permanência no campo.</p>
-            <Link href="/catalogo?categoria=loadout" className="orientacao-link">Ver loadout →</Link>
-          </article>
+        <div className="inst-copy" style={{ maxWidth: "72ch" }}>
+          <p className="inst-copy__lead">
+            Checklist prático para o primeiro jogo: proteção ocular, réplica, BBs, bateria, manutenção e loadout.
+            Se tiver dúvida de compatibilidade ou orçamento, fale com a equipe.
+          </p>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "1rem" }}>
+            <Link href="/guia/primeiro-jogo" className="btn-primary">Abrir guia de primeiro jogo</Link>
+            <Link href="/atendimento" className="btn-secondary">Falar com especialista</Link>
+          </div>
         </div>
       </section>
 
       {/* ============================================================
-           PROVAS DE CONFIANÇA — avaliações, marcas, prazo, atendimento
+           CONFIANÇA — informações reais, sem métricas inventadas
            ============================================================ */}
       <section className="block" aria-labelledby="confianca-title">
         <div className="sec-head">
@@ -325,38 +355,23 @@ export default async function HomePage() {
             <span className="sec-kicker">Por que comprar aqui?</span>
             <h2 id="confianca-title" className="sec-title">Confiança</h2>
           </div>
+          <Link href="/atendimento" className="sec-link">Fale com a equipe</Link>
         </div>
         <ul className="confianca-grid">
-          <li>
-            <strong>{home.totals.products}</strong> produtos no catálogo
-          </li>
-          <li>
-            Entrega para todo o Brasil
-          </li>
-          {settings.service_hours && (
-            <li>
-              <strong>Atendimento</strong> {settings.service_hours}
-            </li>
-          )}
-          <li>
-            <strong>PIX −{pixPercent}%</strong> desconto à vista
-          </li>
-          <li>
-            <strong>{inst}x sem juros</strong> no cartão
-          </li>
-          <li>
-            {settings.address.city ? (
-              <>
-                <strong>Loja física</strong> em {settings.address.city}/{settings.address.state}
-              </>
-            ) : null}
-          </li>
-          <li>
-            Trocas e devoluções conforme CDC
-          </li>
-          <li>
-            <a href="/atendimento" style={{ color: "var(--primary)", textDecoration: "underline" }}>Fale conosco no WhatsApp</a>
-          </li>
+          {trust.map((item) => {
+            const Icon = item.Icon;
+            return (
+              <li key={item.label} className="confianca-item">
+                <span className="confianca-item__ico" aria-hidden="true">
+                  <Icon size={18} strokeWidth={1.8} />
+                </span>
+                <span className="confianca-item__body">
+                  <span className="confianca-item__label">{item.label}</span>
+                  <span className="confianca-item__value">{item.value}</span>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </section>
 
@@ -369,38 +384,25 @@ export default async function HomePage() {
             <span className="sec-kicker">Conteúdo</span>
             <h2 id="guias-title" className="sec-title">Guias</h2>
           </div>
-          <Link href="/busca" className="sec-link">Ver todos</Link>
+          <Link href="/guia" className="sec-link">Ver todos os guias</Link>
         </div>
         <ul className="guias-grid">
           <li className="guia-card">
             <h3>Como escolher sua primeira AEG</h3>
             <p>Entenda sistemas de propulsão, marcas, upgrade path e orçamento. Evite arrependimento na primeira compra.</p>
-            <Link href="/catalogo?categoria=aeg" className="guia-link">Ver AEGs recomendadas →</Link>
+            <Link href="/guia/escolher-primeira-aeg" className="guia-link">Ler o guia →</Link>
           </li>
           <li className="guia-card">
             <h3>GBB vs HPA: qual vale a pena?</h3>
             <p>Comparativo real: realismo, manutenção, custo por partida, consistência de FPS. Decida com dados.</p>
-            <Link href="/catalogo?categoria=gbb" className="guia-link">Ver GBBs →</Link>
+            <Link href="/guia/gbb-vs-hpa" className="guia-link">Ler o guia →</Link>
           </li>
           <li className="guia-card">
             <h3>Checklist de primeiro jogo</h3>
             <p>O que levar, o que vestir, regras de segurança, etiqueta de campo. Chegue preparado e jogue tranquilo.</p>
-            <Link href="/atendimento" className="guia-link">Falar com especialista →</Link>
+            <Link href="/guia/primeiro-jogo" className="guia-link">Ler o guia →</Link>
           </li>
         </ul>
-      </section>
-
-      {/* ============================================================
-           NEWSLETTER — já existe no Footer, mas mantemos aqui também
-           ============================================================ */}
-      <section className="block block--border" aria-labelledby="newsletter-title">
-        <div className="newsletter-band">
-          <div>
-            <span className="sec-kicker">Drops e reposição</span>
-            <h2 id="newsletter-title" className="sec-title">Receba as novidades no seu e-mail</h2>
-          </div>
-          <NewsletterForm />
-        </div>
       </section>
 
       <Footer settings={settings} />

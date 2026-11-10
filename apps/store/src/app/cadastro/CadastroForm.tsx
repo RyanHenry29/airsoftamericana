@@ -500,7 +500,7 @@ export function CadastroForm() {
           Compra protegida
         </span>
         <span>18+</span>
-        <span>Dados guardados (LGPD)</span>
+        <span>Dados protegidos (LGPD)</span>
       </div>
     </form>
   );

@@ -62,3 +62,36 @@ export async function getFreeShippingFromCents(db: Db): Promise<number> {
   const cents = Number(settings.free_shipping_from_cents);
   return Number.isFinite(cents) && cents > 0 ? Math.floor(cents) : 0;
 }
+
+/** Dados da empresa (key `empresa_dados`) — razão social e CNPJ do rodapé. */
+export type CompanyData = {
+  nome_fantasia: string;
+  razao_social: string;
+  cnpj: string;
+  telefone: string;
+  email: string;
+};
+
+/**
+ * Lê os dados cadastrais da empresa. `null` quando a linha não existe ou não
+ * tem CNPJ — o rodapé cai para a linha de copyright simples em vez de exibir
+ * cadastro pela metade.
+ */
+export async function getCompanyData(db: Db): Promise<CompanyData | null> {
+  const rows = await db.select().from(schema.systemSettings);
+  const row = rows.find((r) => r.key === "empresa_dados");
+  const value = row?.value;
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const text = (key: string): string =>
+    typeof raw[key] === "string" ? (raw[key] as string).trim() : "";
+  const cnpj = text("cnpj");
+  if (!cnpj) return null;
+  return {
+    nome_fantasia: text("nome_fantasia") || "Airsoft Americana",
+    razao_social: text("razao_social"),
+    cnpj,
+    telefone: text("telefone_principal"),
+    email: text("email_contato"),
+  };
+}

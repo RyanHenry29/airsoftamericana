@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 
 const API_URL = "";
 
@@ -19,9 +20,19 @@ function readParam(name: string): string | null {
   return new URLSearchParams(window.location.search).get(name);
 }
 
+function friendlyOAuthError(raw: string): string {
+  const msg = decodeURIComponent(raw.replace(/\+/g, " ")).trim();
+  const lower = msg.toLowerCase();
+  if (lower.includes("access_denied")) return "Acesso com Google cancelado. Você pode tentar entrar novamente quando quiser.";
+  if (lower.includes("redirect") || lower.includes("callback")) return "A configuração de retorno do Google não confere. Verifique as Redirect URLs no Supabase e no Google Cloud.";
+  if (lower.includes("invalid") && lower.includes("client")) return "Credenciais do Google inválidas na configuração do provedor. Revise Client ID/Secret no Supabase Auth.";
+  return msg || "Não foi possível concluir o acesso com Google.";
+}
+
 export function CallbackClient() {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [detail, setDetail] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -31,13 +42,19 @@ export function CallbackClient() {
 
       const oauthError = readParam("error_description") || readParam("error");
       if (oauthError) {
-        if (!cancelled) setError(decodeURIComponent(oauthError.replace(/\+/g, " ")));
+        if (!cancelled) {
+          setError(friendlyOAuthError(oauthError));
+          setDetail("Se o problema persistir, confirme que o provedor Google está ativo no Supabase e que a URL de retorno inclui /auth/callback.");
+        }
         return;
       }
 
       const accessToken = readParam("access_token");
       if (!accessToken) {
-        if (!cancelled) setError("O acesso com Google não retornou uma sessão. Tente entrar de novo.");
+        if (!cancelled) {
+          setError("O acesso com Google não retornou uma sessão válida.");
+          setDetail("Tente entrar novamente. Se continuar, verifique as Redirect URLs no Supabase Auth (deve incluir https://airsoftamericana.vercel.app/auth/callback).");
+        }
         return;
       }
 
@@ -48,9 +65,12 @@ export function CallbackClient() {
           credentials: "include",
           body: JSON.stringify({ accessToken }),
         });
-        const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+        const json = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
         if (!res.ok) {
-          if (!cancelled) setError(json.error?.message ?? "Não foi possível concluir o acesso com Google.");
+          if (!cancelled) {
+            setError(json.error?.message ?? "Não foi possível concluir o acesso com Google.");
+            setDetail("A sessão do Google foi recebida, mas a API não conseguiu concluir o login. Tente novamente em instantes.");
+          }
           return;
         }
         // Limpa o fragmento (contém o token) antes de navegar.
@@ -58,7 +78,10 @@ export function CallbackClient() {
         router.replace(next);
         router.refresh();
       } catch {
-        if (!cancelled) setError("Sem conexão com o servidor. Tente entrar de novo.");
+        if (!cancelled) {
+          setError("Sem conexão com o servidor.");
+          setDetail("Verifique sua internet e tente entrar novamente.");
+        }
       }
     }
 
@@ -70,14 +93,22 @@ export function CallbackClient() {
 
   if (error) {
     return (
-      <div className="auth-field" style={{ maxWidth: 480 }}>
-        <p role="alert" className="auth-error">
+      <div style={{ maxWidth: 520 }}>
+        <p role="alert" className="auth-error" style={{ marginBottom: "0.75rem" }}>
           <AlertTriangle size={15} strokeWidth={2.2} aria-hidden="true" />
           <span>{error}</span>
         </p>
-        <p className="auth-switch" style={{ justifyContent: "flex-start" }}>
-          <a href="/entrar">Voltar para entrar</a>
-        </p>
+        {detail ? <p className="auth-hint" style={{ marginBottom: "1rem" }}>{detail}</p> : null}
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <Link href="/entrar" className="auth-submit" style={{ width: "auto", minHeight: "2.75rem", padding: "0.75rem 1.1rem", textDecoration: "none" }}>
+            <ArrowLeft size={16} aria-hidden="true" />
+            Voltar para entrar
+          </Link>
+          <button type="button" className="auth-google" style={{ width: "auto" }} onClick={() => window.location.assign("/entrar")}>
+            <RefreshCw size={16} aria-hidden="true" />
+            Tentar novamente
+          </button>
+        </div>
       </div>
     );
   }

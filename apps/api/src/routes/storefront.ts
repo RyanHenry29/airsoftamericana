@@ -4,6 +4,8 @@ import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { listProducts, getProductBySlug, type SortKey } from "../services/catalog.js";
 import { buildHome, getCommercialSettings, searchSuggestions } from "../services/homepage.js";
+import { getCompanyData } from "../services/settings.js";
+import { registerBlogRoutes } from "./blog.js";
 import {
   childrenOf,
   countProductsByCategory,
@@ -221,6 +223,11 @@ export function registerStorefrontRoutes(app: FastifyInstance, db: Db): void {
     reply.send(await getCommercialSettings(db));
   });
 
+  // ---------------------------------------------------------------- Dados da empresa (CNPJ do rodapé)
+  app.get("/api/store/company", async (_request, reply) => {
+    reply.send({ company: await getCompanyData(db) });
+  });
+
   // ---------------------------------------------------------------- Rastreamento de pedido
   // Exige número do pedido + e-mail cadastrado: devolve só o que é do cliente.
   app.get("/api/store/orders/track", async (request, reply) => {
@@ -358,4 +365,8 @@ export function registerStorefrontRoutes(app: FastifyInstance, db: Db): void {
     const q = request.query as Record<string, string | undefined>;
     reply.send(await searchSuggestions(db, q.q ?? ""));
   });
+
+  // ---------------------------------------------------------------- Blog editorial
+  // Leitura pública (loja) + gestão (painel) — mesma implementação, um registro.
+  registerBlogRoutes(app, db);
 }

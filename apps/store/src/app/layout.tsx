@@ -55,7 +55,8 @@ export async function generateMetadata() {
   const free = s?.free_shipping_from_cents ?? 0;
   const pixBit = pix > 0 ? `PIX −${pix}% à vista, ` : "";
   const shipBit = free > 0 ? `frete grátis acima de ${formatBRL(free)}, ` : "";
-  const baseDesc = `Réplicas de airsoft, carabinas de pressão, upgrades, loadout e equipamentos táticos. ${pixBit}${shipBit}3x sem juros e envio para todo o Brasil.`.replace(/, $/, ". ");
+  const instBit = inst > 1 ? `${inst}x sem juros, ` : "";
+  const baseDesc = `Réplicas de airsoft, carabinas de pressão, upgrades, loadout e equipamentos táticos. ${pixBit}${shipBit}${instBit}envio para todo o Brasil.`.replace(/, $/, ". ");
   return {
     metadataBase: new URL(SITE_URL),
     title: {
