@@ -8,6 +8,8 @@ const API_ORIGIN =
 
 const nextConfig: NextConfig = {
   images: {
+    // 90 = logo do header (nitidez no downscale 1254→84); 75 = padrão do resto.
+    qualities: [75, 90],
     remotePatterns: [
       { protocol: "https", hostname: "**" },
       { protocol: "http", hostname: "localhost" },

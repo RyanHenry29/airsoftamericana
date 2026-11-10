@@ -20,6 +20,7 @@ import {
   type StoreHome,
   type StoreProduct,
 } from "../lib/store";
+import { OG_IMAGE } from "../lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       title: name,
       description,
       url: `/${slug}`,
-      ...(image ? { images: [{ url: image, alt: name }] } : {}),
+      // Sem foto no produto ainda (catálogo vazio): o card volta para a arte de marca.
+      images: image ? [{ url: image, alt: name }, OG_IMAGE] : [OG_IMAGE],
     },
   };
 }

@@ -219,19 +219,36 @@ export async function fetchWithTimeout(
   }
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export async function storeGet<T>(path: string, fallback: T): Promise<T> {
   const url = /^https?:\/\//i.test(path) ? path : `${API_URL}${path}`;
-  try {
-    const res = await fetchWithTimeout(url, { cache: "no-store" });
-    if (!res.ok) {
-      console.error(`[store] ${res.status} ${res.statusText} em ${url}`);
-      return fallback;
+  const started = Date.now();
+  let lastLog = "";
+  // SSR depende da API: um 500 transitório (cold start, pool esgotado no pico
+  // de requisições) não pode virar rodapé sem endereço nem menu sem
+  // departamentos — 1 retry rápido, e só enquanto restar orçamento de função
+  // (plano Hobby trava por volta de 10 s por request).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await sleep(300);
+    try {
+      const budget = 9500 - (Date.now() - started);
+      if (budget < 800) break;
+      const timeout = attempt === 0 ? Math.min(6500, budget) : Math.min(3000, budget);
+      const res = await fetchWithTimeout(url, { cache: "no-store" }, timeout);
+      if (res.ok) {
+        return (await res.json()) as T;
+      }
+      lastLog = `[store] ${res.status} ${res.statusText} em ${url}`;
+      // 4xx de pedido (404 etc.) não melhora repetindo.
+      if (res.status < 500 && res.status !== 429) break;
+    } catch (err) {
+      lastLog = `[store] falha ao buscar ${url}: ${err instanceof Error ? err.message : String(err)}`;
     }
-    return (await res.json()) as T;
-  } catch (err) {
-    console.error(`[store] falha ao buscar ${url}:`, err);
-    return fallback;
+    if (Date.now() - started > 4000) break; // sem orçamento para a segunda tentativa
   }
+  console.error(lastLog);
+  return fallback;
 }
 
 export function formatBRL(cents: number | null | undefined): string {

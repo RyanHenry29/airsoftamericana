@@ -1,6 +1,7 @@
 // language: TSX, file: apps/store/src/app/cadastro/page.tsx, target: Next.js App Router
 import type { Metadata } from "next";
 import { AuthShell } from "../components/AuthShell";
+import { OG_IMAGE } from "../lib/seo";
 import { CadastroForm } from "./CadastroForm";
 
 export const metadata: Metadata = {
@@ -13,6 +14,7 @@ export const metadata: Metadata = {
     description:
       "Crie sua conta na Airsoft Americana em um minuto: sem taxa, sem assinatura e com checkout mais rápido.",
     url: "/cadastro",
+    images: [OG_IMAGE],
   },
   robots: { index: false, follow: true },
 };

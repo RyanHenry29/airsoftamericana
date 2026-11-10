@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { Header } from "../../components/Header";
 import { SiteFooter } from "../../components/SiteFooter";
 import { loadHome } from "../../lib/store";
+import { OG_IMAGE } from "../../lib/seo";
 import { fetchBlogPost, formatPostDate, paragraphs } from "../../lib/blog";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       type: "article",
       publishedTime: post.publishedAt ?? undefined,
       authors: [post.author],
+      // Artigo sem capa: card de marca no lugar de share sem imagem.
+      images: post.coverImage ? [{ url: post.coverImage, alt: post.title }, OG_IMAGE] : [OG_IMAGE],
     },
   };
 }

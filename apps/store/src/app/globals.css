@@ -199,17 +199,7 @@ body {
 /* Hero antigo (compatibilidade com banners ainda no modelo antigo) */
 .hero-full { display: none; }
 
-/* â€”â€”â€”â€”â€” Header: barra de departamentos + mega menu â€”â€”â€”â€”â€” */
-.dept-bar { background: var(--secondary); border-bottom: 1px solid var(--border); }
-.dept-inner { position: relative; display: flex; align-items: center; gap: 0.25rem; }
-.dept-label { font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted-foreground); padding-right: 0.9rem; border-right: 1px solid var(--border); margin-right: 0.5rem; }
-.dept-btn {
-  display: inline-block; font-family: var(--font-display); font-weight: 700; text-transform: uppercase;
-  font-size: 0.78rem; letter-spacing: 0.06em; color: #f4f5f2; text-decoration: none;
-  padding: 0.75rem 0.85rem; border-bottom: 2px solid transparent; transition: color 0.2s ease, border-color 0.2s ease;
-  white-space: nowrap;
-}
-.dept-btn:hover, .dept-btn.is-open { color: var(--primary); border-color: var(--primary); }
+/* ——————— Header: mega menu (barra usa .dept-strip* no layout.css) ——————— */
 /* Mega menu: colunas densas de links puros — lista de texto corrido, sem
    caixa por link, sem seta, espaçamento de menu de verdade (referência). */
 .mega-panel {
@@ -252,52 +242,16 @@ body {
 .newsletter .input { flex: 1; }
 .newsletter-ok { display: flex; align-items: center; gap: 0.6rem; color: var(--primary); font-weight: 700; font-size: 0.9rem; }
 
-/* â€”â€”â€”â€”â€” Faixa de acesso rapido â€” produtos reais â€”â€”â€”â€”â€” */
-.quick-strip { background: #080a08; border-bottom: 1px solid var(--border); }
-.quick-strip ul { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; padding-block: 0.75rem; }
-.quick-strip .ql { font-family: var(--font-mono); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted-foreground); margin-right: 0.5rem; }
-.quick-cat { display: inline-flex; align-items: center; gap: 0.45rem; border: 1px solid var(--border); border-radius: 2px; padding: 0.5rem 0.9rem; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: #c8cbc8; transition: all 0.2s ease; text-decoration: none; }
-.quick-cat:hover { border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
 
-/* â€”â€”â€”â€”â€” Trustbar: fatos em linha, sem parÃ¡grafo â€”â€”â€”â€”â€” */
-.trustbar { background: var(--base); border-block: 1px solid var(--border); }
-.trustbar ul { display: grid; grid-template-columns: repeat(4, 1fr); }
-.trustbar li { display: flex; align-items: center; gap: 0.8rem; padding: 1.1rem 1.25rem; border-left: 1px solid var(--border); color: var(--foreground); }
-.trustbar li:first-child { border-left: 0; padding-left: 0; }
-.trustbar li svg { color: var(--primary); flex: none; }
-.trustbar b { display: block; font-family: var(--font-display); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; }
-.trustbar span { display: block; font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted-foreground); }
-@media (max-width: 900px) {
-  .trustbar ul { grid-template-columns: 1fr 1fr; }
-  .trustbar li { border-left: 0; border-top: 1px solid var(--border); padding: 0.9rem 0; }
-  .trustbar li:nth-child(-n+2) { border-top: 0; }
-}
-
-/* â€”â€”â€”â€”â€” WhatsApp redondo â€”â€”â€”â€”â€” */
-.wpp-float { position: fixed; right: 1.25rem; bottom: 1.5rem; z-index: 40; width: 52px; height: 52px; display: grid; place-items: center; background: #25d366; color: #0b3b1e; border: 1px solid rgb(0 0 0 / 0.15); border-radius: var(--radius); transition: background 0.2s ease; text-decoration: none; font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; }
-.wpp-float:hover { background: #1fb857; }
-
-/* Departamentos: lista numerada, largura total */
-.depts { border-block: 1px solid var(--border); }
-.depts li { border-bottom: 1px solid var(--border); }
-.depts li:last-child { border-bottom: 0; }
-.dept-row { display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 1.25rem; padding: 0.95rem 0.5rem; transition: background 0.2s ease, padding-left 0.25s var(--ease-out); text-decoration: none; color: inherit; }
-.dept-row:hover { background: var(--secondary); padding-left: 1.25rem; }
-.dept-row .num { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted-foreground); }
-.dept-row .name { font-family: var(--font-display); text-transform: uppercase; font-weight: 700; font-size: clamp(1.1rem, 2.4vw, 1.6rem); line-height: 1; letter-spacing: 0.01em; }
-.dept-row .sub { display: block; font-family: var(--font-mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--muted-foreground); margin-top: 0.25rem; }
-.dept-row:hover .name { color: var(--primary); }
-.dept-row .go { font-family: var(--font-mono); font-size: 0.95rem; color: #c8cbc8; transition: transform 0.25s var(--ease-out), color 0.2s ease; }
-.dept-row:hover .go { transform: translateX(8px); color: var(--primary); }
 
 .section-title { font-family: var(--font-display); text-transform: uppercase; font-weight: 700; font-size: clamp(1.75rem, 4vw, 2.75rem); line-height: 0.95; letter-spacing: 0.01em; }
 .section-kicker { display: inline-block; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; color: var(--primary); margin-bottom: 0.6rem; }
 
 /* â€”â€”â€”â€”â€” CabeÃ§alho de seÃ§Ã£o no padrÃ£o GM TÃTICO: tÃ­tulo pesado + link sublinhado â€”â€”â€”â€”â€” */
-.sec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.25rem; margin-bottom: 1.75rem; }
+.sec-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 1.25rem; margin-bottom: 1.75rem; }
 .sec-kicker { display: block; font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--primary); margin-bottom: 0.5rem; }
 .sec-title { font-family: var(--font-display); text-transform: uppercase; font-weight: 700; font-size: clamp(1.9rem, 4.5vw, 2.375rem); line-height: 0.95; letter-spacing: 0; color: var(--foreground); }
-.sec-link { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.875rem; color: var(--foreground); border-bottom: 2px solid var(--primary); padding-bottom: 3px; white-space: nowrap; }
+.sec-link { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.875rem; color: var(--foreground); border-bottom: 2px solid var(--primary); padding-bottom: 3px; white-space: nowrap; margin-left: auto; }
 .sec-link:hover { color: var(--primary); }
 
 /* â€”â€”â€”â€”â€” Botoes: verde tatico, raio pequeno, sem redondo generico â€”â€”â€”â€”â€” */

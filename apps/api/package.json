@@ -15,6 +15,7 @@
     "db:bootstrap": "tsx src/cli/bootstrap-prod.ts",
     "db:reset": "node -e \"require('fs').rmSync('data',{recursive:true,force:true})\" && tsx src/db/seed.ts",
     "admin:reset-mfa": "tsx src/cli/admin-reset-mfa.ts",
+    "admin:set-password": "tsx src/cli/admin-set-password.ts",
     "e2e:seed": "tsx src/cli/e2e-seed.ts"
   },
   "dependencies": {

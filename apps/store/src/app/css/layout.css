@@ -62,6 +62,7 @@
   margin-inline: auto;
   display: flex;
   align-items: center;
+  flex-wrap: wrap; /* estreito demais: quebra linha em vez de cortar/rolar */
   gap: 1rem 1.25rem;
   padding: 0.5rem clamp(1rem, 4vw, 2.5rem);
   font-family: var(--font-mono);
@@ -71,7 +72,7 @@
   color: var(--dim);
 }
 .header-topbar__group { display: inline-flex; align-items: center; gap: 0.9rem; min-width: 0; }
-.header-topbar__group--info { gap: 1rem; }
+.header-topbar__group--info { gap: 1rem; margin-left: auto; }
 .header-topbar__item { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
 .header-topbar__item--accent { color: var(--primary); font-weight: 600; }
 .header-topbar__item--muted { color: #9aa09a; }
@@ -85,10 +86,11 @@
   transition: color 0.2s ease, border-color 0.2s ease;
 }
 .header-topbar__link:hover { color: var(--primary); border-color: var(--primary); }
+/* Ladeira estreita: faixa aperta, links descem para a própria linha (à
+   direita) em vez de virar rolagem escondida — nenhum conteúdo some ou corta. */
 @media (max-width: 900px) {
-  .header-topbar__inner { gap: 0.75rem; overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; }
-  .header-topbar__inner::-webkit-scrollbar { display: none; }
-  .header-topbar__group { gap: 0.75rem; flex: 0 0 auto; }
+  .header-topbar__inner { gap: 0.75rem; }
+  .header-topbar__group { gap: 0.75rem; }
   .header-topbar__item--muted::after { display: none; }
 } @media (max-width: 640px) { .header-topbar__group--info { display: none; } .header-topbar__inner { padding-left: 0.85rem; padding-right: 0.85rem; } }
 
@@ -252,26 +254,47 @@
   font-size: 0.95rem;
   border-bottom: 1px solid var(--line);
 }
+/* Menu aberto: grupos (Departamentos / A loja) com rótulo técnico. */
+.header-mobile__group { display: flex; flex-direction: column; }
+.header-mobile__group + .header-mobile__group { border-top: 1px solid var(--line); }
+.header-mobile__label {
+  padding: 0.85rem clamp(1rem, 4vw, 2.5rem) 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--primary);
+}
 .header-mobile a:hover { color: var(--primary); }
+/* Ladeira mobile: barra de departamentos some (o hambúrguer é a única
+   navegação), conta vai para o menu, carrinho fica como ícone, a busca vira
+   campo com bloco de funde — caixa visível de polegar, sem zoom do iOS. */
 @media (max-width: 860px) {
+  .header-main { flex-wrap: wrap; gap: 0.75rem; }
   .header-search { order: 3; flex-basis: 100%; max-width: none; }
-  .header-main { flex-wrap: wrap; }
-  .header-actions { display: none; }
+  .header-search form {
+    background: var(--panel, #0a0c0a);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    gap: 0.5rem;
+    padding: 0.35rem 0.55rem;
+  }
+  .header-search__input { font-size: 1rem; padding-block: 0.35rem; } /* 16px: iOS não dá zoom automático */
+  .header-search__go {
+    background: var(--primary);
+    color: #06120a;
+    padding: 0.55rem 0.95rem;
+    border-radius: 2px;
+  }
+  .header-actions { display: flex; gap: 1rem; margin-left: auto; }
+  .header-action--account { display: none; }
+  .header-action__label { display: none; }
   .header-burger { display: inline-flex; }
   .header-mobile { display: flex; }
 }
 
 /* â€”â€”â€”â€”â€” Mega menu: complementos â€”â€”â€”â€”â€” */
-/* .dept-inner (globals.css) Ã© o ancora do painel; o slot nÃ£o cria contexto
-   prÃ³prio para o dropdown nÃ£o abrir estreito demais. */
-.dept-inner {
-  width: 100%;
-  max-width: var(--shell);
-  margin-inline: auto;
-  padding-inline: clamp(1rem, 4vw, 2.5rem);
-  overflow: visible;
-}
-.dept-slot { position: static; }
 .mega-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem 2rem; align-items: start; }
 .mega-col { min-width: 0; }
 .mega-group-title {
@@ -298,51 +321,14 @@
 .mega-highlight__img { object-fit: cover; }
 .mega-highlight__body { display: flex; flex-direction: column; gap: 0.5rem; }
 
-/* NavegaÃ§Ã£o por departamento no mobile */
-.dept-mobile { display: none; }
-.dept-mobile__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border-bottom: 1px solid var(--line);
-}
-.dept-mobile__link {
-  flex: 1 1 auto;
-  padding: 0.85rem 1rem;
-  color: #f4f5f2;
-  text-decoration: none;
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.95rem;
-}
-.dept-mobile__link:hover { color: var(--primary); }
-.dept-mobile__toggle {
-  flex: none;
-  width: 44px;
-  align-self: stretch;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: 0;
-  border-left: 1px solid var(--line);
-  color: var(--dim);
-  cursor: pointer;
-}
-.dept-mobile__toggle:hover { color: var(--primary); }
-@media (max-width: 900px) {
-  .dept-bar { display: none; }
-  .dept-mobile { display: block; background: #070807; border-bottom: 1px solid var(--line); }
-}
-
-/* â€”â€”â€”â€”â€” Barra horizontal de departamentos (estilo Image 3) â€”â€”â€”â€”â€” */
+/* ——————— Barra horizontal de departamentos (estilo Image 3) ——————— */
 /* Barra de departamentos: rótulo + itens em linha única, de ponta a ponta.
    Os itens se distribuem igualmente (flex: 1) — mesma leitura da barra de
    referência, sem colunas espremidas nem conteúdo duplicado. */
 .dept-strip {
   display: flex;
   align-items: stretch;
+  flex-wrap: wrap; /* adaptativa: apertou, os itens descem de linha — nunca rolam */
   border-top: 1px solid var(--line);
   background: #050605;
   overflow-x: auto;
@@ -404,14 +390,20 @@
   flex: 0 0 auto;
 }
 .dept-strip__item--all:hover { color: var(--primary-dark); }
+/* Ladeira estreita: só aperta o rótulo — os itens esticam na linha (e na
+   linha que sobrar), mantendo o preenchimento ponta a ponta. */
 @media (max-width: 1180px) {
-  .dept-strip__slot { flex: 0 0 auto; }
-  .dept-strip__item { flex: 0 0 auto; justify-content: flex-start; }
   .dept-strip__label { padding-inline: 1rem; }
 }
 @media (max-width: 768px) {
   .dept-strip__item { padding: 0.7rem 0.85rem; font-size: 0.8rem; }
   .dept-strip__label { padding: 0.7rem 0.95rem; font-size: 0.68rem; }
+}
+/* Mobile (≤860 = mesmo corte do hambúrguer): a barra de departamentos some e
+   a navegação inteira passa para o menu do hambúrguer — design próprio do
+   mobile, sem barra espremida. Deve vir depois das regras base da barra. */
+@media (max-width: 860px) {
+  .dept-strip { display: none; }
 }
 
 /* Mega menu: descida animada sob a barra (o painel é irmão da nav, ancorado
@@ -454,7 +446,7 @@
   max-width: var(--shell);
   margin-inline: auto;
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
   gap: 2rem;
   padding: clamp(2rem, 4vw, 3rem) clamp(1rem, 4vw, 2.5rem);
 }
@@ -474,7 +466,7 @@
   color: var(--dim);
   line-height: 1.5;
 }
-.footer__col { display: flex; flex-direction: column; gap: 0.5rem; }
+.footer__col { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
 .footer__title {
   font-family: var(--font-mono);
   font-size: 0.66rem;
@@ -507,11 +499,11 @@
   letter-spacing: 0.12em;
   color: #6f766f;
 }
-@media (max-width: 900px) {
-  .footer__grid { grid-template-columns: 1fr 1fr; }
+@media (max-width: 1180px) {
+  .footer__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
-  .footer__grid { grid-template-columns: 1fr; }
+  .footer__grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ——————— Topbar de benefícios (faixa de confiança) ——————— */
@@ -577,6 +569,11 @@
   .footer__topbar-inner { grid-template-columns: 1fr; gap: 0.7rem 0; padding-inline: clamp(0.75rem, 4vw, 1.5rem); }
   .footer__promise { border-left: 0; padding-left: 0; }
 }
+/* Telefone: a faixa de benefícios repete (em outras palavras) o que a topbar
+   e o hero já disseram — some no mobile e o rodapé vira só informação útil. */
+@media (max-width: 640px) {
+  .footer__topbar { display: none; }
+}
 
 /* â€”â€”â€”â€”â€” Grade principal â€”â€”â€”â€”â€” */
 .footer__grid {
@@ -584,12 +581,12 @@
   max-width: var(--shell);
   margin-inline: auto;
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
   gap: 2rem;
   padding: clamp(2.5rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2.5rem);
   border-top: 1px solid var(--line);
 }
-.footer__col { display: flex; flex-direction: column; gap: 0.5rem; }
+.footer__col { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
 .footer__col--brand { gap: 1rem; }
 .footer__brand {
   font-family: var(--font-display);
@@ -715,8 +712,10 @@ address.footer__line { font-style: normal; }
   color: #c8cbc8;
   text-decoration: none;
   width: fit-content;
+  max-width: 100%; /* nunca ultrapassa a coluna: o texto quebra em vez de estourar */
   transition: color 0.2s ease;
 }
+.footer__contact-row span { min-width: 0; overflow-wrap: anywhere; }
 .footer__contact-row:hover { color: var(--primary); }
 .footer__contact-row .footer__ico { margin-top: 0; }
 

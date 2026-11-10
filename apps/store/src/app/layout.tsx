@@ -10,7 +10,7 @@ import "./css/pages.css";
 import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, Inter } from "next/font/google";
 import { CookieConsent } from "./components/CookieConsent";
-import { API_URL, fetchWithTimeout, formatBRL } from "./lib/store";
+import { API_URL, formatBRL, storeGet } from "./lib/store";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airsoftamericana.com.br";
 
@@ -36,16 +36,16 @@ const mono = IBM_Plex_Mono({
 });
 
 async function fetchSettings() {
-  try {
-    const res = await fetchWithTimeout(`${API_URL}/api/store/settings`, {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as { pix_discount_percent?: number; installments?: number; free_shipping_from_cents?: number; address?: { street?: string; district?: string; city?: string; state?: string; zip?: string }; service_hours?: string; email?: string };
-  } catch {
-    return null;
-  }
+  // Mesmo canal com retry do storeGet: as condições do title/description não
+  // podem sumir do head por um 500 transitório.
+  return storeGet<{
+    pix_discount_percent?: number;
+    installments?: number;
+    free_shipping_from_cents?: number;
+    address?: { street?: string; district?: string; city?: string; state?: string; zip?: string };
+    service_hours?: string;
+    email?: string;
+  } | null>(`${API_URL}/api/store/settings`, null);
 }
 
 export async function generateMetadata() {

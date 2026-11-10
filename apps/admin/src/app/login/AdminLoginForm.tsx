@@ -53,6 +53,17 @@ export function AdminLoginForm() {
           setError(messageOf(parseApiError(json, res.status), "Acesso não permitido."));
           return;
         }
+        // 401 aqui é credencial recusada na tela de login — nunca "sessão
+        // expirada" (messageOf reserva essa frase para sessão caducada).
+        if (res.status === 401) {
+          const err = parseApiError(json, res.status);
+          setError(
+            err.message && !err.message.startsWith("Sessão expirada")
+              ? err.message
+              : "E-mail ou senha incorretos.",
+          );
+          return;
+        }
         setError(
           messageOf(
             parseApiError(json, res.status),

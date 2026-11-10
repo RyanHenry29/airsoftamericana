@@ -178,7 +178,7 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
 
       <div className="header-main">
         <Link href="/" className="brand" aria-label="Airsoft Americana — página inicial">
-          <Image src="/logo.png" alt="Airsoft Americana" width={84} height={84} className="brand__logo" priority />
+          <Image src="/logo.png" alt="Airsoft Americana" width={84} height={84} className="brand__logo" priority quality={90} />
           <span className="brand__text">
             <span className="brand__name">
               AIRSOFT <span className="brand__accent">AMERICANA</span>
@@ -268,7 +268,7 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
               <span className="header-action__label">{customer.name.split(" ")[0]}</span>
             </Link>
           ) : (
-            <Link href="/entrar" className="header-action">
+            <Link href="/entrar" className="header-action header-action--account">
               <User size={20} />
               <span className="header-action__label">Entrar</span>
             </Link>
@@ -297,33 +297,46 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
 
       {menuOpen && (
         <nav className="header-mobile" aria-label="Menu principal">
-          <Link href="/catalogo" onClick={() => setMenuOpen(false)}>
-            Catálogo completo
-          </Link>
-          <Link href="/guia" onClick={() => setMenuOpen(false)}>
-            Guias
-          </Link>
-          <Link href="/blog" onClick={() => setMenuOpen(false)}>
-            Blog
-          </Link>
-          <Link href="/por-que-comprar" onClick={() => setMenuOpen(false)}>
-            Por que comprar aqui
-          </Link>
-          <Link href="/conta" onClick={() => setMenuOpen(false)}>
-            Minha conta
-          </Link>
-          <Link href="/rastreamento" onClick={() => setMenuOpen(false)}>
-            Acompanhar pedido
-          </Link>
-          <Link href="/atendimento" onClick={() => setMenuOpen(false)}>
-            Atendimento
-          </Link>
-          <Link href="/institucional" onClick={() => setMenuOpen(false)}>
-            A loja
-          </Link>
-          <Link href="/cart" onClick={() => setMenuOpen(false)}>
-            Carrinho
-          </Link>
+          {(departments.length > 0 ? departments : fallbackDepts).length > 0 && (
+            <div className="header-mobile__group">
+              <span className="header-mobile__label">Departamentos</span>
+              {(departments.length > 0 ? departments : fallbackDepts).map((d) => (
+                <Link key={d.id} href={`/departamento/${d.slug}`} onClick={() => setMenuOpen(false)}>
+                  {d.name}
+                </Link>
+              ))}
+            </div>
+          )}
+          <div className="header-mobile__group">
+            <span className="header-mobile__label">A loja</span>
+            <Link href="/catalogo" onClick={() => setMenuOpen(false)}>
+              Catálogo completo
+            </Link>
+            <Link href="/guia" onClick={() => setMenuOpen(false)}>
+              Guias
+            </Link>
+            <Link href="/blog" onClick={() => setMenuOpen(false)}>
+              Blog
+            </Link>
+            <Link href="/por-que-comprar" onClick={() => setMenuOpen(false)}>
+              Por que comprar aqui
+            </Link>
+            <Link href="/conta" onClick={() => setMenuOpen(false)}>
+              Minha conta
+            </Link>
+            <Link href="/rastreamento" onClick={() => setMenuOpen(false)}>
+              Acompanhar pedido
+            </Link>
+            <Link href="/atendimento" onClick={() => setMenuOpen(false)}>
+              Atendimento
+            </Link>
+            <Link href="/institucional" onClick={() => setMenuOpen(false)}>
+              A loja
+            </Link>
+            <Link href="/cart" onClick={() => setMenuOpen(false)}>
+              Carrinho
+            </Link>
+          </div>
         </nav>
       )}
     </header>
