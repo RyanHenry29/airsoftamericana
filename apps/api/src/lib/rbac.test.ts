@@ -80,6 +80,7 @@ describe("B.6 — RBAC matriz papel×módulo×ação", () => {
 describe("B.6 — toda rota /api/admin declara guard (rota sem guard falha)", () => {
   const routeFiles = [
     path.resolve(__dirname, "../routes/admin.ts"),
+    path.resolve(__dirname, "../routes/admin-ai.ts"),
     path.resolve(__dirname, "../routes/index.ts"),
     path.resolve(__dirname, "../routes/blog.ts"),
   ];

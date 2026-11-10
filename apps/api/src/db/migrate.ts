@@ -969,6 +969,71 @@ export async function migrate(db: Db) {
     CREATE INDEX IF NOT EXISTS "product_change_history_created_idx" ON "product_change_history" ("created_at");
   `);
 
+  // IA do painel — conversas, mensagens, uploads (foto do produto em bytea) e
+  // rascunhos de produto. Aditivo e idempotente como os demais.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "ai_conversations" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+      "title" varchar(160) NOT NULL DEFAULT 'Nova conversa',
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "ai_conversations_actor_idx" ON "ai_conversations" ("actor_user_id");
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "ai_messages" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "conversation_id" uuid NOT NULL REFERENCES "ai_conversations"("id") ON DELETE CASCADE,
+      "role" varchar(16) NOT NULL,
+      "content" text NOT NULL,
+      "upload_ids" jsonb NOT NULL DEFAULT '[]'::jsonb,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "ai_messages_conversation_idx" ON "ai_messages" ("conversation_id");
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "ai_uploads" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+      "filename" varchar(200) NOT NULL,
+      "mime" varchar(64) NOT NULL,
+      "bytes" bytea NOT NULL,
+      "size_bytes" integer NOT NULL,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "ai_uploads_actor_idx" ON "ai_uploads" ("actor_user_id");
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "ai_drafts" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "conversation_id" uuid NOT NULL REFERENCES "ai_conversations"("id") ON DELETE CASCADE,
+      "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+      "status" varchar(20) NOT NULL DEFAULT 'pendente',
+      "payload" jsonb NOT NULL,
+      "flags" jsonb NOT NULL DEFAULT '[]'::jsonb,
+      "upload_ids" jsonb NOT NULL DEFAULT '[]'::jsonb,
+      "product_id" uuid REFERENCES "products"("id") ON DELETE SET NULL,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "ai_drafts_conversation_idx" ON "ai_drafts" ("conversation_id");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "ai_drafts_actor_idx" ON "ai_drafts" ("actor_user_id");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "ai_drafts_status_idx" ON "ai_drafts" ("status");
+  `);
+
   // Colunas novas no schema sem tabela nova: o CREATE TABLE IF NOT EXISTS acima
   // não altera tabela existente, então o banco ficaria velho e as queries
   // caem com "column does not exist". Este passo fecha a diferença.

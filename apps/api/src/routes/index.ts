@@ -26,6 +26,7 @@ import { getAdapter } from "../services/payments/types.js";
 import { adjustStock, adjustStockInTx } from "../services/inventory.js";
 import { registerStorefrontRoutes } from "./storefront.js";
 import { registerAdminRoutes } from "./admin.js";
+import { registerAdminAiRoutes } from "./admin-ai.js";
 
 export interface ApiRoutesOptions {
   config: Config;
@@ -193,6 +194,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   registerStorefrontRoutes(app, db);
   registerAdminRoutes(app, db);
+  registerAdminAiRoutes(app, db, config);
 
   // ---------------------------------------------------------- Carrinho (cookie aa_cart)
   function setCartCookie(reply: { setCookie: (n: string, v: string, o: object) => void }, sessionKey: string) {

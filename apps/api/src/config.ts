@@ -56,6 +56,10 @@ const envSchema = z.object({
   // a sessão aa_customer — nunca confia em identidade vinda só do navegador.
   SUPABASE_URL: z.string().default("https://psswdwsvybsqrflhpuqx.supabase.co"),
   SUPABASE_PUBLISHABLE_KEY: z.string().default("sb_publishable_xDuOZLY4jP46jtlBkGcJgw_MxLCPZYS"),
+  // Groq (assistente IA do painel). Opcional por desenho: sem chave a rota
+  // responde 503 rotulado "não configurado" — nunca finge integração.
+  GROQ_API_KEY: z.string().optional().default(""),
+  GROQ_MODEL: z.string().optional().default("qwen/qwen3.8-27b"),
 });
 
 const parsed = envSchema.safeParse(process.env);

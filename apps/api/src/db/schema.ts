@@ -12,8 +12,16 @@ import {
   uuid,
   bigint,
   foreignKey,
+  customType,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+
+/** bytea (fotos do assistente IA) — driver devolve Buffer; sem enumeração no pg-core. */
+export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const orderStatusEnum = pgEnum("order_status", [
   "aguardando_pagamento",
@@ -869,6 +877,75 @@ export const blogPosts = pgTable(
     uniqueIndex("blog_posts_slug_idx").on(t.slug),
     index("blog_posts_published_idx").on(t.published),
     index("blog_posts_published_at_idx").on(t.publishedAt),
+  ],
+);
+
+// ---------------------------------------------------------------- IA (assistente do painel)
+// O banco da IA existe para que ela NÃO invente dado: conversa, uploads e
+// rascunhos ficam gravados e auditáveis; o rascunho só vira produto quando o
+// admin confirma. Payloads validados por zod antes de persistir.
+
+export const aiConversations = pgTable(
+  "ai_conversations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 160 }).notNull().default("Nova conversa"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [index("ai_conversations_actor_idx").on(t.actorUserId)],
+);
+
+export const aiMessages = pgTable(
+  "ai_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => aiConversations.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 16 }).notNull(), // "user" | "assistant"
+    content: text("content").notNull(),
+    uploadIds: jsonb("upload_ids").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [index("ai_messages_conversation_idx").on(t.conversationId)],
+);
+
+export const aiUploads = pgTable(
+  "ai_uploads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    filename: varchar("filename", { length: 200 }).notNull(),
+    mime: varchar("mime", { length: 64 }).notNull(),
+    bytes: bytea("bytes").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [index("ai_uploads_actor_idx").on(t.actorUserId)],
+);
+
+export const aiDrafts = pgTable(
+  "ai_drafts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => aiConversations.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    status: varchar("status", { length: 20 }).notNull().default("pendente"), // pendente | publicado | descartado
+    payload: jsonb("payload").notNull(), // ProductInput pré-preenchido, validado por zod
+    flags: jsonb("flags").notNull().default([]), // reparos aplicados (ex.: categoryId inválida → null)
+    uploadIds: jsonb("upload_ids").notNull().default([]),
+    productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [
+    index("ai_drafts_conversation_idx").on(t.conversationId),
+    index("ai_drafts_actor_idx").on(t.actorUserId),
+    index("ai_drafts_status_idx").on(t.status),
   ],
 );
 
