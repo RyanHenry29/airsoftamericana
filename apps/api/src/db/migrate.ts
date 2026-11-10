@@ -360,6 +360,15 @@ export async function migrate(db: Db) {
     CREATE INDEX IF NOT EXISTS "banners_position_idx" ON "banners" ("position");
   `);
 
+  // Adiciona coluna image_upload_id na tabela banners existente
+  await db.execute(sql`
+    ALTER TABLE "banners" ADD COLUMN IF NOT EXISTS "image_upload_id" uuid REFERENCES "banner_images"("id") ON DELETE SET NULL;
+  `);
+  // Índice para lookup reverso
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "banners_image_upload_idx" ON "banners" ("image_upload_id");
+  `);
+
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "banner_images" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
