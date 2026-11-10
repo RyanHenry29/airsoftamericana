@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://www.airsoftamericana.com.br";
+const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://airsoftamericana.vercel.app";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();

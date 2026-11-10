@@ -12,7 +12,7 @@ import { Barlow_Condensed, IBM_Plex_Mono, Inter } from "next/font/google";
 import { CookieConsent } from "./components/CookieConsent";
 import { API_URL, formatBRL, storeGet } from "./lib/store";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airsoftamericana.com.br";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://airsoftamericana.vercel.app";
 
 const display = Barlow_Condensed({
   subsets: ["latin"],
