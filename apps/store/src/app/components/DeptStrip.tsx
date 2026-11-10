@@ -7,7 +7,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { StoreDepartment } from "../lib/store";
 
 const content = [
@@ -118,20 +118,14 @@ export function DeptStrip({ departments = [] }: { departments?: StoreDepartment[
                     {child.children.map((grand) => (
                       <li key={grand.id}>
                         <Link href={`/catalogo?categoria=${grand.slug}`}>
-                          <span>
-                            {grand.name}
-                            {grand.ageRestricted && <span className="age18">18+</span>}
-                          </span>
-                          <ChevronRight size={13} />
+                          {grand.name}
+                          {grand.ageRestricted && <span className="age18">18+</span>}
                         </Link>
                       </li>
                     ))}
                     {child.children.length === 0 && (
                       <li>
-                        <Link href={`/departamento/${child.slug}`}>
-                          <span>Ver todos</span>
-                          <ChevronRight size={13} />
-                        </Link>
+                        <Link href={`/departamento/${child.slug}`}>Ver todos</Link>
                       </li>
                     )}
                   </ul>

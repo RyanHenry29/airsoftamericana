@@ -272,22 +272,22 @@
   overflow: visible;
 }
 .dept-slot { position: static; }
-.mega-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 1.25rem 1.5rem; }
+.mega-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem 2rem; align-items: start; }
 .mega-col { min-width: 0; }
 .mega-group-title {
   display: block;
   font-family: var(--font-display);
   font-weight: 700;
   text-transform: uppercase;
-  font-size: 0.95rem;
-  letter-spacing: 0.04em;
-  color: #ffffff;
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  color: var(--primary);
   text-decoration: none;
-  padding-bottom: 0.45rem;
-  margin-bottom: 0.45rem;
+  padding-bottom: 0.3rem;
+  margin-bottom: 0.35rem;
   border-bottom: 1px solid var(--line);
 }
-.mega-group-title:hover { color: var(--primary); }
+.mega-group-title:hover { color: #ffffff; }
 .mega-highlight__media {
   position: relative;
   aspect-ratio: 4 / 3;
@@ -349,18 +349,20 @@
   scrollbar-width: none;
 }
 .dept-strip::-webkit-scrollbar { display: none; }
+/* Rótulo como bloco sólido da marca — ancora a barra e não parece texto solto. */
 .dept-strip__label {
   flex: none;
   display: inline-flex;
   align-items: center;
-  padding: 0.85rem 1.4rem;
-  font-family: var(--font-mono);
-  font-size: 0.64rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
+  gap: 0.45rem;
+  padding: 0.85rem 1.3rem;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--dim);
-  border-right: 1px solid var(--line);
+  color: #06120a;
+  background: var(--primary);
   white-space: nowrap;
 }
 .dept-strip__item {
@@ -409,7 +411,7 @@
 }
 @media (max-width: 768px) {
   .dept-strip__item { padding: 0.7rem 0.85rem; font-size: 0.8rem; }
-  .dept-strip__label { padding: 0.7rem 0.85rem; font-size: 0.6rem; }
+  .dept-strip__label { padding: 0.7rem 0.95rem; font-size: 0.68rem; }
 }
 
 /* Mega menu: descida animada sob a barra (o painel é irmão da nav, ancorado
@@ -512,7 +514,9 @@
   .footer__grid { grid-template-columns: 1fr; }
 }
 
-/* â€”â€”â€”â€”â€” Topbar de benefÃ­cios (faixa de confianÃ§a) â€”â€”â€”â€”â€” */
+/* ——————— Topbar de benefícios (faixa de confiança) ——————— */
+/* Formato ícone + rótulo forte + sublinha (estilo faixa do hero): 4 colunas
+   iguais, sem scroll horizontal — o texto quebra na própria coluna. */
 .footer__topbar {
   border-bottom: 1px solid var(--line);
   background: #050605;
@@ -521,41 +525,57 @@
   width: 100%;
   max-width: var(--shell);
   margin-inline: auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 0.8rem clamp(1rem, 4vw, 2.5rem);
+}
+.footer__promise {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem clamp(1rem, 4vw, 2.5rem);
-  overflow-x: auto;
-  scrollbar-width: none;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.2rem 1.1rem;
+  border-left: 1px solid var(--line);
+  background: transparent;
 }
-.footer__topbar-inner::-webkit-scrollbar { display: none; }
-.footer__promise {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 0 0 auto;
-  font-family: var(--font-mono);
-  font-size: 0.67rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #c8cbc8;
-  white-space: nowrap;
-  border: 1px solid var(--line);
-  padding: 0.55rem 0.85rem;
-  border-radius: 2px;
-  background: #0a0c0a;
+.footer__promise:first-child {
+  border-left: 0;
+  padding-left: 0;
 }
 .footer__promise svg { color: var(--primary); flex: none; }
-.footer__promise span:first-child { color: #f4f5f2; }
-.footer__promise-note {
-  font-weight: 600;
-  color: var(--primary);
+.footer__promise-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.footer__promise b {
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  color: #f4f5f2;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.footer__promise small {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  line-height: 1.35;
+  color: #9aa19a;
+}
+@media (max-width: 900px) {
+  .footer__topbar-inner { grid-template-columns: 1fr 1fr; gap: 0.8rem 0; }
+  .footer__promise:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .footer__promise b { white-space: normal; }
 }
 @media (max-width: 560px) {
-  .footer__topbar-inner { gap: 0.6rem; padding-inline: clamp(0.75rem, 4vw, 1.5rem); }
-  .footer__promise { padding: 0.45rem 0.6rem; font-size: 0.6rem; }
+  .footer__topbar-inner { grid-template-columns: 1fr; gap: 0.7rem 0; padding-inline: clamp(0.75rem, 4vw, 1.5rem); }
+  .footer__promise { border-left: 0; padding-left: 0; }
 }
 
 /* â€”â€”â€”â€”â€” Grade principal â€”â€”â€”â€”â€” */
@@ -685,51 +705,20 @@ address.footer__line { font-style: normal; }
   line-height: 1.4;
 }
 
-/* Contato e redes */
-.footer__contact { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem; }
+/* Contato: três linhas clicáveis (whatsapp, email, instagram) */
+.footer__contact { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.45rem; }
 .footer__contact-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.82rem;
   color: #c8cbc8;
-}
-.footer__contact-row .footer__ico { margin-top: 1px; }
-.footer__social {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-top: 0.9rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--line);
-}
-.footer__social-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.38rem 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 0.64rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #c8cbc8;
   text-decoration: none;
-  white-space: nowrap;
-  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+  width: fit-content;
+  transition: color 0.2s ease;
 }
-.footer__social-link:hover { border-color: var(--primary); color: var(--primary); background: rgb(122 154 90 / 0.06); }
-.footer__social-handle {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #6f766f;
-}
+.footer__contact-row:hover { color: var(--primary); }
+.footer__contact-row .footer__ico { margin-top: 0; }
 
 /* â€”â€”â€”â€”â€” Linha base â€”â€”â€”â€”â€” */
 .footer__base {
@@ -764,8 +753,6 @@ address.footer__line { font-style: normal; }
 
 @media (max-width: 900px) {
   .footer__grid { grid-template-columns: 1fr 1fr; gap: 1.5rem; }
-  .footer__social { justify-content: flex-start; }
-  .footer__social-handle { margin-left: 0; margin-top: 0.5rem; }
 }
 @media (max-width: 560px) {
   .footer__grid { grid-template-columns: 1fr; gap: 1.5rem; }

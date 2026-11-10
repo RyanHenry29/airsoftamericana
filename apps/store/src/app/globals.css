@@ -210,26 +210,39 @@ body {
   white-space: nowrap;
 }
 .dept-btn:hover, .dept-btn.is-open { color: var(--primary); border-color: var(--primary); }
+/* Mega menu: colunas densas de links puros — lista de texto corrido, sem
+   caixa por link, sem seta, espaçamento de menu de verdade (referência). */
 .mega-panel {
   position: absolute; left: 0; right: 0; top: 100%; z-index: 45;
   background: var(--base); border: 1px solid var(--border-strong); border-top: 0;
-  box-shadow: 0 8px 20px rgb(0 0 0 / 0.28); padding: 1.5rem 1.5rem 1.25rem;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.28); padding: 1.1rem 1.5rem 1.25rem;
 }
-.mega-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; }
-.mega-title { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.18em; color: var(--primary); margin-bottom: 0.75rem; }
-.mega-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.4rem; }
+.mega-grid { display: grid; grid-template-columns: 3fr 1fr; gap: 1.75rem; }
+.mega-title { font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: var(--primary); margin-bottom: 0.5rem; }
+.mega-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 0 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mega-links li { min-width: 0; }
 .mega-links a {
-  display: block; padding: 0.6rem 0.7rem; border: 1px solid transparent;
-  color: #f4f5f2; text-decoration: none; font-size: 0.9rem; font-weight: 600;
-  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  display: block; padding: 0.28rem 0;
+  color: #d9ddd9; text-decoration: none;
+  font-size: 0.84rem; font-weight: 500; line-height: 1.45;
+  border-bottom: 1px solid transparent;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color 0.15s ease;
 }
-.mega-links a:hover { color: var(--primary); border-color: var(--primary); background: rgb(122 154 90 / 0.06); }
-.age18 { display: inline-block; margin-left: 0.4rem; padding: 0 0.3rem; font-family: var(--font-mono); font-size: 0.6rem; color: var(--primary); border: 1px solid rgb(122 154 90 / 0.4); }
-.mega-all { display: inline-block; margin-top: 0.9rem; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--primary); text-decoration: none; }
+.mega-links a:hover { color: var(--primary); }
+.age18 { display: inline-block; margin-left: 0.4rem; padding: 0 0.3rem; font-family: var(--font-mono); font-size: 0.58rem; color: var(--primary); border: 1px solid rgb(122 154 90 / 0.4); vertical-align: 1px; }
+.mega-all { display: inline-block; margin-top: 0.7rem; font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--primary); text-decoration: none; }
 .mega-all:hover { text-decoration: underline; }
-.mega-highlight { border-left: 1px solid var(--border); padding-left: 2rem; display: flex; flex-direction: column; gap: 0.75rem; }
-.mega-highlight h4 { font-family: var(--font-display); text-transform: uppercase; font-weight: 700; font-size: 1.6rem; line-height: 1; color: #f4f5f2; }
-.mega-highlight p { color: #a3a3a3; font-size: 0.85rem; }
+.mega-highlight { border-left: 1px solid var(--border); padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.mega-highlight h4 { font-family: var(--font-display); text-transform: uppercase; font-weight: 700; font-size: 1.15rem; line-height: 1.1; color: #f4f5f2; margin: 0; }
+.mega-highlight p { color: #a3a3a3; font-size: 0.8rem; line-height: 1.5; margin: 0; }
 @media (max-width: 900px) { .mega-highlight { display: none; } .mega-grid { grid-template-columns: 1fr; } }
 
 /* â€”â€”â€”â€”â€” Newsletter â€”â€”â€”â€”â€” */

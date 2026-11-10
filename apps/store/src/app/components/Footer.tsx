@@ -4,6 +4,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { AtSign, CreditCard, Mail, MessageCircle, QrCode, RefreshCcw, Truck } from "lucide-react";
 import type { CommercialSettings } from "../lib/store";
 import { formatBRL, type Company } from "../lib/store";
 import { PaymentMarks } from "./PaymentMarks";
@@ -42,6 +43,17 @@ function socialUrl(kind: "instagram" | "whatsapp", value: string | undefined): s
   }
   const digits = v.replace(/\D/g, "");
   return digits ? `https://wa.me/${digits}` : null;
+}
+
+/** `@airsoft_americana` a partir do valor digitado no admin (handle ou URL). */
+function instagramHandle(value: string | undefined): string {
+  const v = (value ?? "").trim();
+  if (!v) return "";
+  if (v.startsWith("@")) return v.slice(1);
+  if (/^https?:\/\//i.test(v)) {
+    return v.replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/[/?#].*$/, "");
+  }
+  return v.replace(/^@/, "");
 }
 
 // `company` chega do servidor (SiteFooter) — CNPJ/razão social no HTML, sem fetch no cliente.
@@ -94,25 +106,38 @@ export function Footer({
       <div className="footer__topbar">
         <div className="footer__topbar-inner">
           <div className="footer__promise">
-            <span className="footer__promise-label">Entrega</span>
-            <span>{free > 0 ? `Frete grátis acima de ${formatBRL(free)}` : "Entrega para todo o Brasil"}</span>
-          </div>
-          <div className="footer__promise">
-            <span className="footer__promise-label">Pagamento</span>
-            <span>
-              {inst > 1 ? `${inst}x${settings.installment_interest_free !== false ? " sem juros" : ""}` : "À vista"}
-              {minInst > 0 ? ` · parcela mínima ${formatBRL(minInst)}` : ""}
+            <Truck size={20} strokeWidth={2} aria-hidden="true" />
+            <span className="footer__promise-text">
+              <b>{free > 0 ? "Frete Grátis" : "Envio para todo o Brasil"}</b>
+              <small>{free > 0 ? `Acima de ${formatBRL(free)}` : "Consulte o prazo no checkout"}</small>
             </span>
           </div>
-          {pix > 0 ? (
-            <div className="footer__promise">
-              <span className="footer__promise-label">PIX</span>
-              <span>{pix}% de desconto à vista</span>
-            </div>
-          ) : null}
           <div className="footer__promise">
-            <span className="footer__promise-label">Pós-venda</span>
-            <span>Trocas e devoluções conforme política</span>
+            <CreditCard size={20} strokeWidth={2} aria-hidden="true" />
+            <span className="footer__promise-text">
+              <b>{inst > 1 ? `${inst}x Sem Juros` : "Pagamento Facilitado"}</b>
+              <small>
+                {minInst > 0
+                  ? `Parcela mínima ${formatBRL(minInst)}`
+                  : inst > 1 && settings.installment_interest_free !== false
+                    ? "Sem juros no cartão"
+                    : "Cartão, PIX e boleto"}
+              </small>
+            </span>
+          </div>
+          <div className="footer__promise">
+            <QrCode size={20} strokeWidth={2} aria-hidden="true" />
+            <span className="footer__promise-text">
+              <b>{pix > 0 ? `${pix}% de Desconto` : "Pagamento via PIX"}</b>
+              <small>{pix > 0 ? "No pagamento via PIX" : "Aprovação na hora"}</small>
+            </span>
+          </div>
+          <div className="footer__promise">
+            <RefreshCcw size={20} strokeWidth={2} aria-hidden="true" />
+            <span className="footer__promise-text">
+              <b>Trocas e Devoluções</b>
+              <small>Conforme a política de trocas</small>
+            </span>
           </div>
         </div>
       </div>
@@ -191,36 +216,24 @@ export function Footer({
             </p>
           )}
           <div className="footer__contact">
-            {settings.whatsapp ? (
-              <div className="footer__contact-row">
-                <span>WhatsApp: {settings.whatsapp}</span>
-              </div>
+            {whatsapp ? (
+              <a className="footer__contact-row" href={whatsapp} target="_blank" rel="noreferrer">
+                <MessageCircle size={15} strokeWidth={2} className="footer__ico" aria-hidden="true" />
+                <span>{settings.whatsapp || "WhatsApp"}</span>
+              </a>
             ) : null}
             {settings.email ? (
-              <div className="footer__contact-row">
+              <a className="footer__contact-row" href={`mailto:${settings.email}`}>
+                <Mail size={15} strokeWidth={2} className="footer__ico" aria-hidden="true" />
                 <span>{settings.email}</span>
-              </div>
+              </a>
             ) : null}
-          </div>
-          {(instagram || whatsapp) ? (
-            <div className="footer__social">
-              {instagram ? (
-                <a href={instagram} target="_blank" rel="noreferrer" className="footer__social-link">
-                  Instagram
-                </a>
-              ) : null}
-              {whatsapp ? (
-                <a href={whatsapp} target="_blank" rel="noreferrer" className="footer__social-link">
-                  WhatsApp
-                </a>
-              ) : null}
-              {settings.social?.instagram && !/^https?:\/\//i.test(settings.social.instagram.trim()) ? (
-                <span className="footer__social-handle">
-                  {settings.social.instagram.trim().startsWith("@") ? settings.social.instagram.trim() : `@${settings.social.instagram.trim()}`}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
+            {instagram ? (
+              <a className="footer__contact-row" href={instagram} target="_blank" rel="noreferrer">
+                <AtSign size={15} strokeWidth={2} className="footer__ico" aria-hidden="true" />
+                <span>{instagramHandle(settings.social?.instagram) || "Instagram"}</span>
+              </a>
+            ) : null}          </div>
         </div>
       </div>
       <div className="footer__base">
