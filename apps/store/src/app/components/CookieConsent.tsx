@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const KEY = "aa_cookie_consent_v1";
+/** Rodapé → "Preferências de cookies" reabre o aviso para quem já escolheu. */
+export const COOKIE_PREFS_EVENT = "aa:cookie-prefs";
 
 type Choice = "accepted" | "rejected";
 
@@ -17,6 +19,9 @@ export function CookieConsent() {
     } catch {
       setVisible(true);
     }
+    const reopen = () => setVisible(true);
+    window.addEventListener(COOKIE_PREFS_EVENT, reopen);
+    return () => window.removeEventListener(COOKIE_PREFS_EVENT, reopen);
   }, []);
 
   function choose(choice: Choice) {

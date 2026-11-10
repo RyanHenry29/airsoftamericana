@@ -623,6 +623,17 @@ address.footer__line { font-style: normal; }
 }
 .footer__link:hover { color: var(--primary); }
 .footer__link-ico { color: var(--primary); flex: none; }
+/* Mesmo visual de link, mas é botão: reabre as preferências de cookies. */
+.footer__link--button {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
 
 /* â€”â€”â€”â€”â€” Coluna Receba Novidades â€”â€”â€”â€”â€” */
 .footer__col--newsletter { gap: 0.9rem; }

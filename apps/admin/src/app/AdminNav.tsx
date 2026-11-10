@@ -20,6 +20,7 @@ const NAV = [
   { href: "/chargebacks", label: "Chargebacks" },
   { href: "/users", label: "Acessos" },
   { href: "/fraud", label: "Antifraude" },
+  { href: "/settings", label: "Configurações" },
 ];
 
 export function AdminNav() {

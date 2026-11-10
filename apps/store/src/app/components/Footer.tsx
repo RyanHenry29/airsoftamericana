@@ -7,6 +7,7 @@ import { useState } from "react";
 import type { CommercialSettings } from "../lib/store";
 import { formatBRL, type Company } from "../lib/store";
 import { PaymentMarks } from "./PaymentMarks";
+import { COOKIE_PREFS_EVENT } from "./CookieConsent";
 
 const departments = [
   { label: "Airsoft", href: "/departamento/airsoft" },
@@ -154,6 +155,13 @@ export function Footer({
               {l.label}
             </Link>
           ))}
+          <button
+            type="button"
+            className="footer__link footer__link--button"
+            onClick={() => window.dispatchEvent(new Event(COOKIE_PREFS_EVENT))}
+          >
+            Preferências de cookies
+          </button>
         </nav>
 
         <div className="footer__col footer__col--newsletter">
