@@ -119,6 +119,7 @@ export type StoreBanner = {
   ctaLabel: string;
   imageDesktop: string | null;
   imageMobile: string | null;
+  imageUploadId: string | null;
   link: string | null;
   kind: string;
   active: boolean;

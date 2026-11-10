@@ -422,3 +422,71 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
   .admin-main { padding: 1rem; }
   .admin-grid { grid-template-columns: 1fr; }
 }
+
+/* ═════════════════════════════════════════════════════════════════════
+   IMAGE PICKER — upload com crop 3:4 → WebP
+   ═════════════════════════════════════════════════════════════════════ */
+.image-picker { display: flex; flex-direction: column; gap: 0.6rem; }
+.image-picker__dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 180px;
+  padding: 2rem;
+  border: 2px dashed var(--border);
+  border-radius: 2px;
+  background: #0a0c0a;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.image-picker__dropzone:hover { border-color: var(--primary); background: #141714; }
+.image-picker__dropzone:disabled { opacity: 0.6; cursor: not-allowed; }
+.image-picker__icon { color: var(--primary); }
+.image-picker__label {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.image-picker__hint {
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  color: #666666;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.image-picker__preview { position: relative; border: 1px solid var(--border); border-radius: 2px; overflow: hidden; background: #0a0c0a; }
+.image-picker__preview img { display: block; width: 100%; max-height: 320px; object-fit: cover; }
+.image-picker__actions { position: absolute; top: 0.6rem; right: 0.6rem; display: flex; gap: 0.4rem; }
+.image-picker__btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: rgba(0,0,0,0.7);
+  color: var(--foreground);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.image-picker__btn:hover { background: var(--primary); color: #000; border-color: var(--primary); }
+.image-picker__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.image-picker__btn--remove:hover { background: #dc2626; border-color: #dc2626; color: #fff; }
+.image-picker__meta {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  color: #666666;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: #000;
+  border-top: 1px solid var(--border);
+}
+.image-picker__error { margin: 0; font-size: 0.75rem; color: #fca5a5; font-weight: 600; }
+.image-picker__busy { margin: 0; font-size: 0.75rem; color: var(--primary); font-weight: 600; }

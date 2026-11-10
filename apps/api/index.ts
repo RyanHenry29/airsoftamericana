@@ -27,6 +27,7 @@ import { hashPassword, verifyPasswordDetailed } from "./src/lib/crypto.js";
 import { cartItemSchema, checkoutSchema, loginSchema, registerSchema } from "@airsoft/shared";
 import { validateCoupon } from "./src/services/coupons.js";
 import { handleCheckout } from "./src/services/checkout.js";
+import { getOrderDetailForCustomer } from "./src/services/orders.js";
 import { routes as registerRoutes } from "./src/routes/index.js";
 import { registerMfaRoutes } from "./src/routes/mfa.js";
 import { registerWebhookRoutes } from "./src/routes/webhooks.js";
@@ -717,8 +718,37 @@ async function route(
     const found = await db.select().from(schema.orders).where(eq(schema.orders.number, number)).limit(1);
     const order = found[0];
     if (!order || order.customerId !== customer.id) return json(res, 404, { error: { code: "not_found", message: "Pedido não encontrado" } });
-    const items = await db.select().from(schema.orderItems).where(eq(schema.orderItems.orderId, order.id));
-    return json(res, 200, { ...order, items });
+    // ESPIAR/COMPRAR: mesmo contrato da Fastify — { order, items } com slug e
+    // variantes ativas. Sem isto o modal da conta quebra em produção.
+    try {
+      const detail = await getOrderDetailForCustomer(db, { orderId: order.id, customerId: customer.id });
+      return json(res, 200, { order: detail.order, items: detail.items });
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? 500;
+      return json(res, status, { error: { code: (err as { code?: string }).code ?? "internal_error", message: err instanceof Error ? err.message : "Erro interno" } });
+    }
+  }
+
+  // -- Banner image serve (public) -------------------------------------------
+  const bannerImgMatch = path.match(/^\/api\/banners\/image\/([^/]+)$/);
+  if (method === "GET" && bannerImgMatch) {
+    const id = decodeURIComponent(bannerImgMatch[1]!);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return json(res, 404, { error: { code: "not_found", message: "Imagem não encontrada" } });
+    }
+    const [row] = await db
+      .select({ mime: schema.bannerImages.mime, bytes: schema.bannerImages.bytes })
+      .from(schema.bannerImages)
+      .where(eq(schema.bannerImages.id, id))
+      .limit(1);
+    if (!row) return json(res, 404, { error: { code: "not_found", message: "Imagem não encontrada" } });
+    res.writeHead(200, {
+      "content-type": row.mime,
+      "cache-control": "public, max-age=86400",
+      "access-control-allow-origin": "*",
+    });
+    res.end(Buffer.isBuffer(row.bytes) ? row.bytes : Buffer.from(row.bytes as unknown as Uint8Array));
+    return;
   }
 
   // -- Fallback --------------------------------------------------------------

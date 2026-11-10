@@ -739,6 +739,7 @@ export const banners = pgTable(
     ctaLabel: varchar("cta_label", { length: 60 }).default(""),
     imageDesktop: text("image_desktop"),
     imageMobile: text("image_mobile"),
+    imageUploadId: uuid("image_upload_id").references(() => bannerImages.id, { onDelete: "set null" }),
     link: text("link"),
     kind: varchar("kind", { length: 20 }).notNull().default("hero"),
     startsAt: timestamp("starts_at", { withTimezone: true }),
@@ -751,6 +752,18 @@ export const banners = pgTable(
     index("banners_active_idx").on(t.active),
     index("banners_position_idx").on(t.position),
   ],
+);
+
+export const bannerImages = pgTable(
+  "banner_images",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    mime: varchar("mime", { length: 64 }).notNull(),
+    bytes: bytea("bytes").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [index("banner_images_created_idx").on(t.createdAt)],
 );
 
 export const homepageSections = pgTable(

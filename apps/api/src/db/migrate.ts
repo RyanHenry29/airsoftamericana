@@ -343,6 +343,7 @@ export async function migrate(db: Db) {
       "cta_label" varchar(60) DEFAULT '',
       "image_desktop" text,
       "image_mobile" text,
+      "image_upload_id" uuid REFERENCES "banner_images"("id") ON DELETE SET NULL,
       "link" text,
       "kind" varchar(20) NOT NULL DEFAULT 'hero',
       "starts_at" timestamptz,
@@ -357,6 +358,19 @@ export async function migrate(db: Db) {
   `);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "banners_position_idx" ON "banners" ("position");
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "banner_images" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "mime" varchar(64) NOT NULL,
+      "bytes" bytea NOT NULL,
+      "size_bytes" integer NOT NULL,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "banner_images_created_idx" ON "banner_images" ("created_at");
   `);
 
   await db.execute(sql`

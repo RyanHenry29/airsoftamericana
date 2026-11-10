@@ -108,12 +108,16 @@ export default async function HomePage() {
   const inst = settings?.installments ?? 1;
 
   // Hero usa apenas o primeiro banner ativo
+  // Se tiver imageUploadId, usa o endpoint de serve da API; senão cai no imageDesktop (URL externa/legado)
+  const heroImage = hero?.imageUploadId
+    ? `/api/banners/image/${hero.imageUploadId}`
+    : hero?.imageDesktop || "/produtos/e0c3dc6a62a7f830.webp";
   const heroContent = hero ? {
     title: hero.title || "Equipamento para jogar com segurança e confiança",
     subtitle: hero.subtitle || "Airsoft, tiro esportivo e equipamentos táticos. Entrega para todo o Brasil.",
     ctaLabel: hero.ctaLabel || "Ver catálogo",
     link: hero.link || "/catalogo",
-    image: hero.imageDesktop || "/produtos/e0c3dc6a62a7f830.webp",
+    image: heroImage,
   } : null;
 
   return (

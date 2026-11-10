@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminJson, messageOf } from "../../lib/api";
 import { useGateRedirect } from "../../lib/useGate";
+import { ImagePicker } from "../components/ImagePicker";
 
 type Banner = {
   id: string;
@@ -13,6 +14,7 @@ type Banner = {
   ctaLabel?: string | null;
   imageDesktop?: string | null;
   imageMobile?: string | null;
+  imageUploadId?: string | null;
   link?: string | null;
   kind?: string;
   startsAt?: string | null;
@@ -35,8 +37,9 @@ export default function BannersPage() {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Banner>>({
-    title: "", subtitle: "", eyebrow: "", ctaLabel: "", imageDesktop: "",
-    imageMobile: "", link: "", kind: "hero", active: true, position: 0,
+    title: "", subtitle: "", eyebrow: "", ctaLabel: "",
+    imageDesktop: "", imageMobile: "", imageUploadId: "",
+    link: "", kind: "hero", active: true, position: 0,
   });
   useGateRedirect(failure);
 
@@ -76,13 +79,15 @@ export default function BannersPage() {
           ctaLabel: form.ctaLabel?.trim() || null,
           imageDesktop: form.imageDesktop?.trim() || null,
           imageMobile: form.imageMobile?.trim() || null,
+          imageUploadId: form.imageUploadId?.trim() || null,
           link: form.link?.trim() || null,
           kind: form.kind ?? "hero",
           active: form.active ?? true,
           position: Number(form.position ?? 0),
         }),
       });
-      setForm({ title: "", subtitle: "", eyebrow: "", ctaLabel: "", imageDesktop: "", imageMobile: "", link: "", kind: "hero", active: true, position: 0 });
+      setForm({ title: "", subtitle: "", eyebrow: "", ctaLabel: "",
+        imageDesktop: "", imageMobile: "", imageUploadId: "", link: "", kind: "hero", active: true, position: 0 });
       setEditing(null);
       setNotice("Banner criado.");
       load();
@@ -104,6 +109,7 @@ export default function BannersPage() {
           ...(form.ctaLabel !== undefined ? { ctaLabel: form.ctaLabel?.trim() || null } : {}),
           ...(form.imageDesktop !== undefined ? { imageDesktop: form.imageDesktop?.trim() || null } : {}),
           ...(form.imageMobile !== undefined ? { imageMobile: form.imageMobile?.trim() || null } : {}),
+          ...(form.imageUploadId !== undefined ? { imageUploadId: form.imageUploadId?.trim() || null } : {}),
           ...(form.link !== undefined ? { link: form.link?.trim() || null } : {}),
           ...(form.kind !== undefined ? { kind: form.kind } : {}),
           ...(form.active !== undefined ? { active: form.active } : {}),
@@ -177,13 +183,15 @@ export default function BannersPage() {
             ))}
           </select>
         </div>
-        <div className="md:col-span-2 field">
-          <label htmlFor="bn-image">URL da imagem (hero/foto)</label>
-          <input id="bn-image" className="input w-full" value={form.imageDesktop ?? ""} placeholder="https://sua-loja.com.br/foto-hero.webp" onChange={e => setForm({ ...form, imageDesktop: e.target.value })} />
-        </div>
-        <div className="md:col-span-2 field">
-          <label htmlFor="bn-image-mobile">URL da imagem (mobile)</label>
-          <input id="bn-image-mobile" className="input w-full" value={form.imageMobile ?? ""} placeholder="mesma da acima ou recorte mobile" onChange={e => setForm({ ...form, imageMobile: e.target.value })} />
+        <div className="md:col-span-4 field">
+          <label>Imagem do banner (hero/foto)</label>
+          <ImagePicker
+            onUpload={(uploadId: string, _mime: string, _sizeBytes: number) => setForm({ ...form, imageUploadId: uploadId })}
+            label="Carregar imagem do banner"
+            currentUploadId={form.imageUploadId ?? null}
+            onRemove={() => setForm({ ...form, imageUploadId: "" })}
+          />
+          <p className="field .hint">Crop automático 3:4 retrato · convertido para WebP 82% · máx. 1 MB final</p>
         </div>
         <div className="field">
           <label htmlFor="bn-link">Link do botão (opcional)</label>
@@ -231,7 +239,9 @@ export default function BannersPage() {
                 return (
                   <tr key={b.id}>
                     <td className="p-3">
-                      {b.imageDesktop ? (
+                      {b.imageUploadId ? (
+                        <img src={`/api/banners/image/${b.imageUploadId}`} alt={b.title} className="w-16 h-16 object-cover border border-[#111]" />
+                      ) : b.imageDesktop ? (
                         <img src={b.imageDesktop} alt={b.title} className="w-16 h-16 object-cover border border-[#111]" />
                       ) : (
                         <span className="w-16 h-16 flex items-center justify-center border border-[#111] text-[#333] font-mono text-xs">sem foto</span>
@@ -268,7 +278,7 @@ export default function BannersPage() {
                         </>
                       ) : (
                         <>
-                          <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={() => { setEditing(b.id); setForm({ ...b, active: !!b.active }); }}>Editar</button>
+                          <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={() => { setEditing(b.id); setForm({ ...b, active: !!b.active, imageUploadId: b.imageUploadId ?? "" }); }}>Editar</button>
                           <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => remove(b)} disabled={busy}>Excluir</button>
                         </>
                       )}

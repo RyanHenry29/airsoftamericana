@@ -6,7 +6,7 @@ import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { adminGuard, normalizeRole, type Role } from "../lib/rbac.js";
-import { csrfTokenFor } from "../lib/csrf.js";
+import { csrfTokenFor, csrfGuard } from "../lib/csrf.js";
 import { listActiveSessions, revokeAllUserSessions, revokeSession } from "../services/sessions.js";
 import { createInvite, listInvites, revokeInvite } from "../services/invites.js";
 import { outboxNotify, roleChangedBody, bulkPriceBody } from "../services/outbox.js";
@@ -17,6 +17,15 @@ import { initAdapters } from "../services/payments/index.js";
 import { listChargebacks, getChargebackWithEvidence, updateChargebackStatus, addEvidence, exportEvidencePdf } from "../services/chargebacks.js";
 import { transitionOrder } from "../services/orders.js";
 import { canTransition, type OrderStatus } from "@airsoft/shared";
+import { sniffImageMime } from "../services/ai-assistant.js";
+import { badRequest } from "../lib/errors.js";
+
+/** Extrai o userId da sessão anexada pelo authMiddleware. */
+function userIdOf(request: FastifyRequest): string {
+  const user = (request as any).user as { sub?: string } | undefined;
+  if (!user?.sub) throw badRequest("no_user", "Sessão sem usuário.");
+  return user.sub;
+}
 
 /** Request com o payload do JWT anexado pelo authMiddleware. */
 type AdminRequest = FastifyRequest & { user?: { sub?: string; role?: string } };
@@ -318,6 +327,57 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     await db.delete(schema.banners).where(eq(schema.banners.id, id));
     await audit(request, "banner.deleted", "banners", id);
     reply.send({ ok: true });
+  });
+
+  // ---------------------------------------------------------------- Banner image upload (admin)
+  // POST /api/admin/banners/upload — base64 image → validates magic bytes/size → stores in banner_images
+  // Returns { uploadId, mime, sizeBytes } for the admin UI to link to a banner.
+  app.post("/api/admin/banners/upload", { bodyLimit: 4 * 1024 * 1024, preHandler: [A, csrfGuard, adminGuard("banners","create")] }, async (request, reply) => {
+    const userId = userIdOf(request);
+    const body = request.body as { image: string };
+    if (!body?.image) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Campo 'image' (base64) é obrigatório" } });
+      return;
+    }
+    // Reuse AI image validation logic: decode base64, validate magic bytes, size limit (1MB for banners)
+    const BANNER_MAX_BYTES = 1024 * 1024;
+    const b64 = body.image.startsWith("data:") ? body.image.slice(body.image.indexOf(",") + 1) : body.image;
+    if (!b64 || b64.length > Math.ceil((BANNER_MAX_BYTES * 4) / 3) + 1024) {
+      reply.status(400);
+      reply.send({ error: { code: "image_too_large", message: `Imagem excede ${Math.round(BANNER_MAX_BYTES / 1024)} KB. Comprima antes de enviar.` } });
+      return;
+    }
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(b64, "base64");
+    } catch {
+      reply.status(400);
+      reply.send({ error: { code: "image_invalid", message: "Imagem em base64 inválida." } });
+      return;
+    }
+    if (buf.length === 0 || buf.length > BANNER_MAX_BYTES) {
+      reply.status(400);
+      reply.send({ error: { code: "image_too_large", message: `Imagem excede ${Math.round(BANNER_MAX_BYTES / 1024)} KB.` } });
+      return;
+    }
+    const mime = sniffImageMime(buf);
+    if (!mime) {
+      reply.status(400);
+      reply.send({ error: { code: "image_type", message: "Formato não suportado: envie JPEG, PNG ou WebP." } });
+      return;
+    }
+    const [row] = await db
+      .insert(schema.bannerImages)
+      .values({
+        mime,
+        bytes: buf,
+        sizeBytes: buf.length,
+      })
+      .returning();
+    await audit(request, "banner_image.uploaded", "banner_images", row?.id);
+    reply.status(201);
+    reply.send({ uploadId: row?.id, mime: row?.mime, sizeBytes: row?.sizeBytes });
   });
 
   // ---------------------------------------------------------------- Seções da homepage
