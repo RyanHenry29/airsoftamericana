@@ -1,7 +1,11 @@
 // language: TSX, file: apps/store/src/app/termos/page.tsx, target: Next.js App Router
+// Termos: casco padrão da loja (header com departamentos + rodapé) e regras
+// comerciais lidas das configurações do backend — nunca valor fixo no texto.
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Header } from "../components/Header";
+import { SiteFooter } from "../components/SiteFooter";
+import { loadHome, type CommercialSettings } from "../lib/store";
 
 export const metadata: Metadata = {
   title: "Termos de Uso e Compra",
@@ -9,22 +13,33 @@ export const metadata: Metadata = {
   alternates: { canonical: "/termos" },
 };
 
-const SECTIONS = [
-  {
-    h: "Quem pode comprar",
-    p: [
-      "Réplicas de airsoft e itens com restrição 18+ são vendidos apenas para maiores de 18 anos, com verificação no checkout e na entrega.",
-      "É responsabilidade do cliente conhecer as normas locais de porte e uso.",
-    ],
-  },
-  {
-    h: "Preços e pagamento",
-    p: [
-      "PIX com 5% de desconto aplicado no fechamento do pedido.",
-      "Cartão em até 3x sem juros; boleto disponível.",
-      "O preço exibido no checkout é o preço final do produto; frete é calculado por CEP à parte.",
-    ],
-  },
+export const dynamic = "force-dynamic";
+
+function buildSections(s: CommercialSettings) {
+  const pix = s.pix_discount_percent ?? 0;
+  const inst = s.installments ?? 1;
+  const interestFree = s.installment_interest_free !== false;
+
+  return [
+    {
+      h: "Quem pode comprar",
+      p: [
+        "Réplicas de airsoft e itens com restrição 18+ são vendidos apenas para maiores de 18 anos, com verificação no checkout e na entrega.",
+        "É responsabilidade do cliente conhecer as normas locais de porte e uso.",
+      ],
+    },
+    {
+      h: "Preços e pagamento",
+      p: [
+        pix > 0
+          ? `PIX com ${pix}% de desconto aplicado no fechamento do pedido.`
+          : "Pagamento por PIX ao fechamento do pedido.",
+        inst > 1
+          ? `Cartão em até ${inst}x${interestFree ? " sem juros" : ""}; boleto disponível.`
+          : "Cartão e boleto bancário disponíveis.",
+        "O preço exibido no checkout é o preço final do produto; frete é calculado por CEP à parte.",
+      ],
+    },
   {
     h: "Envio",
     p: [
@@ -48,17 +63,21 @@ const SECTIONS = [
       "Cancelamentos confirmados são estornados pelo mesmo meio de pagamento em até 7 dias úteis.",
     ],
   },
-];
+  ];
+}
 
-export default function TermosPage() {
+export default async function TermosPage() {
+  const home = await loadHome();
+  const sections = buildSections(home.settings);
+
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <Header />
+    <main id="conteudo" className="page-shell">
+      <Header departments={home.departments} />
       <div className="mx-auto max-w-3xl px-4 md:px-8 py-16 md:py-20">
         <span className="sec-kicker">CDC · LEI 8.078/1990</span>
         <h1 className="sec-title mb-10">TERMOS DE USO E COMPRA</h1>
         <div className="flex flex-col gap-10">
-          {SECTIONS.map((s) => (
+          {sections.map((s) => (
             <section key={s.h}>
               <h2 className="font-display uppercase text-xl text-white mb-3">{s.h}</h2>
               <ul className="flex flex-col gap-2 text-sm text-white/60 leading-relaxed list-none">
@@ -73,6 +92,8 @@ export default function TermosPage() {
           Dúvidas sobre este documento: <Link href="/atendimento" className="sec-link !text-sm">fale com a gente</Link>.
         </p>
       </div>
+
+      <SiteFooter settings={home.settings} />
     </main>
   );
 }

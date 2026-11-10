@@ -2,12 +2,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Header } from "../components/Header";
+import { SiteFooter } from "../components/SiteFooter";
+import { loadHome } from "../lib/store";
 
 export const metadata: Metadata = {
   title: "Política de Privacidade",
   description: "Como a Airsoft Americana coleta, usa e protege seus dados pessoais (LGPD).",
   alternates: { canonical: "/privacidade" },
 };
+
+export const dynamic = "force-dynamic";
 
 const SECTIONS = [
   {
@@ -58,10 +62,12 @@ const SECTIONS = [
   },
 ];
 
-export default function PrivacidadePage() {
+export default async function PrivacidadePage() {
+  const home = await loadHome();
+
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <Header />
+    <main id="conteudo" className="page-shell">
+      <Header departments={home.departments} />
       <div className="mx-auto max-w-3xl px-4 md:px-8 py-16 md:py-20">
         <span className="sec-kicker">LGPD · LEI 13.709/2018</span>
         <h1 className="sec-title mb-10">POLÍTICA DE PRIVACIDADE</h1>
@@ -81,6 +87,8 @@ export default function PrivacidadePage() {
           Dúvidas sobre este documento: <Link href="/atendimento" className="sec-link !text-sm">fale com a gente</Link>.
         </p>
       </div>
+
+      <SiteFooter settings={home.settings} />
     </main>
   );
 }
