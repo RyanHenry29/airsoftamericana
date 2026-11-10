@@ -10,7 +10,7 @@
     "test": "node -e \"console.log('no tests: @airsoft/store (nenhum arquivo *.test.*/*.spec.* encontrado)')\""
   },
   "dependencies": {
-    "@airsoft/shared": "*",
+    "@airsoft/shared": "file:../../packages/shared",
     "framer-motion": "^14.9.1",
     "lucide-react": "^1.69.0",
     "next": "16.4.5",

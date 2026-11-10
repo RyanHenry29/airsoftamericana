@@ -41,11 +41,20 @@ const SORTS: SortKey[] = [
   "bestsellers",
 ];
 
+const securityHeaders = {
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
+
 function json(res: ServerResponse, status: number, body: unknown, extraHeaders: Record<string, string | string[]> = {}) {
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "access-control-allow-origin": "*",
     "access-control-allow-credentials": "true",
+    ...securityHeaders,
     ...extraHeaders,
   } as any);
   res.end(JSON.stringify(body));
@@ -87,6 +96,16 @@ async function getFastifyApp() {
       await app.register(cors, { origin: true, credentials: true });
       const db = await getDb();
       (app as any).db = db;
+      
+      // Security headers for Fastify (local dev)
+      app.addHook("onSend", async (_req, reply) => {
+        reply.header("X-Frame-Options", "DENY");
+        reply.header("X-Content-Type-Options", "nosniff");
+        reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+        reply.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+        reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+      });
+      
       await registerRoutes(app, config as any, db);
       try { registerMfaRoutes(app, db); } catch {}
       try { await registerWebhookRoutes(app, db); } catch {}
