@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Clock, MapPin, Package, ShieldCheck, Truck } from "lucide-react";
 import { Header } from "../components/Header";
 import { MegaMenu } from "../components/MegaMenu";
-import { Footer } from "../components/Footer";
+import { SiteFooter } from "../components/SiteFooter";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../lib/store";
 
 export const dynamic = "force-dynamic";
@@ -138,7 +138,7 @@ export default async function InstitucionalPage() {
         </div>
       </section>
 
-      <Footer settings={s} />
+      <SiteFooter settings={s} />
     </main>
   );
 }

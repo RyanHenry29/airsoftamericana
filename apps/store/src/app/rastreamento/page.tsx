@@ -2,7 +2,7 @@
 // Página de rastreamento de pedido.
 import { Header } from "../components/Header";
 import { MegaMenu } from "../components/MegaMenu";
-import { Footer } from "../components/Footer";
+import { SiteFooter } from "../components/SiteFooter";
 import { TrackForm } from "./TrackForm";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../lib/store";
 
@@ -51,7 +51,7 @@ export default async function RastreamentoPage() {
         <TrackForm />
       </section>
 
-      <Footer settings={home.settings} />
+      <SiteFooter settings={home.settings} />
     </main>
   );
 }

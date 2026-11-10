@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import "../../css/auth.css";
 import { Header } from "../../components/Header";
-import { Footer } from "../../components/Footer";
+import { SiteFooter } from "../../components/SiteFooter";
 import { CallbackClient } from "./CallbackClient";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../../lib/store";
 
@@ -49,7 +49,7 @@ export default async function AuthCallbackPage() {
           <CallbackClient />
         </Suspense>
       </section>
-      <Footer settings={s} />
+      <SiteFooter settings={s} />
     </main>
   );
 }

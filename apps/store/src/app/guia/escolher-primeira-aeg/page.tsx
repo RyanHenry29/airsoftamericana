@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Battery, Cpu, Ruler, Shield, Target, Wrench } from "lucide-react";
 import { Header } from "../../components/Header";
 import { MegaMenu } from "../../components/MegaMenu";
-import { Footer } from "../../components/Footer";
+import { SiteFooter } from "../../components/SiteFooter";
 import { loadHome } from "../../lib/store";
 
 export const dynamic = "force-dynamic";
@@ -203,7 +203,7 @@ export default async function EscolherPrimeiraAegPage() {
         </div>
       </section>
 
-      <Footer settings={settings} />
+      <SiteFooter settings={settings} />
     </main>
   );
 }

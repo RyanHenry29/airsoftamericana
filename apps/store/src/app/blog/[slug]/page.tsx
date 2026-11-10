@@ -6,7 +6,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Header } from "../../components/Header";
 import { MegaMenu } from "../../components/MegaMenu";
-import { Footer } from "../../components/Footer";
+import { SiteFooter } from "../../components/SiteFooter";
 import { loadHome } from "../../lib/store";
 import { fetchBlogPost, formatPostDate, paragraphs } from "../../lib/blog";
 
@@ -122,7 +122,7 @@ export default async function BlogPostPage({ params }: Props) {
         </section>
       )}
 
-      <Footer settings={settings} />
+      <SiteFooter settings={settings} />
     </main>
   );
 }

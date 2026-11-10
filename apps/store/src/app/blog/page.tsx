@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Header } from "../components/Header";
 import { MegaMenu } from "../components/MegaMenu";
-import { Footer } from "../components/Footer";
+import { SiteFooter } from "../components/SiteFooter";
 import { loadHome } from "../lib/store";
 import { fetchBlogCategories, fetchBlogList, formatPostDate } from "../lib/blog";
 
@@ -173,7 +173,7 @@ export default async function BlogIndexPage({
         )}
       </section>
 
-      <Footer settings={settings} />
+      <SiteFooter settings={settings} />
     </main>
   );
 }

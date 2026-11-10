@@ -302,3 +302,17 @@ export const EMPTY_HOME: StoreHome = {
 export async function loadHome(): Promise<StoreHome> {
   return storeGet<StoreHome>(`${API_URL}/api/store/home`, EMPTY_HOME);
 }
+
+/** Dados cadastrais da empresa (CNPJ do rodapé) — fonte única no backend. */
+export type Company = {
+  nome_fantasia: string;
+  razao_social: string;
+  cnpj: string;
+};
+
+export async function loadCompany(): Promise<Company | null> {
+  const res = await storeGet<{ company: Company | null }>(`${API_URL}/api/store/company`, {
+    company: null,
+  });
+  return res.company ?? null;
+}

@@ -16,7 +16,7 @@ import {
 import { Header } from "./components/Header";
 import { MegaMenu } from "./components/MegaMenu";
 import { ProductCard } from "./components/ProductCard";
-import { Footer } from "./components/Footer";
+import { SiteFooter } from "./components/SiteFooter";
 
 import {
   API_URL,
@@ -405,7 +405,7 @@ export default async function HomePage() {
         </ul>
       </section>
 
-      <Footer settings={settings} />
+      <SiteFooter settings={settings} />
     </main>
   );
 }

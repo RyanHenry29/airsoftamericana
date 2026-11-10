@@ -7,7 +7,7 @@ import { ChevronRight } from "lucide-react";
 import { Header } from "../../components/Header";
 import { MegaMenu } from "../../components/MegaMenu";
 import { ProductCard } from "../../components/ProductCard";
-import { Footer } from "../../components/Footer";
+import { SiteFooter } from "../../components/SiteFooter";
 import {
   API_URL,
   storeGet,
@@ -109,7 +109,7 @@ export default async function DepartmentPage({
             Ver catálogo
           </Link>
         </div>
-        <Footer settings={home.settings} />
+        <SiteFooter settings={home.settings} />
       </main>
     );
   }
@@ -194,7 +194,7 @@ export default async function DepartmentPage({
         </section>
       )}
 
-      <Footer settings={settings} />
+      <SiteFooter settings={settings} />
     </main>
   );
 }

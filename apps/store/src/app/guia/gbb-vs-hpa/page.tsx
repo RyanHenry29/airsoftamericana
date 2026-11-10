@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Banknote, Droplets, Flame, Gauge, Shield, Wrench } from "lucide-react";
 import { Header } from "../../components/Header";
 import { MegaMenu } from "../../components/MegaMenu";
-import { Footer } from "../../components/Footer";
+import { SiteFooter } from "../../components/SiteFooter";
 import { loadHome } from "../../lib/store";
 
 export const dynamic = "force-dynamic";
@@ -220,7 +220,7 @@ export default async function GbbVsHpaPage() {
         </div>
       </section>
 
-      <Footer settings={settings} />
+      <SiteFooter settings={settings} />
     </main>
   );
 }

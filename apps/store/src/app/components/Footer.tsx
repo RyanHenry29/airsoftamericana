@@ -3,9 +3,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { CommercialSettings } from "../lib/store";
-import { formatBRL } from "../lib/store";
+import { formatBRL, type Company } from "../lib/store";
 import { PaymentMarks } from "./PaymentMarks";
 
 const departments = [
@@ -29,8 +29,6 @@ const infoLinks = [
   { label: "Termos de compra", href: "/termos" },
 ];
 
-type Company = { nome_fantasia: string; razao_social: string; cnpj: string };
-
 function socialUrl(kind: "instagram" | "whatsapp", value: string | undefined): string | null {
   if (!value) return null;
   const v = value.trim();
@@ -44,26 +42,18 @@ function socialUrl(kind: "instagram" | "whatsapp", value: string | undefined): s
   return digits ? `https://wa.me/${digits}` : null;
 }
 
-export function Footer({ settings }: { settings: CommercialSettings }) {
+// `company` chega do servidor (SiteFooter) — CNPJ/razão social no HTML, sem fetch no cliente.
+export function Footer({
+  settings,
+  company,
+}: {
+  settings: CommercialSettings;
+  company: Company | null;
+}) {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState(false);
   const [error, setError] = useState("");
-  const [company, setCompany] = useState<Company | null>(null);
-
-  // Cadastro da empresa (CNPJ) vem do backend — nada escrito no componente.
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/store/company", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        if (alive && json?.company) setCompany(json.company as Company);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

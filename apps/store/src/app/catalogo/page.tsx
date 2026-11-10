@@ -5,7 +5,7 @@ import { ChevronRight, SlidersHorizontal } from "lucide-react";
 import { Header } from "../components/Header";
 import { MegaMenu } from "../components/MegaMenu";
 import { ProductCard } from "../components/ProductCard";
-import { Footer } from "../components/Footer";
+import { SiteFooter } from "../components/SiteFooter";
 import {
   API_URL,
   formatBRL,
@@ -365,7 +365,7 @@ export default async function CatalogPage({
         </div>
       </div>
 
-      <Footer settings={settings} />
+      <SiteFooter settings={settings} />
     </main>
   );
 }

@@ -7,7 +7,7 @@ import { ChevronRight, ShieldCheck, Truck, Zap } from "lucide-react";
 import { Header } from "../components/Header";
 import { MegaMenu } from "../components/MegaMenu";
 import { ProductCard } from "../components/ProductCard";
-import { Footer } from "../components/Footer";
+import { SiteFooter } from "../components/SiteFooter";
 import { Gallery } from "./Gallery";
 import { AddToCart } from "./AddToCart";
 import { ShippingQuote } from "./ShippingQuote";
@@ -105,7 +105,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             Ver catálogo
           </Link>
         </div>
-        <Footer settings={home.settings} />
+        <SiteFooter settings={home.settings} />
       </main>
     );
   }
@@ -314,7 +314,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         </section>
       )}
 
-      <Footer settings={settings} />
+      <SiteFooter settings={settings} />
     </main>
   );
 }

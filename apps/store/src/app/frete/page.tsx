@@ -1,7 +1,7 @@
 // language: TSX, file: apps/store/src/app/frete/page.tsx, target: Next.js App Router
 import type { Metadata } from "next";
 import { Header } from "../components/Header";
-import { Footer } from "../components/Footer";
+import { SiteFooter } from "../components/SiteFooter";
 import { API_SERVER, formatBRL, type CommercialSettings } from "../lib/store";
 
 export const metadata: Metadata = {
@@ -76,7 +76,7 @@ export default async function FretePage() {
           </div>
         )}
       </div>
-      {settings ? <Footer settings={settings} /> : null}
+      {settings ? <SiteFooter settings={settings} /> : null}
     </main>
   );
 }
