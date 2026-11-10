@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Clock, MapPin, Package, ShieldCheck, Truck } from "lucide-react";
 import { Header } from "../components/Header";
-import { MegaMenu } from "../components/MegaMenu";
 import { SiteFooter } from "../components/SiteFooter";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../lib/store";
 
@@ -48,8 +47,7 @@ export default async function InstitucionalPage() {
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <section className="inst-hero">
         <span className="sec-kicker">A loja</span>

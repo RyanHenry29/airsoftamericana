@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Battery, Cpu, Ruler, Shield, Target, Wrench } from "lucide-react";
 import { Header } from "../../components/Header";
-import { MegaMenu } from "../../components/MegaMenu";
 import { SiteFooter } from "../../components/SiteFooter";
 import { loadHome } from "../../lib/store";
 
@@ -92,8 +91,7 @@ export default async function EscolherPrimeiraAegPage() {
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <section className="inst-hero" style={{ paddingBottom: "1.5rem" }}>
         <span className="sec-kicker">Guia de compra</span>

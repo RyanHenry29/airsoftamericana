@@ -3,7 +3,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Header } from "../components/Header";
-import { MegaMenu } from "../components/MegaMenu";
 import { SiteFooter } from "../components/SiteFooter";
 import { loadHome } from "../lib/store";
 import { fetchBlogList, formatPostDate } from "../lib/blog";
@@ -41,8 +40,7 @@ export default async function GuiaIndexPage() {
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <section className="inst-hero" style={{ paddingBottom: "1.5rem" }}>
         <span className="sec-kicker">Conteúdo</span>

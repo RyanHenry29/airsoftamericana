@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { ChevronRight } from "lucide-react";
 import { Header } from "../../components/Header";
-import { MegaMenu } from "../../components/MegaMenu";
 import { ProductCard } from "../../components/ProductCard";
 import { SiteFooter } from "../../components/SiteFooter";
 import {
@@ -100,8 +99,7 @@ export default async function DepartmentPage({
   if (!dept) {
     return (
       <main className="page-shell">
-        <Header />
-        <MegaMenu departments={home.departments} />
+        <Header departments={home.departments} />
         <div className="notfound">
           <p className="notfound__num">404</p>
           <h1>Departamento não encontrado</h1>
@@ -118,8 +116,7 @@ export default async function DepartmentPage({
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <nav className="crumbs" aria-label="Trilha de navegação">
         <Link href="/">Início</Link>

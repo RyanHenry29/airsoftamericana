@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Shield, Crosshair, Circle, Battery, Wrench, Backpack } from "lucide-react";
 import { Header } from "../../components/Header";
-import { MegaMenu } from "../../components/MegaMenu";
 import { SiteFooter } from "../../components/SiteFooter";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../../lib/store";
 
@@ -94,8 +93,7 @@ export default async function GuiaPrimeiroJogoPage() {
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <section className="inst-hero" style={{ paddingBottom: "1.5rem" }}>
         <span className="sec-kicker">Guia</span>

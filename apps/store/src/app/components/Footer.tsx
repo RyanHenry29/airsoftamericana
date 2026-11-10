@@ -18,6 +18,7 @@ const departments = [
 ];
 
 const infoLinks = [
+  { label: "Por que comprar aqui", href: "/por-que-comprar" },
   { label: "Atendimento ao cliente", href: "/atendimento" },
   { label: "Rastrear pedido", href: "/rastreamento" },
   { label: "Guias", href: "/guia" },

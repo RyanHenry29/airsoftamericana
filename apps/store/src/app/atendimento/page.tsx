@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Clock, Mail, MessageCircle, Truck } from "lucide-react";
 import { Header } from "../components/Header";
-import { MegaMenu } from "../components/MegaMenu";
 import { SiteFooter } from "../components/SiteFooter";
 import { TicketForm } from "./TicketForm";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../lib/store";
@@ -96,8 +95,7 @@ export default async function AtendimentoPage() {
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <section className="inst-hero">
         <span className="sec-kicker">Atendimento</span>

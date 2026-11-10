@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { ChevronRight, ShieldCheck, Truck, Zap } from "lucide-react";
 import { Header } from "../components/Header";
-import { MegaMenu } from "../components/MegaMenu";
 import { ProductCard } from "../components/ProductCard";
 import { SiteFooter } from "../components/SiteFooter";
 import { Gallery } from "./Gallery";
@@ -95,8 +94,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!product) {
     return (
       <main className="page-shell">
-        <Header />
-        <MegaMenu departments={home.departments} />
+        <Header departments={home.departments} />
         <div className="notfound">
           <p className="notfound__num">404</p>
           <h1>Produto não encontrado</h1>
@@ -145,8 +143,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}

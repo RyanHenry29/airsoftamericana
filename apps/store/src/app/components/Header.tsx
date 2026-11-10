@@ -10,11 +10,12 @@ import { Menu, Search, ShoppingCart, User, X } from "lucide-react";
 import {
   API_URL,
   fetchWithTimeout,
+  type StoreDepartment,
   type StoreSuggestion,
 } from "../lib/store";
 import { DeptStrip } from "./DeptStrip";
 
-export function Header() {
+export function Header({ departments = [] }: { departments?: StoreDepartment[] }) {
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
   const [topbarVisible, setTopbarVisible] = useState(true);
@@ -23,6 +24,8 @@ export function Header() {
   const [suggestions, setSuggestions] = useState<StoreSuggestion | null>(null);
   const [count, setCount] = useState(0);
   const [customer, setCustomer] = useState<{ name: string; email: string } | null>(null);
+  const [place, setPlace] = useState<string | null>(null);
+  const [fallbackDepts, setFallbackDepts] = useState<StoreDepartment[]>([]);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -84,6 +87,34 @@ export function Header() {
     };
   }, []);
 
+  // Loja física da topbar: cidade/UF vêm das configurações do backend.
+  // Páginas sem departamentos no SSR (carrinho, checkout, conta, institucionais)
+  // buscam a árvore aqui — a barra nunca fica sem as entradas.
+  useEffect(() => {
+    let alive = true;
+    fetchWithTimeout(`${API_URL}/api/store/settings`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        const address = (json as { address?: { city?: string; state?: string } } | null)?.address;
+        if (alive && address?.city) {
+          setPlace(`Loja física · ${address.city}${address.state ? `/${address.state}` : ""}`);
+        }
+      })
+      .catch(() => {});
+    if (departments.length === 0) {
+      fetchWithTimeout(`${API_URL}/api/store/home`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => {
+          const depts = (json as { departments?: StoreDepartment[] } | null)?.departments;
+          if (alive && depts && depts.length > 0) setFallbackDepts(depts);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Sugestões de busca: debounce de 220 ms contra a API.
   useEffect(() => {
     const term = q.trim();
@@ -122,11 +153,25 @@ export function Header() {
 
   return (
     <header className={`site-header ${scrolled ? "is-scrolled" : ""} ${topbarVisible ? "" : "is-topbar-hidden"}`}>
-      {/* Faixa única de condição — uma linha só, centralizada. */}
+      {/* Topbar: promessa à esquerda, atalhos à direita (mesma leitura da referência). */}
       <div className="header-topbar" aria-hidden={!topbarVisible}>
         <div className="header-topbar__inner">
           <span className="header-topbar__item">
             <span className="dot-live" aria-hidden /> Entrega para todo o Brasil
+          </span>
+          <span className="header-topbar__spacer" />
+          <span className="header-topbar__group header-topbar__group--info">
+            <Link href="/rastreamento" className="header-topbar__link">
+              Rastrear pedido
+            </Link>
+            {place && (
+              <Link href="/institucional" className="header-topbar__link">
+                {place}
+              </Link>
+            )}
+            <Link href="/atendimento" className="header-topbar__link">
+              Atendimento
+            </Link>
           </span>
         </div>
       </div>
@@ -248,7 +293,7 @@ export function Header() {
         </button>
       </div>
 
-      <DeptStrip />
+      <DeptStrip departments={departments.length > 0 ? departments : fallbackDepts} />
 
       {menuOpen && (
         <nav className="header-mobile" aria-label="Menu principal">
@@ -260,6 +305,9 @@ export function Header() {
           </Link>
           <Link href="/blog" onClick={() => setMenuOpen(false)}>
             Blog
+          </Link>
+          <Link href="/por-que-comprar" onClick={() => setMenuOpen(false)}>
+            Por que comprar aqui
           </Link>
           <Link href="/conta" onClick={() => setMenuOpen(false)}>
             Minha conta

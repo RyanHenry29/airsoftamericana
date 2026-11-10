@@ -5,7 +5,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Header } from "../../components/Header";
-import { MegaMenu } from "../../components/MegaMenu";
 import { SiteFooter } from "../../components/SiteFooter";
 import { loadHome } from "../../lib/store";
 import { fetchBlogPost, formatPostDate, paragraphs } from "../../lib/blog";
@@ -45,8 +44,7 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <article className="blog-article">
         <nav className="blog-article__crumbs" aria-label="Navegação estrutural">

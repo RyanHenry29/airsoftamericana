@@ -1,7 +1,6 @@
 // language: TSX, file: apps/store/src/app/rastreamento/page.tsx, target: Next.js App Router
 // Página de rastreamento de pedido.
 import { Header } from "../components/Header";
-import { MegaMenu } from "../components/MegaMenu";
 import { SiteFooter } from "../components/SiteFooter";
 import { TrackForm } from "./TrackForm";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../lib/store";
@@ -39,8 +38,7 @@ export default async function RastreamentoPage() {
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <section className="track">
         <span className="sec-kicker">Acompanhar pedido</span>

@@ -1,10 +1,25 @@
+// language: TSX, file: apps/store/src/app/conta/ContaArea.tsx, target: Next.js App Router
+// Minha conta: identidade, menu lateral e pedidos reais do cliente
+// (GET /api/orders, escopo do próprio cliente). CPF/telefone formatados;
+// status com o mesmo rótulo do rastreamento.
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ShieldCheck, User, Mail, IdCard, Phone, ArrowRight, LogOut, Clock } from "lucide-react";
-import { API_URL } from "../lib/store";
+import {
+  ArrowRight,
+  ClipboardList,
+  Headset,
+  IdCard,
+  Lock,
+  LogOut,
+  Package,
+  Phone,
+  ShieldCheck,
+  Truck,
+} from "lucide-react";
+import { API_URL, fetchWithTimeout } from "../lib/store";
 
 type Customer = {
   id: string;
@@ -13,6 +28,15 @@ type Customer = {
   cpf?: string | null;
   phone?: string | null;
   createdAt?: string | null;
+};
+
+type Order = {
+  id: string;
+  number: string;
+  status: string;
+  totalCents: number;
+  paymentMethod: "pix" | "cartao" | "boleto" | null;
+  createdAt: string;
 };
 
 type MenuLink = {
@@ -34,23 +58,83 @@ type MenuItem = MenuLink | MenuAction;
 
 function menuFor(authed: boolean): MenuItem[] {
   const items: MenuItem[] = [
-    { kind: "link", label: "Meus pedidos", href: "/conta", icon: Clock, active: true },
+    { kind: "link", label: "Meus pedidos", href: "/conta", icon: ClipboardList, active: true },
+    { kind: "link", label: "Rastrear pedido", href: "/rastreamento", icon: Truck },
+    { kind: "link", label: "Atendimento", href: "/atendimento", icon: Headset },
   ];
-  if (authed) items.push({ kind: "action", label: "Sair", action: "logout", icon: LogOut });
+  if (authed) items.push({ kind: "action", label: "Sair da conta", action: "logout", icon: LogOut });
   return items;
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  aguardando_pagamento: "Aguardando pagamento",
+  pagamento_em_processamento: "Pagamento em processamento",
+  em_analise_antifraude: "Em análise antifraude",
+  aguardando_revisao_manual: "Aguardando revisão",
+  pagamento_aprovado: "Pagamento aprovado",
+  separacao: "Em separação",
+  preparando_envio: "Preparando envio",
+  enviado: "Enviado",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
+  reembolsado: "Reembolsado",
+  em_disputa: "Em disputa",
+  chargeback_recebido: "Chargeback recebido",
+};
+
+const PAY_LABEL: Record<string, string> = {
+  pix: "PIX",
+  cartao: "Cartão",
+  boleto: "Boleto",
+};
+
+function brl(cents: number) {
+  return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function dateBr(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+}
+
+/** 000.000.000-00 — só formata quando o CPF tem os 11 dígitos. */
+function formatCpf(value: string | null | undefined) {
+  if (!value) return null;
+  const d = value.replace(/\D/g, "").slice(0, 11);
+  if (d.length !== 11) return value;
+  return d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+}
+
+/** (00) 00000-0000 — fixo 10 dígitos, celular 11. */
+function formatPhone(value: string | null | undefined) {
+  if (!value) return null;
+  const d = value.replace(/\D/g, "").slice(0, 11);
+  if (d.length < 10) return value;
+  if (d.length === 10) return d.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{4})(\d)/, "$1-$2");
+  return d.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2");
 }
 
 export function ContaArea() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" });
+        const res = await fetchWithTimeout(`${API_URL}/api/auth/me`, { credentials: "include" });
         const json = (await res.json().catch(() => ({}))) as { customer?: Customer };
-        if (res.ok && json.customer) setCustomer(json.customer);
+        if (res.ok && json.customer) {
+          setCustomer(json.customer);
+          try {
+            const ord = await fetchWithTimeout(`${API_URL}/api/orders`, { credentials: "include" });
+            const data = (await ord.json().catch(() => ({}))) as { items?: Order[] };
+            if (ord.ok) setOrders(data.items ?? []);
+          } catch {
+            /* offline */
+          }
+        }
       } catch {
         /* offline */
       } finally {
@@ -70,10 +154,10 @@ export function ContaArea() {
     return (
       <div className="conta-shell">
         <div className="conta-header">
-          <div className="conta-avatar">{initialsPlaceholder()}</div>
+          <div className="conta-avatar">?</div>
           <div className="conta-ident">
             <p className="conta-kicker">MINHA CONTA</p>
-            <h1 className="conta-name">Carregando…</h1>
+            <h1 className="conta-name conta-name--skeleton">Carregando…</h1>
           </div>
         </div>
         <div className="conta-body">
@@ -86,6 +170,7 @@ export function ContaArea() {
             ))}
           </aside>
           <main className="conta-main">
+            <div className="conta-card conta-card--skeleton" />
             <div className="conta-card conta-card--skeleton" />
           </main>
         </div>
@@ -105,21 +190,23 @@ export function ContaArea() {
         </div>
         <div className="conta-body">
           <aside className="conta-sidebar">
-            {menuFor(false).map((m) => (
+            {menuFor(false).map((m) =>
               m.kind === "link" ? (
                 <Link key={m.href} href={m.href} className="conta-menu-item conta-menu-item--off">
                   <m.icon size={16} strokeWidth={2} className="conta-menu-icon" aria-hidden="true" />
                   <span className="conta-menu-label">{m.label}</span>
                 </Link>
               ) : null
-            ))}
+            )}
           </aside>
-          <main className="conta-main conta-main--empty">
+          <main className="conta-main">
             <div className="conta-empty">
-              <div className="conta-empty-icon" aria-hidden="true">🔒</div>
+              <span className="conta-empty-icon" aria-hidden="true">
+                <Lock size={26} strokeWidth={1.6} />
+              </span>
               <h2 className="conta-empty-title">Entre com sua conta</h2>
               <p className="conta-empty-text">
-                Veja pedidos, endereços e compre mais rápido.
+                Veja seus pedidos, acompanhe a entrega e compre mais rápido.
               </p>
               <div className="conta-empty-actions">
                 <Link href="/entrar" className="btn-primary">
@@ -142,29 +229,30 @@ export function ContaArea() {
     .join("")
     .toUpperCase()
     .slice(0, 2);
+  const cpf = formatCpf(customer.cpf);
+  const phone = formatPhone(customer.phone);
 
   return (
     <div className="conta-shell">
       <div className="conta-header">
-        <div className="conta-avatar">{initials}</div>
+        <div className="conta-avatar" aria-hidden="true">{initials}</div>
         <div className="conta-ident">
           <p className="conta-kicker">MINHA CONTA</p>
           <h1 className="conta-name">{customer.name}</h1>
-          <p className="conta-email">{customer.email}</p>
+          <p className="conta-meta">
+            {customer.email}
+            {customer.createdAt && <> · cliente desde {dateBr(customer.createdAt)}</>}
+          </p>
         </div>
       </div>
+
       <div className="conta-body">
-        <aside className="conta-sidebar">
+        <aside className="conta-sidebar" aria-label="Menu da conta">
           {menuFor(true).map((m) => {
             const Icon = m.icon;
             if (m.kind === "action" && m.action === "logout") {
               return (
-                <button
-                  key={m.label}
-                  type="button"
-                  onClick={logout}
-                  className="conta-menu-item"
-                >
+                <button key={m.label} type="button" onClick={logout} className="conta-menu-item conta-menu-item--action">
                   <Icon size={16} strokeWidth={2} className="conta-menu-icon" aria-hidden="true" />
                   <span className="conta-menu-label">{m.label}</span>
                 </button>
@@ -176,68 +264,106 @@ export function ContaArea() {
                   key={m.href}
                   href={m.href}
                   className={`conta-menu-item ${m.active ? "conta-menu-item--active" : ""}`}
+                  aria-current={m.active ? "page" : undefined}
                 >
                   <Icon size={16} strokeWidth={2} className="conta-menu-icon" aria-hidden="true" />
                   <span className="conta-menu-label">{m.label}</span>
-                  {m.active && <span className="conta-menu-dot" aria-hidden="true" />}
                 </Link>
               );
             }
             return null;
           })}
         </aside>
+
         <main className="conta-main">
-          <div className="conta-card">
+          <section className="conta-card" aria-labelledby="pedidos-title">
             <div className="conta-card-head">
-              <span className="conta-card-kicker">MEUS PEDIDOS</span>
+              <div>
+                <span className="conta-card-kicker" id="pedidos-title">MEUS PEDIDOS</span>
+                <p className="conta-card-sub">
+                  {orders.length > 0
+                    ? `${orders.length} ${orders.length === 1 ? "pedido" : "pedidos"} na sua conta`
+                    : "Seus pedidos aparecem aqui assim que você comprar"}
+                </p>
+              </div>
               <Link href="/rastreamento" className="conta-card-link">
                 Acompanhar pedido <ArrowRight size={14} strokeWidth={2} aria-hidden="true" />
               </Link>
             </div>
-            <div className="conta-empty">
-              <div className="conta-empty-icon" aria-hidden="true">📦</div>
-              <h2 className="conta-empty-title">Você ainda não fez nenhum pedido.</h2>
-              <p className="conta-empty-text">Seus pedidos aparecem aqui assim que você comprar.</p>
-              <div className="conta-empty-actions">
-                <Link href="/catalogo" className="btn-primary">
-                  Ir para a loja
-                </Link>
-              </div>
-            </div>
-          </div>
 
-          <div className="conta-card mt-6">
+            {orders.length === 0 ? (
+              <div className="conta-empty">
+                <span className="conta-empty-icon" aria-hidden="true">
+                  <Package size={26} strokeWidth={1.6} />
+                </span>
+                <h2 className="conta-empty-title">Você ainda não fez nenhum pedido.</h2>
+                <p className="conta-empty-text">Quando você comprar, o pedido e o rastreio ficam aqui.</p>
+                <div className="conta-empty-actions">
+                  <Link href="/catalogo" className="btn-primary">
+                    Ir para a loja
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <ol className="conta-orders">
+                {orders.map((o) => (
+                  <li key={o.id} className="conta-order">
+                    <div className="conta-order__id">
+                      <strong>Pedido {o.number}</strong>
+                      <span>{dateBr(o.createdAt)}</span>
+                    </div>
+                    <span className="conta-order__status" data-status={o.status}>
+                      {STATUS_LABEL[o.status] ?? o.status}
+                    </span>
+                    <span className="conta-order__pay">{o.paymentMethod ? (PAY_LABEL[o.paymentMethod] ?? "—") : "—"}</span>
+                    <span className="conta-order__total">{brl(o.totalCents)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          <section className="conta-card conta-card--data" aria-labelledby="dados-title">
             <div className="conta-card-head">
-              <ShieldCheck size={14} strokeWidth={2} className="conta-card-icon" aria-hidden="true" />
-              <span className="conta-card-kicker">SUA CONTA ESTÁ SEGURA</span>
+              <div>
+                <span className="conta-card-kicker conta-card-kicker--secure" id="dados-title">
+                  <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
+                  DADOS DA CONTA
+                </span>
+                <p className="conta-card-sub">Informações do seu cadastro na loja</p>
+              </div>
             </div>
             <div className="conta-grid">
               <div className="conta-field">
-                <span className="conta-field-label">E-mail</span>
+                <span className="conta-field-label">
+                  <IdCard size={13} strokeWidth={2} aria-hidden="true" /> E-mail
+                </span>
                 <p className="conta-field-value">{customer.email}</p>
               </div>
               <div className="conta-field">
-                <span className="conta-field-label">CPF</span>
-                <p className="conta-field-value">{customer.cpf ?? "—"}</p>
+                <span className="conta-field-label">
+                  <IdCard size={13} strokeWidth={2} aria-hidden="true" /> CPF
+                </span>
+                <p className="conta-field-value">{cpf ?? "—"}</p>
               </div>
               <div className="conta-field">
-                <span className="conta-field-label">Telefone</span>
-                <p className="conta-field-value">{customer.phone ?? "—"}</p>
+                <span className="conta-field-label">
+                  <Phone size={13} strokeWidth={2} aria-hidden="true" /> Telefone
+                </span>
+                <p className="conta-field-value">{phone ?? "—"}</p>
               </div>
               <div className="conta-field">
-                <span className="conta-field-label">Cadastro</span>
+                <span className="conta-field-label">
+                  <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" /> Cadastro
+                </span>
                 <p className="conta-field-value">
-                  {customer.createdAt ? new Date(customer.createdAt).toLocaleDateString("pt-BR") : "—"}
+                  {customer.createdAt ? dateBr(customer.createdAt) : "—"}
                 </p>
               </div>
             </div>
-          </div>
+          </section>
         </main>
       </div>
     </div>
   );
-}
-
-function initialsPlaceholder(): string {
-  return "?";
 }

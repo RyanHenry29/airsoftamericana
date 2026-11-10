@@ -4,7 +4,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { ChevronRight } from "lucide-react";
 import { Header } from "../../components/Header";
-import { MegaMenu } from "../../components/MegaMenu";
 import { ProductCard } from "../../components/ProductCard";
 import { SiteFooter } from "../../components/SiteFooter";
 import {
@@ -90,8 +89,7 @@ export default async function BrandPage({ params }: { params: Promise<{ slug: st
 
   return (
     <main className="page-shell">
-      <Header />
-      <MegaMenu departments={home.departments} />
+      <Header departments={home.departments} />
 
       <nav className="crumbs" aria-label="Trilha de navegação">
         <Link href="/">Início</Link>

@@ -1,18 +1,36 @@
+// language: TSX, file: apps/store/src/app/conta/page.tsx, target: Next.js App Router
+// Minha conta com o mesmo casco das demais páginas: header com departamentos,
+// conteúdo no shell da loja e rodapé completo (dados do backend).
+import Link from "next/link";
 import { Header } from "../components/Header";
+import { SiteFooter } from "../components/SiteFooter";
+import { loadHome } from "../lib/store";
 import { ContaArea } from "./ContaArea";
 
-export default function ContaPage() {
-  return (
-    <main className="min-h-screen bg-[#000] text-white">
-      <Header />
+export const dynamic = "force-dynamic";
 
-      <div className="mx-auto max-w-3xl px-5 pb-24">
-        <nav className="font-mono text-[0.65rem] uppercase tracking-[0.15em] text-[#666] mb-12 flex items-center gap-2">
-          <span className="text-white font-bold">Minha conta</span>
+export const metadata = {
+  title: "Minha conta — Airsoft Americana",
+};
+
+export default async function ContaPage() {
+  const home = await loadHome();
+
+  return (
+    <main id="conteudo" className="page-shell">
+      <Header departments={home.departments} />
+
+      <div className="conta-page">
+        <nav className="conta-crumbs" aria-label="Trilha de navegação">
+          <Link href="/">Início</Link>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page">Minha conta</span>
         </nav>
 
         <ContaArea />
       </div>
+
+      <SiteFooter settings={home.settings} />
     </main>
   );
 }
