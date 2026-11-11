@@ -2,6 +2,7 @@
 // Minha conta com o mesmo casco das demais páginas: header com departamentos,
 // conteúdo no shell da loja e rodapé completo (dados do backend).
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Header } from "../components/Header";
 import { SiteFooter } from "../components/SiteFooter";
 import { loadHome } from "../lib/store";
@@ -9,8 +10,11 @@ import { ContaArea } from "./ContaArea";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Minha conta — Airsoft Americana",
+// Área logada: robots.txt bloqueia /conta (URL de sessão). Title/desc para a
+// aba do cliente — sem keyword, não há busca que deva desembocar aqui.
+export const metadata: Metadata = {
+  title: "Minha conta",
+  description: "Acesse seus dados, endereços e pedidos na sua conta da Airsoft Americana.",
 };
 
 export default async function ContaPage() {

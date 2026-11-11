@@ -10,9 +10,16 @@ import { loadHome } from "../../lib/store";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Como escolher sua primeira AEG | Airsoft Americana",
+  title: "Como escolher sua primeira AEG",
   description:
     "Guia da primeira AEG: gearbox, bateria, hop-up, munição, orçamento total e os erros que mais estragam a primeira compra.",
+  keywords: [
+    "primeira AEG",
+    "como escolher airsoft",
+    "gearbox airsoft",
+    "AEG para iniciante",
+    "hop-up airsoft",
+  ],
   alternates: { canonical: "/guia/escolher-primeira-aeg" },
 };
 

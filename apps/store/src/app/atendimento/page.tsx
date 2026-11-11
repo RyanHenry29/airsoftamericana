@@ -1,6 +1,7 @@
 // language: TSX, file: apps/store/src/app/atendimento/page.tsx, target: Next.js App Router
 // Central de atendimento: canais diretos, FAQ e abertura de chamado.
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Clock, Mail, MessageCircle, Truck } from "lucide-react";
 import { Header } from "../components/Header";
 import { SiteFooter } from "../components/SiteFooter";
@@ -8,6 +9,14 @@ import { TicketForm } from "./TicketForm";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../lib/store";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Atendimento e suporte",
+  description:
+    "Dúvida sobre produto, frete, pagamento ou troca? Atendimento da Airsoft Americana com perguntas frequentes e abertura de chamado — resposta no mesmo dia útil.",
+  keywords: ["atendimento airsoft", "suporte ao cliente", "dúvidas de compra", "troca e devolução", "fale conosco"],
+  alternates: { canonical: "/atendimento" },
+};
 
 const EMPTY_SETTINGS: CommercialSettings = {
   pix_discount_percent: 0,

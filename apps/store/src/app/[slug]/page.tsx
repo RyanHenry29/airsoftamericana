@@ -60,9 +60,23 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     product?.description?.slice(0, 155) ||
     `${name} — airsoft e equipamentos táticos na Airsoft Americana.`;
   const image = product?.images?.[0]?.url;
+  // Tags do banco viram termos de busca reais (nada de lista inventada);
+  // dedupe case-insensitive evita "M4 airsoft" + "airsoft" redundantes.
+  const tagTerms = (product?.tags ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const rawKeywords = [
+    name,
+    ...(product?.brandName ? [product.brandName] : []),
+    ...(product?.categoryName ? [product.categoryName] : []),
+    ...tagTerms,
+    "airsoft",
+  ];
   return {
     title: name,
     description,
+    keywords: rawKeywords.filter((k, i) => rawKeywords.findIndex((x) => x.toLowerCase() === k.toLowerCase()) === i),
     alternates: { canonical: `/${slug}` },
     openGraph: {
       type: "website",

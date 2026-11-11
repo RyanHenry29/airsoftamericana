@@ -10,6 +10,7 @@ import { loadHome, type CommercialSettings } from "../lib/store";
 export const metadata: Metadata = {
   title: "Termos de Uso e Compra",
   description: "Regras de compra, pagamento, envio, troca e devolução da Airsoft Americana (CDC).",
+  keywords: ["termos de uso", "termos de compra", "troca e devolução", "direito de arrependimento"],
   alternates: { canonical: "/termos" },
 };
 

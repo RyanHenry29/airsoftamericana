@@ -1,6 +1,7 @@
 // language: TSX, file: apps/store/src/app/conta/pedidos/page.tsx, target: Next.js App Router
 // Meus pedidos — mesmo casco das demais páginas da loja (header, shell, rodapé).
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Header } from "../../components/Header";
 import { SiteFooter } from "../../components/SiteFooter";
 import { loadHome } from "../../lib/store";
@@ -8,8 +9,10 @@ import { PedidosArea } from "../PedidosArea";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Meus pedidos — Airsoft Americana",
+// Sob o prefixo /conta — bloqueado em robots.txt; title/desc para a aba.
+export const metadata: Metadata = {
+  title: "Meus pedidos",
+  description: "Histórico de pedidos da Airsoft Americana: status, valores e rastreio de cada compra.",
 };
 
 export default async function ContaPedidosPage() {

@@ -7,6 +7,7 @@ import { API_SERVER, formatBRL, type CommercialSettings } from "../lib/store";
 export const metadata: Metadata = {
   title: "Frete e Entrega",
   description: "Condições de frete e entrega da Airsoft Americana.",
+  keywords: ["frete e entrega", "calcular frete airsoft", "prazo de entrega", "envio para todo o Brasil"],
   alternates: { canonical: "/frete" },
 };
 

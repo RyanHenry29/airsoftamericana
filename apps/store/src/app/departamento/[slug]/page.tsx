@@ -14,6 +14,7 @@ import {
   type StoreHome,
   type StoreProduct,
 } from "../../lib/store";
+import { OG_IMAGE } from "../../lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -63,11 +64,30 @@ export async function generateMetadata({
     null,
   );
   if (!dept) return { title: "Departamento não encontrado" };
+  const description =
+    dept.description || `${dept.name} na Airsoft Americana — ${dept.total} produtos com frete para todo o Brasil.`;
+  // Termos derivados do nome real, sem repetição ("Airsoft airsoft") —
+  // dedupe case-insensitive no fim.
+  const rawKeywords = [
+    dept.name,
+    `${dept.name} réplicas`,
+    ...(dept.parent?.name ? [dept.parent.name] : []),
+    ...(dept.name.toLowerCase().includes("airsoft") ? [] : [`${dept.name} airsoft`, "airsoft"]),
+    "equipamento tático",
+  ];
   return {
     title: dept.name,
-    description:
-      dept.description || `${dept.name} na Airsoft Americana — ${dept.total} produtos com frete para todo o Brasil.`,
+    description,
+    keywords: rawKeywords.filter((k, i) => rawKeywords.findIndex((x) => x.toLowerCase() === k.toLowerCase()) === i),
     alternates: { canonical: `/departamento/${dept.slug}` },
+    openGraph: {
+      type: "website",
+      title: `${dept.name} | Airsoft Americana`,
+      description,
+      url: `/departamento/${dept.slug}`,
+      // Override de openGraph precisa reapontar a arte da convenção opengraph-image.
+      images: [OG_IMAGE],
+    },
   };
 }
 

@@ -10,9 +10,10 @@ import { fetchBlogList, formatPostDate } from "../lib/blog";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Guias de airsoft | Airsoft Americana",
+  title: "Guias de airsoft",
   description:
     "Guias práticos da Airsoft Americana: primeiro jogo, escolha da primeira AEG e comparativo GBB vs HPA.",
+  keywords: ["guias de airsoft", "aprender airsoft", "primeiro jogo de airsoft", "primeira AEG", "GBB vs HPA"],
   alternates: { canonical: "/guia" },
 };
 

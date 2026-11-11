@@ -3,6 +3,7 @@
 // (dado real do backend) e guias — seções movidas da home, entrada no rodapé
 // e no menu mobile.
 import Link from "next/link";
+import type { Metadata } from "next";
 import {
   Clock,
   CreditCard,
@@ -18,8 +19,12 @@ import { loadHome, type CommercialSettings } from "../lib/store";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Por que comprar aqui — Airsoft Americana",
+export const metadata: Metadata = {
+  title: "Por que comprar aqui",
+  description:
+    "Compra segura do clique à entrega: pagamento, frete, troca e provas de confiança da Airsoft Americana — e guias para quem está começando no airsoft.",
+  keywords: ["comprar airsoft", "loja confiável de airsoft", "pagamento e frete", "guia de airsoft"],
+  alternates: { canonical: "/por-que-comprar" },
 };
 
 export default async function PorQueComprarPage() {

@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import { Header } from "../components/Header";
 import { CheckoutForm } from "./CheckoutForm";
+
+// Tela de sessão: robots.txt já bloqueia /checkout (etapa 2 do fluxo
+// Carrinho → Checkout → Pagamento). Title/desc são para a aba do cliente.
+export const metadata: Metadata = {
+  title: "Finalizar compra",
+  description: "Confira seus dados e siga para o pagamento — última etapa do pedido na Airsoft Americana.",
+};
 
 export default function CheckoutPage() {
   return (

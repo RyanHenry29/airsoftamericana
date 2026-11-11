@@ -10,9 +10,10 @@ import { loadHome } from "../../lib/store";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "GBB vs HPA: qual vale a pena? | Airsoft Americana",
+  title: "GBB vs HPA: qual vale a pena?",
   description:
     "Comparativo GBB e HPA: realismo, manutenção, custo por partida, consistência de FPS e requisitos de campo. Decida com dados.",
+  keywords: ["GBB vs HPA", "gas blowback", "HPA airsoft", "réplica HPA", "comparativo de airsoft"],
   alternates: { canonical: "/guia/gbb-vs-hpa" },
 };
 

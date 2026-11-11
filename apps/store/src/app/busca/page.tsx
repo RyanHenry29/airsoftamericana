@@ -1,6 +1,7 @@
 // language: TSX, file: apps/store/src/app/busca/page.tsx, target: Next.js App Router
 // Busca de produtos (server-side): q + autocomplete no Header, filtros (marca/categoria/condição/disponibilidade/preço/especificações técnicas configuráveis por dados reais), ordenação, paginação, breadcrumbs e estados.
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ChevronRight, SlidersHorizontal } from "lucide-react";
 import { Header } from "../components/Header";
 import { ProductCard } from "../components/ProductCard";
@@ -16,6 +17,16 @@ import {
 import { PRICE_BANDS } from "../lib/filters";
 
 export const dynamic = "force-dynamic";
+
+// Resultados de busca não entram no índice (mesmo conteúdo sob N queries) —
+// mas seguem followable: o Googlebot precisa ler o noindex desta página.
+export const metadata: Metadata = {
+  title: "Busca de produtos",
+  description:
+    "Busque réplicas, pistolas, coletes, BBs e acessórios no catálogo da Airsoft Americana — filtros por marca, categoria, condição, disponibilidade, preço e especificações técnicas.",
+  keywords: ["busca airsoft", "procurar réplica", "pistola de airsoft", "colete tático", "BBs"],
+  robots: { index: false, follow: true },
+};
 
 const SORTS = [
   { key: "featured_first", label: "Relevância" },

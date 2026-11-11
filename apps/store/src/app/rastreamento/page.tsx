@@ -1,11 +1,20 @@
 // language: TSX, file: apps/store/src/app/rastreamento/page.tsx, target: Next.js App Router
 // Página de rastreamento de pedido.
+import type { Metadata } from "next";
 import { Header } from "../components/Header";
 import { SiteFooter } from "../components/SiteFooter";
 import { TrackForm } from "./TrackForm";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../lib/store";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Rastreamento de pedido",
+  description:
+    "Informe o número do pedido e o e-mail usado na compra: o status e o código de rastreio da sua encomenda aparecem na hora.",
+  keywords: ["rastreamento de pedido", "rastreio", "status do pedido", "rastrear encomenda"],
+  alternates: { canonical: "/rastreamento" },
+};
 
 const EMPTY_SETTINGS: CommercialSettings = {
   pix_discount_percent: 0,

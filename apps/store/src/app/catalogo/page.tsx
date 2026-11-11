@@ -1,6 +1,7 @@
 // language: TSX, file: apps/store/src/app/catalogo/page.tsx, target: Next.js App Router
 // Catálogo com filtros laterais reais (facetas da API), ordenação, paginação e grade densa com foto.
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ChevronRight, SlidersHorizontal } from "lucide-react";
 import { Header } from "../components/Header";
 import { ProductCard } from "../components/ProductCard";
@@ -16,6 +17,24 @@ import {
 import { PRICE_BANDS } from "../lib/filters";
 
 export const dynamic = "force-dynamic";
+
+// Canonical fixo em /catalogo: as variantes com ?categoria/?brand/?q duplicam o
+// conteúdo de /departamento/[slug] e /busca — consolidar na raiz evita
+// canibalização entre três URLs para a mesma grade.
+export const metadata: Metadata = {
+  title: "Catálogo de airsoft, réplicas e equipamentos táticos",
+  description:
+    "Catálogo da Airsoft Americana: réplicas, pistolas, coletes, BBs e acessórios com filtros de marca, categoria, condição, disponibilidade e preço. Envio para todo o Brasil.",
+  keywords: [
+    "catálogo de airsoft",
+    "réplica de airsoft",
+    "pistola de airsoft",
+    "colete tático",
+    "BBs e acessórios",
+    "loja de airsoft",
+  ],
+  alternates: { canonical: "/catalogo" },
+};
 
 const SORTS = [
   { key: "featured_first", label: "Relevância" },

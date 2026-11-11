@@ -8,6 +8,7 @@ import { loadHome } from "../lib/store";
 export const metadata: Metadata = {
   title: "Política de Privacidade",
   description: "Como a Airsoft Americana coleta, usa e protege seus dados pessoais (LGPD).",
+  keywords: ["política de privacidade", "LGPD", "dados pessoais", "privacidade de dados"],
   alternates: { canonical: "/privacidade" },
 };
 

@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import { Header } from "../components/Header";
 import { CartItems } from "./CartItems";
+
+// Tela de sessão: robots.txt já bloqueia /cart. Title/desc são para a aba do
+// cliente — sem index/canonical aqui para não brigar com o bloqueio do crawler.
+export const metadata: Metadata = {
+  title: "Carrinho de compras",
+  description: "Revise os itens do seu carrinho antes de finalizar o pedido na Airsoft Americana.",
+};
 
 export default function CartPage() {
   return (

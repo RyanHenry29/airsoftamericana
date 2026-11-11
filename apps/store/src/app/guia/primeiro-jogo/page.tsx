@@ -9,9 +9,16 @@ import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Guia de primeiro jogo | Airsoft Americana",
+  title: "Guia de primeiro jogo",
   description:
     "O que levar no primeiro jogo de airsoft: proteção ocular, réplica, BBs, bateria, manutenção e loadout. Guia prático da Airsoft Americana.",
+  keywords: [
+    "primeiro jogo de airsoft",
+    "checklist de airsoft",
+    "equipamento para airsoft",
+    "proteção ocular airsoft",
+    "loadout iniciante",
+  ],
   alternates: { canonical: "/guia/primeiro-jogo" },
 };
 

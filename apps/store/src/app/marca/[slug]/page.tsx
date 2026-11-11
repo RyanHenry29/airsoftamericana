@@ -55,6 +55,7 @@ export async function generateMetadata({
   return {
     title: brand.name,
     description: `Produtos ${brand.name} na Airsoft Americana — airsoft, tiro esportivo e loadout com frete para todo o Brasil.`,
+    keywords: [brand.name, `${brand.name} airsoft`, `${brand.name} réplica`, "tiro esportivo", "loadout"],
     alternates: { canonical: `/marca/${brand.slug}` },
   };
 }

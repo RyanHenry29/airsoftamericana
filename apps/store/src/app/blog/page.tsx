@@ -11,9 +11,10 @@ import { fetchBlogCategories, fetchBlogList, formatPostDate } from "../lib/blog"
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Blog | Airsoft Americana",
+  title: "Blog",
   description:
     "Artigos da Airsoft Americana sobre airsoft, equipamentos, segurança e manutenção. Guias práticos escritos pela equipe.",
+  keywords: ["blog de airsoft", "guias de airsoft", "manutenção de réplica", "segurança em airsoft"],
   alternates: { canonical: "/blog" },
 };
 

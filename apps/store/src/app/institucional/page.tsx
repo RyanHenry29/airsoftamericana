@@ -1,12 +1,21 @@
 // language: TSX, file: apps/store/src/app/institucional/page.tsx, target: Next.js App Router
 // Página institucional: quem somos, onde ficamos, como funciona o envio e as políticas.
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Clock, MapPin, Package, ShieldCheck, Truck } from "lucide-react";
 import { Header } from "../components/Header";
 import { SiteFooter } from "../components/SiteFooter";
 import { API_URL, storeGet, type CommercialSettings, type StoreHome } from "../lib/store";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Sobre a Airsoft Americana",
+  description:
+    "Quem é a Airsoft Americana: endereço em Americana/SP, como funciona a compra e as políticas da loja — informação da operação em um só lugar.",
+  keywords: ["sobre a airsoft americana", "loja de airsoft", "quem somos", "políticas da loja"],
+  alternates: { canonical: "/institucional" },
+};
 
 const EMPTY_SETTINGS: CommercialSettings = {
   pix_discount_percent: 0,
