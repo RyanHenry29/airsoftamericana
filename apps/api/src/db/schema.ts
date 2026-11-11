@@ -228,6 +228,20 @@ export const customerAddresses = pgTable(
   (t) => [index("customer_addresses_customer_idx").on(t.customerId)],
 );
 
+/** Foto de perfil — uma por cliente (índice único), JPEG/PNG/WebP em bytea. */
+export const customerAvatars = pgTable(
+  "customer_avatars",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    customerId: uuid("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+    mime: varchar("mime", { length: 64 }).notNull(),
+    bytes: bytea("bytes").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [uniqueIndex("customer_avatars_customer_uniq").on(t.customerId)],
+);
+
 export const passwordResets = pgTable(
   "password_resets",
   {

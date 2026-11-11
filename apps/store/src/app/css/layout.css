@@ -1851,6 +1851,12 @@ address.footer__line { font-style: normal; }
   margin: 0;
   text-align: center;
 }
+.checkout-cep-hint {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
 .checkout-perks {
   display: flex;
   flex-wrap: wrap;
@@ -2294,6 +2300,43 @@ address.footer__line { font-style: normal; }
 .conta-input:focus { border-color: var(--primary); outline: none; }
 .conta-input[aria-invalid="true"] { border-color: var(--destructive); }
 .conta-err { font-size: 0.75rem; line-height: 1.4; color: #fca5a5; }
+.conta-hint { font-size: 0.75rem; line-height: 1.4; color: var(--muted-foreground); }
+
+/* Foto de perfil: a imagem cobre o quadrado do cabeçalho (fallback = iniciais) */
+.conta-avatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 2px;
+  display: block;
+}
+
+/* Ficha da foto dentro de "Editar dados" */
+.conta-photo {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px dashed var(--border);
+}
+.conta-avatar--photo { width: 72px; height: 72px; font-size: 1.5rem; }
+.conta-photo__body { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.conta-photo__hint { margin: 0; font-size: 0.75rem; line-height: 1.45; color: var(--muted-foreground); }
+.conta-photo__actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+/* seletor de arquivo invisível, mas alcançável por teclado (o label abre) */
+.conta-photo__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 .conta-form-actions {
   grid-column: 1 / -1;
   display: flex;

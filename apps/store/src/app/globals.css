@@ -498,7 +498,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pcard__add:hover:not(:disabled) { background: var(--primary-strong); border-color: var(--primary-strong); color: #fff; }
 .pcard__add:disabled { opacity: 0.55; cursor: default; }
 
-/* .brand-grid, .inst e .newsletter-band vivem em css/home.css (carrega depois e vence). */
+/* .brand-grid e .dept-cards vivem em css/home.css (carrega depois e vence). */
 
 .site-footer { background: #0c0e0f; border-top: 1px solid var(--border); color: var(--muted-foreground); }
 .site-footer__inner { max-width: var(--container); margin-inline: auto; padding: clamp(2rem, 4vw, 3rem) clamp(1rem, 3vw, 1.5rem); display: grid; grid-template-columns: 1.5fr repeat(3, 1fr); gap: 2rem; }

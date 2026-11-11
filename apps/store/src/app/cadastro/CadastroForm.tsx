@@ -224,10 +224,10 @@ export function CadastroForm() {
 
         <div className="auth-field">
           <label className="auth-label" htmlFor="name">
+            <User size={14} strokeWidth={2} aria-hidden="true" />
             Nome completo
           </label>
           <div className="auth-wrap">
-            <User size={16} strokeWidth={1.8} aria-hidden="true" />
             <input
               id="name"
               className="auth-input"
@@ -251,10 +251,10 @@ export function CadastroForm() {
         <div className="auth-row auth-row--2">
           <div className="auth-field">
             <label className="auth-label" htmlFor="email">
+              <Mail size={14} strokeWidth={2} aria-hidden="true" />
               E-mail
             </label>
             <div className="auth-wrap">
-              <Mail size={16} strokeWidth={1.8} aria-hidden="true" />
               <input
                 id="email"
                 type="email"
@@ -281,10 +281,10 @@ export function CadastroForm() {
 
           <div className="auth-field">
             <label className="auth-label" htmlFor="phone">
+              <Phone size={14} strokeWidth={2} aria-hidden="true" />
               WhatsApp <span className="auth-optional">opcional</span>
             </label>
             <div className="auth-wrap">
-              <Phone size={16} strokeWidth={1.8} aria-hidden="true" />
               <input
                 id="phone"
                 type="tel"
@@ -318,10 +318,10 @@ export function CadastroForm() {
 
         <div className="auth-field">
           <label className="auth-label" htmlFor="cpf">
+            <IdCard size={14} strokeWidth={2} aria-hidden="true" />
             CPF <span className="auth-optional">opcional</span>
           </label>
           <div className="auth-wrap">
-            <IdCard size={16} strokeWidth={1.8} aria-hidden="true" />
             <input
               id="cpf"
               inputMode="numeric"
@@ -354,10 +354,10 @@ export function CadastroForm() {
 
         <div className="auth-field">
           <label className="auth-label" htmlFor="password">
+            <Lock size={14} strokeWidth={2} aria-hidden="true" />
             Senha
           </label>
           <div className="auth-wrap">
-            <Lock size={16} strokeWidth={1.8} aria-hidden="true" />
             <input
               id="password"
               type={showPassword ? "text" : "password"}
@@ -407,10 +407,10 @@ export function CadastroForm() {
 
         <div className="auth-field">
           <label className="auth-label" htmlFor="confirm">
+            <Lock size={14} strokeWidth={2} aria-hidden="true" />
             Confirmar senha
           </label>
           <div className="auth-wrap">
-            <Lock size={16} strokeWidth={1.8} aria-hidden="true" />
             <input
               id="confirm"
               type={showPassword ? "text" : "password"}

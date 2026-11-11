@@ -30,6 +30,8 @@ export function AuthShell({
             </Link>
           </div>
 
+          <span className="auth-ruler" aria-hidden="true" />
+
           {children}
 
           <footer className="auth-legal">

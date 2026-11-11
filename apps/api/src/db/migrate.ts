@@ -162,6 +162,22 @@ export async function migrate(db: Db) {
     CREATE INDEX IF NOT EXISTS "customer_addresses_customer_idx" ON "customer_addresses" ("customer_id");
   `);
 
+  // Foto de perfil do cliente: uma por conta (índice único) — o upload faz
+  // upsert e o GET devolve os bytes com o mime gravado.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "customer_avatars" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "customer_id" uuid NOT NULL REFERENCES "customers"("id") ON DELETE CASCADE,
+      "mime" varchar(64) NOT NULL,
+      "bytes" bytea NOT NULL,
+      "size_bytes" integer NOT NULL,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "customer_avatars_customer_uniq" ON "customer_avatars" ("customer_id");
+  `);
+
   // Redefinição de senha: token sha256 (nunca o valor puro), TTL de 60 min,
   // consumo marcado por used_at — a comparação é atômica em transação.
   await db.execute(sql`
@@ -430,6 +446,12 @@ export async function migrate(db: Db) {
   `);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "homepage_sections_position_idx" ON "homepage_sections" ("position");
+  `);
+
+  // Seções removidas da home (a loja não renderiza mais): some também das
+  // linhas já gravadas no CMS — idempotente, roda no bootstrap e nos testes.
+  await db.execute(sql`
+    DELETE FROM "homepage_sections" WHERE "kind" IN ('benefits', 'institutional', 'newsletter');
   `);
 
   // ---------------------------------------------------------------- Estoque

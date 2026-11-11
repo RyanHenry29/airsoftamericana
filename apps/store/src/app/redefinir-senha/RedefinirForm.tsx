@@ -155,7 +155,6 @@ export function RedefinirForm({ token }: { token: string }) {
           <KeyRound size={13} strokeWidth={2} aria-hidden="true" /> Nova senha
         </label>
         <div className="auth-wrap">
-          <Lock size={16} strokeWidth={1.8} aria-hidden="true" />
           <input
             id="password"
             type={show ? "text" : "password"}
@@ -202,10 +201,10 @@ export function RedefinirForm({ token }: { token: string }) {
 
       <div className="auth-field">
         <label className="auth-label" htmlFor="confirm">
+          <Lock size={14} strokeWidth={2} aria-hidden="true" />
           Repete a senha
         </label>
         <div className="auth-wrap">
-          <Lock size={16} strokeWidth={1.8} aria-hidden="true" />
           <input
             id="confirm"
             type={show ? "text" : "password"}

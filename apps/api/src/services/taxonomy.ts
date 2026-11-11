@@ -8,7 +8,7 @@
  * departamento precisa aceitar QUALQUER categoria, não só a raiz, e os
  * produtos de um departamento são os da subárvore inteira.
  */
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 
@@ -86,9 +86,10 @@ export async function countProductsByCategory(
     .select({ categoryId: schema.products.categoryId, total: sql`count(*)::int` })
     .from(schema.products)
     .where(
-      inArray(
-        schema.products.categoryId,
-        categoryIds,
+      and(
+        inArray(schema.products.categoryId, categoryIds),
+        // Contagem exibida ao cliente: só publicado, nunca soma rascunho.
+        eq(schema.products.published, true),
       ),
     )
     .groupBy(schema.products.categoryId);

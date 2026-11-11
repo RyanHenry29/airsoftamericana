@@ -92,6 +92,7 @@ export type StoreDepartment = {
   description: string;
   imageUrl: string | null;
   ageRestricted: boolean;
+  productCount: number;
   children: {
     id: string;
     name: string;

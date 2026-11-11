@@ -1,80 +1,28 @@
 // language: TSX, file: apps/store/src/app/conta/ContaArea.tsx, target: Next.js App Router
-// Minha conta: identidade, menu lateral e pedidos reais do cliente
-// (GET /api/orders, escopo do próprio cliente). CPF/telefone formatados;
-// status com o mesmo rótulo do rastreamento.
+// Minha conta: identidade, dados do cadastro e endereços salvos — o acesso
+// "Meus pedidos" mora em /conta/pedidos (PedidosArea). CPF/telefone
+// formatados; endereço com ViaCEP na hora de preencher.
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle,
-  ArrowRight,
-  ClipboardList,
-  Eye,
-  Headset,
+  Camera,
   IdCard,
-  Lock,
-  LogOut,
   MapPin,
-  Package,
   Pencil,
   Phone,
   Plus,
-  RefreshCw,
   ShieldCheck,
-  ShoppingCart,
   Trash2,
-  Truck,
 } from "lucide-react";
 import { API_URL, fetchWithTimeout } from "../lib/store";
-import { OrderDetailModal } from "./OrderDetailModal";
-import { PAY_LABEL, STATUS_LABEL, brl, dateBr } from "./order-labels";
-
-type Customer = {
-  id: string;
-  name: string;
-  email: string;
-  cpf?: string | null;
-  phone?: string | null;
-  createdAt?: string | null;
-};
-
-type Order = {
-  id: string;
-  number: string;
-  status: string;
-  totalCents: number;
-  paymentMethod: "pix" | "cartao" | "boleto" | null;
-  createdAt: string;
-};
-
-type MenuLink = {
-  kind: "link";
-  label: string;
-  href: string;
-  icon: React.ElementType;
-  active?: boolean;
-};
-
-type MenuAction = {
-  kind: "action";
-  label: string;
-  action: "logout";
-  icon: React.ElementType;
-};
-
-type MenuItem = MenuLink | MenuAction;
-
-function menuFor(authed: boolean): MenuItem[] {
-  const items: MenuItem[] = [
-    { kind: "link", label: "Meus pedidos", href: "/conta", icon: ClipboardList, active: true },
-    { kind: "link", label: "Rastrear pedido", href: "/rastreamento", icon: Truck },
-    { kind: "link", label: "Atendimento", href: "/atendimento", icon: Headset },
-  ];
-  if (authed) items.push({ kind: "action", label: "Sair da conta", action: "logout", icon: LogOut });
-  return items;
-}
+import { fetchViaCep, formatCep as maskCep, isCompleteCep, mergeCepLookup } from "../lib/viacep";
+import { fileToAvatarDataUrl, isAvatarSource } from "../lib/avatar";
+import { AvatarFace, ContaShell } from "./ContaShell";
+import { initialsOf, logoutAccount, type Customer } from "./conta-menu";
+import { dateBr } from "./order-labels";
 
 /** 000.000.000-00 — só formata quando o CPF tem os 11 dígitos. */
 function formatCpf(value: string | null | undefined) {
@@ -113,11 +61,6 @@ function maskPhone(value: string) {
 }
 
 /** CEP 00000-000 enquanto digita. */
-function maskCep(value: string) {
-  const d = value.replace(/\D/g, "").slice(0, 8);
-  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
-}
-
 type SavedAddress = {
   id: string;
   recipient: string;
@@ -184,6 +127,7 @@ function FormField(props: {
   maxLength?: number;
   full?: boolean;
   placeholder?: string;
+  hint?: React.ReactNode;
 }) {
   const invalid = Boolean(props.touched && props.error);
   return (
@@ -204,10 +148,16 @@ function FormField(props: {
         aria-invalid={invalid || undefined}
         aria-describedby={invalid ? `${props.id}-err` : undefined}
       />
-      {invalid && (
+      {invalid ? (
         <span className="conta-err" id={`${props.id}-err`}>
           {props.error}
         </span>
+      ) : (
+        props.hint && (
+          <span className="conta-hint" id={`${props.id}-hint`}>
+            {props.hint}
+          </span>
+        )
       )}
     </div>
   );
@@ -218,9 +168,6 @@ export function ContaArea() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [modal, setModal] = useState<{ number: string; mode: "espiar" | "comprar" } | null>(null);
-
   // Perfil editável
   const [profileEdit, setProfileEdit] = useState(false);
   const [pf, setPf] = useState<ProfileForm>({ name: "", cpf: "", phone: "" });
@@ -229,11 +176,22 @@ export function ContaArea() {
   const [pfBusy, setPfBusy] = useState(false);
   const [pfMsg, setPfMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Foto de perfil: `avatarVersion` recarrega a imagem do cabeçalho e da
+  // ficha; `hasAvatar` habilita o botão de remover.
+  const [avatarVersion, setAvatarVersion] = useState(0);
+  const [hasAvatar, setHasAvatar] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   // Endereços salvos
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [addrLoading, setAddrLoading] = useState(true);
   const [addrFormOpen, setAddrFormOpen] = useState(false);
   const [addrEditId, setAddrEditId] = useState<string | null>(null);
+  // Consulta ViaCEP: rua/bairro/cidade/uf vêm da base, número e complemento
+  // são do cliente. `afCepDone` evita repetir a mesma consulta no mesmo CEP.
+  const [afCepStatus, setAfCepStatus] = useState<"idle" | "busy" | "ok" | "miss">("idle");
+  const afCepDone = useRef("");
   const [af, setAf] = useState<AddressForm>({
     recipient: "",
     zip: "",
@@ -273,11 +231,11 @@ export function ContaArea() {
       if (res.ok && json.customer) {
         setCustomer(json.customer);
         try {
-          const ord = await fetchWithTimeout(`${API_URL}/api/orders`, { credentials: "include" });
-          const data = (await ord.json().catch(() => ({}))) as { items?: Order[] };
-          if (ord.ok) setOrders(data.items ?? []);
+          // prova se existe foto (200/404) — só pra habilitar o "Remover"
+          const av = await fetchWithTimeout(`${API_URL}/api/customer/avatar`, { credentials: "include" });
+          setHasAvatar(av.ok);
         } catch {
-          /* pedidos fora do ar não derrubam a conta */
+          setHasAvatar(false);
         }
         await loadAddresses();
       } else if (res.status !== 401) {
@@ -297,9 +255,64 @@ export function ContaArea() {
   }, []);
 
   async function logout() {
-    await fetch(`${API_URL}/api/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
-    router.push("/");
-    router.refresh();
+    await logoutAccount(router);
+  }
+
+  /** Escolhe a imagem, reduz pra 512px no canvas e envia (o servidor valida). */
+  async function onPhotoPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // deixa escolher o mesmo arquivo de novo
+    if (!file || photoBusy) return;
+    if (!isAvatarSource(file)) {
+      setPhotoMsg({ ok: false, text: "Escolha uma imagem JPG, PNG ou WebP de até 12 MB." });
+      return;
+    }
+    setPhotoBusy(true);
+    setPhotoMsg(null);
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file);
+      const res = await fetchWithTimeout(`${API_URL}/api/customer/avatar`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+      if (res.ok) {
+        setHasAvatar(true);
+        setAvatarVersion((v) => v + 1);
+        setPhotoMsg({ ok: true, text: "Foto atualizada — vale no cabeçalho da conta." });
+      } else {
+        setPhotoMsg({ ok: false, text: json.error?.message ?? "Não foi possível enviar a foto. Tente de novo." });
+      }
+    } catch {
+      setPhotoMsg({ ok: false, text: "Sem conexão com a loja — tente de novo." });
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function removePhoto() {
+    if (photoBusy) return;
+    setPhotoBusy(true);
+    setPhotoMsg(null);
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/api/customer/avatar`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok) {
+        setHasAvatar(false);
+        setAvatarVersion((v) => v + 1);
+        setPhotoMsg({ ok: true, text: "Foto removida — suas iniciais voltam pro lugar." });
+      } else {
+        setPhotoMsg({ ok: false, text: "Não foi possível remover a foto. Tente de novo." });
+      }
+    } catch {
+      setPhotoMsg({ ok: false, text: "Sem conexão com a loja — tente de novo." });
+    } finally {
+      setPhotoBusy(false);
+    }
   }
 
   function startProfileEdit() {
@@ -357,6 +370,8 @@ export function ContaArea() {
     setAfMsg(null);
     setAfErrors({});
     setAfTouched({});
+    afCepDone.current = "";
+    setAfCepStatus("idle");
     if (address) {
       setAddrEditId(address.id);
       setAf({
@@ -389,12 +404,37 @@ export function ContaArea() {
 
   function onAfChange(key: keyof AddressForm, value: string | boolean) {
     let masked: string | boolean = value;
-    if (key === "zip" && typeof value === "string") masked = maskCep(value);
+    if (key === "zip" && typeof value === "string") {
+      masked = maskCep(value);
+      if (isCompleteCep(String(masked))) void lookupAfCep(String(masked));
+    }
     if (key === "state" && typeof value === "string") masked = value.toUpperCase().slice(0, 2);
     const next = { ...af, [key]: masked } as AddressForm;
     setAf(next);
     if (afTouched[key]) setAfErrors(validateAddress(next));
   }
+
+  /** Preenche rua/bairro/cidade/uf no form. Falha (rede, CEP inexistente) = null silencioso. */
+  async function lookupAfCep(cepValue: string) {
+    const digits = cepValue.replace(/\D/g, "");
+    if (digits.length !== 8 || afCepDone.current === digits) return;
+    afCepDone.current = digits;
+    setAfCepStatus("busy");
+    const found = await fetchViaCep(digits);
+    if (!found) {
+      setAfCepStatus("miss");
+      return;
+    }
+    setAf((cur) => mergeCepLookup(cur, found));
+    setAfCepStatus("ok");
+  }
+
+  // O ViaCEP responde depois do blur: sem isso o "Informe o logradouro"
+  // levantado na validação anterior ficaria preso mesmo com o campo preenchido.
+  useEffect(() => {
+    if (Object.keys(afTouched).length > 0) setAfErrors(validateAddress(af));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [af]);
 
   async function saveAddress(e: React.FormEvent) {
     e.preventDefault();
@@ -497,598 +537,433 @@ export function ContaArea() {
     }
   }
 
-  if (loading) {
+  // Carga, falha e deslogado são estados do casco; daqui pra baixo o cliente
+  // existe e as seções podem usá-lo com segurança de tipo.
+  if (loading || loadError || !customer) {
     return (
-      <div className="conta-shell">
-        <div className="conta-header">
-          <div className="conta-avatar">?</div>
-          <div className="conta-ident">
-            <p className="conta-kicker">MINHA CONTA</p>
-            <h1 className="conta-name conta-name--skeleton">Carregando…</h1>
-          </div>
-        </div>
-        <div className="conta-body">
-          <aside className="conta-sidebar">
-            {menuFor(false).map((m) => (
-              <span key={m.label} className="conta-menu-item conta-menu-item--skeleton">
-                <span className="conta-menu-icon" aria-hidden="true" />
-                <span className="conta-menu-label">—</span>
-              </span>
-            ))}
-          </aside>
-          <main className="conta-main">
-            <div className="conta-card conta-card--skeleton" />
-            <div className="conta-card conta-card--skeleton" />
-          </main>
-        </div>
-      </div>
+      <ContaShell
+        active="conta"
+        kicker="MINHA CONTA"
+        customer={customer}
+        loading={loading}
+        loadError={loadError}
+        onRetry={load}
+        onLogout={logout}
+      />
     );
   }
 
-  if (loadError) {
-    return (
-      <div className="conta-shell">
-        <div className="conta-header">
-          <div className="conta-avatar" aria-hidden="true">!</div>
-          <div className="conta-ident">
-            <p className="conta-kicker">MINHA CONTA</p>
-            <h1 className="conta-name">Falha ao carregar</h1>
-          </div>
-        </div>
-        <div className="conta-body">
-          <aside className="conta-sidebar">
-            {menuFor(false).map((m) =>
-              m.kind === "link" ? (
-                <Link key={m.href} href={m.href} className="conta-menu-item conta-menu-item--off">
-                  <m.icon size={16} strokeWidth={2} className="conta-menu-icon" aria-hidden="true" />
-                  <span className="conta-menu-label">{m.label}</span>
-                </Link>
-              ) : null
-            )}
-          </aside>
-          <main className="conta-main">
-            <div className="conta-empty" role="alert">
-              <span className="conta-empty-icon" aria-hidden="true">
-                <AlertTriangle size={26} strokeWidth={1.6} />
-              </span>
-              <h2 className="conta-empty-title">Não conseguimos carregar sua conta</h2>
-              <p className="conta-empty-text">
-                A conexão com a loja falhou. Nada do seu histórico se perdeu — tente de novo.
-              </p>
-              <div className="conta-empty-actions">
-                <button type="button" className="btn-primary" onClick={() => load()}>
-                  <RefreshCw size={15} strokeWidth={2} aria-hidden="true" />
-                  Tentar novamente
-                </button>
-              </div>
-            </div>
-          </main>
-        </div>
-      </div>
-    );
-  }
-
-  if (!customer) {
-    return (
-      <div className="conta-shell">
-        <div className="conta-header">
-          <div className="conta-avatar">?</div>
-          <div className="conta-ident">
-            <p className="conta-kicker">MINHA CONTA</p>
-            <h1 className="conta-name">Você ainda não entrou</h1>
-          </div>
-        </div>
-        <div className="conta-body">
-          <aside className="conta-sidebar">
-            {menuFor(false).map((m) =>
-              m.kind === "link" ? (
-                <Link key={m.href} href={m.href} className="conta-menu-item conta-menu-item--off">
-                  <m.icon size={16} strokeWidth={2} className="conta-menu-icon" aria-hidden="true" />
-                  <span className="conta-menu-label">{m.label}</span>
-                </Link>
-              ) : null
-            )}
-          </aside>
-          <main className="conta-main">
-            <div className="conta-empty">
-              <span className="conta-empty-icon" aria-hidden="true">
-                <Lock size={26} strokeWidth={1.6} />
-              </span>
-              <h2 className="conta-empty-title">Entre com sua conta</h2>
-              <p className="conta-empty-text">
-                Veja seus pedidos, acompanhe a entrega e compre mais rápido.
-              </p>
-              <div className="conta-empty-actions">
-                <Link href="/entrar" className="btn-primary">
-                  Entrar
-                </Link>
-                <Link href="/cadastro" className="btn-ghost">
-                  Criar conta
-                </Link>
-              </div>
-            </div>
-          </main>
-        </div>
-      </div>
-    );
-  }
-
-  const initials = customer.name
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
   const cpf = formatCpf(customer.cpf);
   const phone = formatPhone(customer.phone);
 
   return (
-    <div className="conta-shell">
-      <div className="conta-header">
-        <div className="conta-avatar" aria-hidden="true">{initials}</div>
-        <div className="conta-ident">
-          <p className="conta-kicker">MINHA CONTA</p>
-          <h1 className="conta-name">{customer.name}</h1>
-          <p className="conta-meta">
-            {customer.email}
-            {customer.createdAt && <> · cliente desde {dateBr(customer.createdAt)}</>}
-          </p>
+    <ContaShell
+      active="conta"
+      kicker="MINHA CONTA"
+      customer={customer}
+      loading={loading}
+      loadError={loadError}
+      onRetry={load}
+      onLogout={logout}
+      avatarVersion={avatarVersion}
+    >
+      <section className="conta-card" aria-labelledby="dados-title">
+        <div className="conta-card-head">
+          <div>
+            <span className="conta-card-kicker conta-card-kicker--secure" id="dados-title">
+              <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
+              DADOS DA CONTA
+            </span>
+            <p className="conta-card-sub">Informações do seu cadastro na loja</p>
+          </div>
+          {!profileEdit && (
+            <button type="button" className="conta-head-action" onClick={startProfileEdit}>
+              <Pencil size={13} strokeWidth={2} aria-hidden="true" /> Editar dados
+            </button>
+          )}
         </div>
-      </div>
 
-      <div className="conta-body">
-        <aside className="conta-sidebar" aria-label="Menu da conta">
-          {menuFor(true).map((m) => {
-            const Icon = m.icon;
-            if (m.kind === "action" && m.action === "logout") {
-              return (
-                <button key={m.label} type="button" onClick={logout} className="conta-menu-item conta-menu-item--action">
-                  <Icon size={16} strokeWidth={2} className="conta-menu-icon" aria-hidden="true" />
-                  <span className="conta-menu-label">{m.label}</span>
-                </button>
-              );
-            }
-            if (m.kind === "link") {
-              return (
-                <Link
-                  key={m.href}
-                  href={m.href}
-                  className={`conta-menu-item ${m.active ? "conta-menu-item--active" : ""}`}
-                  aria-current={m.active ? "page" : undefined}
-                >
-                  <Icon size={16} strokeWidth={2} className="conta-menu-icon" aria-hidden="true" />
-                  <span className="conta-menu-label">{m.label}</span>
-                </Link>
-              );
-            }
-            return null;
-          })}
-        </aside>
+        {pfMsg && (
+          <p className={`conta-msg ${pfMsg.ok ? "conta-msg--ok" : "conta-msg--err"}`} role="status">
+            {pfMsg.text}
+          </p>
+        )}
 
-        <main className="conta-main">
-          <section className="conta-card" aria-labelledby="pedidos-title">
-            <div className="conta-card-head">
-              <div>
-                <span className="conta-card-kicker" id="pedidos-title">MEUS PEDIDOS</span>
-                <p className="conta-card-sub">
-                  {orders.length > 0
-                    ? `${orders.length} ${orders.length === 1 ? "pedido" : "pedidos"} na sua conta`
-                    : "Seus pedidos aparecem aqui assim que você comprar"}
-                </p>
-              </div>
-              <Link href="/rastreamento" className="conta-card-link">
-                Acompanhar pedido <ArrowRight size={14} strokeWidth={2} aria-hidden="true" />
-              </Link>
+        {!profileEdit ? (
+          <div className="conta-grid">
+            <div className="conta-field">
+              <span className="conta-field-label">
+                <IdCard size={13} strokeWidth={2} aria-hidden="true" /> E-mail
+              </span>
+              <p className="conta-field-value">{customer.email}</p>
             </div>
-
-            {orders.length === 0 ? (
-              <div className="conta-empty">
-                <span className="conta-empty-icon" aria-hidden="true">
-                  <Package size={26} strokeWidth={1.6} />
-                </span>
-                <h2 className="conta-empty-title">Você ainda não fez nenhum pedido.</h2>
-                <p className="conta-empty-text">Quando você comprar, o pedido e o rastreio ficam aqui.</p>
-                <div className="conta-empty-actions">
-                  <Link href="/catalogo" className="btn-primary">
-                    Ir para a loja
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <ol className="conta-orders">
-                {orders.map((o) => (
-                  <li key={o.id} className="conta-order">
-                    <div className="conta-order__id">
-                      <strong>Pedido {o.number}</strong>
-                      <span>{dateBr(o.createdAt)}</span>
-                    </div>
-                    <span className="conta-order__status" data-status={o.status}>
-                      {STATUS_LABEL[o.status] ?? o.status}
-                    </span>
-                    <span className="conta-order__pay">{o.paymentMethod ? (PAY_LABEL[o.paymentMethod] ?? "—") : "—"}</span>
-                    <span className="conta-order__total">{brl(o.totalCents)}</span>
-                    <div className="conta-order__actions">
-                      <button
-                        type="button"
-                        className="conta-order__btn"
-                        onClick={() => setModal({ number: o.number, mode: "espiar" })}
-                      >
-                        <Eye size={13} strokeWidth={2} aria-hidden="true" /> ESPIAR
-                      </button>
-                      <button
-                        type="button"
-                        className="conta-order__btn conta-order__btn--buy"
-                        onClick={() => setModal({ number: o.number, mode: "comprar" })}
-                      >
-                        <ShoppingCart size={13} strokeWidth={2} aria-hidden="true" /> COMPRAR
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-
-          <section className="conta-card conta-card--data" aria-labelledby="dados-title">
-            <div className="conta-card-head">
-              <div>
-                <span className="conta-card-kicker conta-card-kicker--secure" id="dados-title">
-                  <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
-                  DADOS DA CONTA
-                </span>
-                <p className="conta-card-sub">Informações do seu cadastro na loja</p>
-              </div>
-              {!profileEdit && (
-                <button type="button" className="conta-head-action" onClick={startProfileEdit}>
-                  <Pencil size={13} strokeWidth={2} aria-hidden="true" /> Editar dados
-                </button>
-              )}
+            <div className="conta-field">
+              <span className="conta-field-label">
+                <IdCard size={13} strokeWidth={2} aria-hidden="true" /> CPF
+              </span>
+              <p className="conta-field-value">{cpf ?? "—"}</p>
             </div>
-
-            {pfMsg && (
-              <p className={`conta-msg ${pfMsg.ok ? "conta-msg--ok" : "conta-msg--err"}`} role="status">
-                {pfMsg.text}
+            <div className="conta-field">
+              <span className="conta-field-label">
+                <Phone size={13} strokeWidth={2} aria-hidden="true" /> Telefone
+              </span>
+              <p className="conta-field-value">{phone ?? "—"}</p>
+            </div>
+            <div className="conta-field">
+              <span className="conta-field-label">
+                <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" /> Cadastro
+              </span>
+              <p className="conta-field-value">
+                {customer.createdAt ? dateBr(customer.createdAt) : "—"}
               </p>
-            )}
+            </div>
+          </div>
+        ) : (
+          <form className="conta-form" onSubmit={saveProfile} noValidate>
+            <div className="conta-photo">
+              <div className="conta-avatar conta-avatar--photo" aria-hidden="true">
+                <AvatarFace version={avatarVersion} fallback={initialsOf(customer.name)} />
+              </div>
+              <div className="conta-photo__body">
+                <span className="conta-form-label">Foto de perfil</span>
+                <p className="conta-photo__hint">
+                  JPG, PNG ou WebP — recortamos em quadrado e reduzimos pra 512px antes de enviar.
+                </p>
+                {photoMsg && (
+                  <p className={`conta-msg ${photoMsg.ok ? "conta-msg--ok" : "conta-msg--err"}`} role="status">
+                    {photoMsg.text}
+                  </p>
+                )}
+                <div className="conta-photo__actions">
+                  <label className="conta-head-action">
+                    <Camera size={13} strokeWidth={2} aria-hidden="true" />
+                    {photoBusy ? "Enviando…" : "Trocar foto"}
+                    <input
+                      className="conta-photo__input"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={onPhotoPick}
+                      disabled={photoBusy}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="conta-head-action"
+                    onClick={removePhoto}
+                    disabled={photoBusy || !hasAvatar}
+                  >
+                    <Trash2 size={13} strokeWidth={2} aria-hidden="true" /> Remover
+                  </button>
+                </div>
+              </div>
+            </div>
+            <FormField
+              id="pf-name"
+              label="Nome completo"
+              value={pf.name}
+              onChange={(v) => onPfChange("name", v)}
+              onBlur={() => {
+                setPfTouched((t) => ({ ...t, name: true }));
+                setPfErrors(validateProfile(pf));
+              }}
+              error={pfErrors.name}
+              touched={pfTouched.name}
+              autoComplete="name"
+              maxLength={120}
+              full
+            />
+            <FormField
+              id="pf-cpf"
+              label="CPF"
+              value={pf.cpf}
+              onChange={(v) => onPfChange("cpf", v)}
+              onBlur={() => {
+                setPfTouched((t) => ({ ...t, cpf: true }));
+                setPfErrors(validateProfile(pf));
+              }}
+              error={pfErrors.cpf}
+              touched={pfTouched.cpf}
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={14}
+              placeholder="000.000.000-00"
+            />
+            <FormField
+              id="pf-phone"
+              label="Telefone / WhatsApp"
+              value={pf.phone}
+              onChange={(v) => onPfChange("phone", v)}
+              onBlur={() => {
+                setPfTouched((t) => ({ ...t, phone: true }));
+                setPfErrors(validateProfile(pf));
+              }}
+              error={pfErrors.phone}
+              touched={pfTouched.phone}
+              inputMode="tel"
+              autoComplete="tel"
+              maxLength={15}
+              placeholder="(00) 00000-0000"
+            />
+            <div className="conta-form-actions">
+              <button
+                type="button"
+                className="conta-head-action"
+                onClick={() => setProfileEdit(false)}
+                disabled={pfBusy}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="btn-primary" disabled={pfBusy}>
+                {pfBusy ? "Salvando…" : "Salvar alterações"}
+              </button>
+            </div>
+          </form>
+        )}
+      </section>
 
-            {!profileEdit ? (
-              <div className="conta-grid">
-                <div className="conta-field">
-                  <span className="conta-field-label">
-                    <IdCard size={13} strokeWidth={2} aria-hidden="true" /> E-mail
-                  </span>
-                  <p className="conta-field-value">{customer.email}</p>
-                </div>
-                <div className="conta-field">
-                  <span className="conta-field-label">
-                    <IdCard size={13} strokeWidth={2} aria-hidden="true" /> CPF
-                  </span>
-                  <p className="conta-field-value">{cpf ?? "—"}</p>
-                </div>
-                <div className="conta-field">
-                  <span className="conta-field-label">
-                    <Phone size={13} strokeWidth={2} aria-hidden="true" /> Telefone
-                  </span>
-                  <p className="conta-field-value">{phone ?? "—"}</p>
-                </div>
-                <div className="conta-field">
-                  <span className="conta-field-label">
-                    <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" /> Cadastro
-                  </span>
-                  <p className="conta-field-value">
-                    {customer.createdAt ? dateBr(customer.createdAt) : "—"}
+      <section className="conta-card" aria-labelledby="enderecos-title">
+        <div className="conta-card-head">
+          <div>
+            <span className="conta-card-kicker" id="enderecos-title">
+              <MapPin size={14} strokeWidth={2} aria-hidden="true" />
+              ENDEREÇOS DE ENTREGA
+            </span>
+            <p className="conta-card-sub">O endereço padrão vem preenchido no checkout</p>
+          </div>
+          {!addrFormOpen && (
+            <button type="button" className="conta-head-action" onClick={() => startAddressForm()}>
+              <Plus size={13} strokeWidth={2} aria-hidden="true" />{" "}
+              {addresses.length > 0 ? "Novo endereço" : "Adicionar"}
+            </button>
+          )}
+        </div>
+
+        {afMsg && (
+          <p className={`conta-msg ${afMsg.ok ? "conta-msg--ok" : "conta-msg--err"}`} role="status">
+            {afMsg.text}
+          </p>
+        )}
+
+        {addrFormOpen ? (
+          <form className="conta-form" onSubmit={saveAddress} noValidate>
+            <FormField
+              id="af-recipient"
+              label="Quem recebe"
+              value={af.recipient}
+              onChange={(v) => onAfChange("recipient", v)}
+              onBlur={() => {
+                setAfTouched((t) => ({ ...t, recipient: true }));
+                setAfErrors(validateAddress(af));
+              }}
+              error={afErrors.recipient}
+              touched={afTouched.recipient}
+              autoComplete="name"
+              maxLength={120}
+              full
+            />
+            <FormField
+              id="af-zip"
+              label="CEP"
+              value={af.zip}
+              onChange={(v) => onAfChange("zip", v)}
+              onBlur={() => {
+                setAfTouched((t) => ({ ...t, zip: true }));
+                setAfErrors(validateAddress(af));
+                void lookupAfCep(af.zip);
+              }}
+              error={afErrors.zip}
+              touched={afTouched.zip}
+              hint={
+                afCepStatus === "busy"
+                  ? "Buscando CEP na ViaCEP…"
+                  : afCepStatus === "ok"
+                    ? "Logradouro preenchido — confira e digite o número."
+                    : afCepStatus === "miss"
+                      ? "CEP fora da base — preencha os campos na mão."
+                      : undefined
+              }
+              inputMode="numeric"
+              autoComplete="postal-code"
+              maxLength={9}
+              placeholder="00000-000"
+            />
+            <FormField
+              id="af-number"
+              label="Número"
+              value={af.number}
+              onChange={(v) => onAfChange("number", v)}
+              onBlur={() => {
+                setAfTouched((t) => ({ ...t, number: true }));
+                setAfErrors(validateAddress(af));
+              }}
+              error={afErrors.number}
+              touched={afTouched.number}
+              inputMode="numeric"
+              autoComplete="address-line2"
+              maxLength={20}
+            />
+            <FormField
+              id="af-street"
+              label="Logradouro"
+              value={af.street}
+              onChange={(v) => onAfChange("street", v)}
+              onBlur={() => {
+                setAfTouched((t) => ({ ...t, street: true }));
+                setAfErrors(validateAddress(af));
+              }}
+              error={afErrors.street}
+              touched={afTouched.street}
+              autoComplete="address-line1"
+              maxLength={160}
+              placeholder="Rua, avenida…"
+              full
+            />
+            <FormField
+              id="af-complement"
+              label="Complemento"
+              value={af.complement}
+              onChange={(v) => onAfChange("complement", v)}
+              onBlur={() => setAfTouched((t) => ({ ...t, complement: true }))}
+              autoComplete="address-line3"
+              maxLength={120}
+              placeholder="apto, bloco…"
+            />
+            <FormField
+              id="af-neighborhood"
+              label="Bairro"
+              value={af.neighborhood}
+              onChange={(v) => onAfChange("neighborhood", v)}
+              onBlur={() => {
+                setAfTouched((t) => ({ ...t, neighborhood: true }));
+                setAfErrors(validateAddress(af));
+              }}
+              error={afErrors.neighborhood}
+              touched={afTouched.neighborhood}
+              autoComplete="address-level3"
+              maxLength={80}
+            />
+            <FormField
+              id="af-city"
+              label="Cidade"
+              value={af.city}
+              onChange={(v) => onAfChange("city", v)}
+              onBlur={() => {
+                setAfTouched((t) => ({ ...t, city: true }));
+                setAfErrors(validateAddress(af));
+              }}
+              error={afErrors.city}
+              touched={afTouched.city}
+              autoComplete="address-level2"
+              maxLength={80}
+            />
+            <FormField
+              id="af-state"
+              label="UF"
+              value={af.state}
+              onChange={(v) => onAfChange("state", v)}
+              onBlur={() => {
+                setAfTouched((t) => ({ ...t, state: true }));
+                setAfErrors(validateAddress(af));
+              }}
+              error={afErrors.state}
+              touched={afTouched.state}
+              autoComplete="address-level1"
+              maxLength={2}
+              placeholder="SP"
+            />
+            <label className="conta-check conta-form-field--full" htmlFor="af-default">
+              <input
+                id="af-default"
+                type="checkbox"
+                checked={af.isDefault}
+                onChange={(e) => onAfChange("isDefault", e.target.checked)}
+              />
+              Usar este endereço como padrão de entrega
+            </label>
+            <div className="conta-form-actions">
+              <button
+                type="button"
+                className="conta-head-action"
+                onClick={() => {
+                  setAddrFormOpen(false);
+                  setAddrEditId(null);
+                }}
+                disabled={afBusy}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="btn-primary" disabled={afBusy}>
+                {afBusy ? "Salvando…" : addrEditId ? "Salvar alterações" : "Salvar endereço"}
+              </button>
+            </div>
+          </form>
+        ) : addrLoading ? (
+          <div className="conta-addr-list" aria-busy="true">
+            <div className="conta-card conta-card--skeleton" />
+            <div className="conta-card conta-card--skeleton" />
+          </div>
+        ) : addresses.length === 0 ? (
+          <div className="conta-empty">
+            <span className="conta-empty-icon" aria-hidden="true">
+              <MapPin size={26} strokeWidth={1.6} />
+            </span>
+            <h2 className="conta-empty-title">Nenhum endereço salvo</h2>
+            <p className="conta-card-sub">
+              Salve seu endereço uma vez — o checkout já vai preenchido.
+            </p>
+            <div className="conta-empty-actions">
+              <button type="button" className="btn-primary" onClick={() => startAddressForm()}>
+                Adicionar endereço
+              </button>
+            </div>
+          </div>
+        ) : (
+          <ul className="conta-addr-list">
+            {addresses.map((a) => (
+              <li key={a.id} className={`conta-addr ${a.isDefault ? "conta-addr--default" : ""}`}>
+                <div className="conta-addr__body">
+                  <div className="conta-addr__top">
+                    <strong className="conta-addr__name">{a.recipient}</strong>
+                    {a.isDefault && <span className="conta-addr__badge">PADRÃO</span>}
+                  </div>
+                  <p className="conta-addr__line">
+                    {a.street}, {a.number}
+                    {a.complement ? ` — ${a.complement}` : ""}
+                  </p>
+                  <p className="conta-addr__line">
+                    {a.neighborhood} · {a.city}/{a.state} · CEP {maskCep(a.zip)}
                   </p>
                 </div>
-              </div>
-            ) : (
-              <form className="conta-form" onSubmit={saveProfile} noValidate>
-                <FormField
-                  id="pf-name"
-                  label="Nome completo"
-                  value={pf.name}
-                  onChange={(v) => onPfChange("name", v)}
-                  onBlur={() => {
-                    setPfTouched((t) => ({ ...t, name: true }));
-                    setPfErrors(validateProfile(pf));
-                  }}
-                  error={pfErrors.name}
-                  touched={pfTouched.name}
-                  autoComplete="name"
-                  maxLength={120}
-                  full
-                />
-                <FormField
-                  id="pf-cpf"
-                  label="CPF"
-                  value={pf.cpf}
-                  onChange={(v) => onPfChange("cpf", v)}
-                  onBlur={() => {
-                    setPfTouched((t) => ({ ...t, cpf: true }));
-                    setPfErrors(validateProfile(pf));
-                  }}
-                  error={pfErrors.cpf}
-                  touched={pfTouched.cpf}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  maxLength={14}
-                  placeholder="000.000.000-00"
-                />
-                <FormField
-                  id="pf-phone"
-                  label="Telefone / WhatsApp"
-                  value={pf.phone}
-                  onChange={(v) => onPfChange("phone", v)}
-                  onBlur={() => {
-                    setPfTouched((t) => ({ ...t, phone: true }));
-                    setPfErrors(validateProfile(pf));
-                  }}
-                  error={pfErrors.phone}
-                  touched={pfTouched.phone}
-                  inputMode="tel"
-                  autoComplete="tel"
-                  maxLength={15}
-                  placeholder="(00) 00000-0000"
-                />
-                <div className="conta-form-actions">
+                <div className="conta-addr__actions">
+                  {!a.isDefault && (
+                    <button
+                      type="button"
+                      className="conta-order__btn conta-order__btn--buy"
+                      onClick={() => makeDefault(a)}
+                    >
+                      USAR NO CHECKOUT
+                    </button>
+                  )}
+                  <button type="button" className="conta-order__btn" onClick={() => startAddressForm(a)}>
+                    <Pencil size={12} strokeWidth={2} aria-hidden="true" /> EDITAR
+                  </button>
                   <button
                     type="button"
-                    className="conta-head-action"
-                    onClick={() => setProfileEdit(false)}
-                    disabled={pfBusy}
+                    className={`conta-order__btn conta-order__btn--danger ${
+                      confirmDeleteId === a.id ? "conta-order__btn--confirm" : ""
+                    }`}
+                    onClick={() => deleteAddress(a)}
+                    aria-label={`Excluir endereço de ${a.recipient}`}
                   >
-                    Cancelar
-                  </button>
-                  <button type="submit" className="btn-primary" disabled={pfBusy}>
-                    {pfBusy ? "Salvando…" : "Salvar alterações"}
+                    <Trash2 size={12} strokeWidth={2} aria-hidden="true" />{" "}
+                    {confirmDeleteId === a.id ? "CONFIRMAR" : "EXCLUIR"}
                   </button>
                 </div>
-              </form>
-            )}
-          </section>
-
-          <section className="conta-card" aria-labelledby="enderecos-title">
-            <div className="conta-card-head">
-              <div>
-                <span className="conta-card-kicker" id="enderecos-title">
-                  <MapPin size={14} strokeWidth={2} aria-hidden="true" />
-                  ENDEREÇOS DE ENTREGA
-                </span>
-                <p className="conta-card-sub">O endereço padrão vem preenchido no checkout</p>
-              </div>
-              {!addrFormOpen && (
-                <button type="button" className="conta-head-action" onClick={() => startAddressForm()}>
-                  <Plus size={13} strokeWidth={2} aria-hidden="true" />{" "}
-                  {addresses.length > 0 ? "Novo endereço" : "Adicionar"}
-                </button>
-              )}
-            </div>
-
-            {afMsg && (
-              <p className={`conta-msg ${afMsg.ok ? "conta-msg--ok" : "conta-msg--err"}`} role="status">
-                {afMsg.text}
-              </p>
-            )}
-
-            {addrFormOpen ? (
-              <form className="conta-form" onSubmit={saveAddress} noValidate>
-                <FormField
-                  id="af-recipient"
-                  label="Quem recebe"
-                  value={af.recipient}
-                  onChange={(v) => onAfChange("recipient", v)}
-                  onBlur={() => {
-                    setAfTouched((t) => ({ ...t, recipient: true }));
-                    setAfErrors(validateAddress(af));
-                  }}
-                  error={afErrors.recipient}
-                  touched={afTouched.recipient}
-                  autoComplete="name"
-                  maxLength={120}
-                  full
-                />
-                <FormField
-                  id="af-zip"
-                  label="CEP"
-                  value={af.zip}
-                  onChange={(v) => onAfChange("zip", v)}
-                  onBlur={() => {
-                    setAfTouched((t) => ({ ...t, zip: true }));
-                    setAfErrors(validateAddress(af));
-                  }}
-                  error={afErrors.zip}
-                  touched={afTouched.zip}
-                  inputMode="numeric"
-                  autoComplete="postal-code"
-                  maxLength={9}
-                  placeholder="00000-000"
-                />
-                <FormField
-                  id="af-number"
-                  label="Número"
-                  value={af.number}
-                  onChange={(v) => onAfChange("number", v)}
-                  onBlur={() => {
-                    setAfTouched((t) => ({ ...t, number: true }));
-                    setAfErrors(validateAddress(af));
-                  }}
-                  error={afErrors.number}
-                  touched={afTouched.number}
-                  inputMode="numeric"
-                  autoComplete="address-line2"
-                  maxLength={20}
-                />
-                <FormField
-                  id="af-street"
-                  label="Logradouro"
-                  value={af.street}
-                  onChange={(v) => onAfChange("street", v)}
-                  onBlur={() => {
-                    setAfTouched((t) => ({ ...t, street: true }));
-                    setAfErrors(validateAddress(af));
-                  }}
-                  error={afErrors.street}
-                  touched={afTouched.street}
-                  autoComplete="address-line1"
-                  maxLength={160}
-                  placeholder="Rua, avenida…"
-                  full
-                />
-                <FormField
-                  id="af-complement"
-                  label="Complemento"
-                  value={af.complement}
-                  onChange={(v) => onAfChange("complement", v)}
-                  onBlur={() => setAfTouched((t) => ({ ...t, complement: true }))}
-                  autoComplete="address-line3"
-                  maxLength={120}
-                  placeholder="apto, bloco…"
-                />
-                <FormField
-                  id="af-neighborhood"
-                  label="Bairro"
-                  value={af.neighborhood}
-                  onChange={(v) => onAfChange("neighborhood", v)}
-                  onBlur={() => {
-                    setAfTouched((t) => ({ ...t, neighborhood: true }));
-                    setAfErrors(validateAddress(af));
-                  }}
-                  error={afErrors.neighborhood}
-                  touched={afTouched.neighborhood}
-                  autoComplete="address-level3"
-                  maxLength={80}
-                />
-                <FormField
-                  id="af-city"
-                  label="Cidade"
-                  value={af.city}
-                  onChange={(v) => onAfChange("city", v)}
-                  onBlur={() => {
-                    setAfTouched((t) => ({ ...t, city: true }));
-                    setAfErrors(validateAddress(af));
-                  }}
-                  error={afErrors.city}
-                  touched={afTouched.city}
-                  autoComplete="address-level2"
-                  maxLength={80}
-                />
-                <FormField
-                  id="af-state"
-                  label="UF"
-                  value={af.state}
-                  onChange={(v) => onAfChange("state", v)}
-                  onBlur={() => {
-                    setAfTouched((t) => ({ ...t, state: true }));
-                    setAfErrors(validateAddress(af));
-                  }}
-                  error={afErrors.state}
-                  touched={afTouched.state}
-                  autoComplete="address-level1"
-                  maxLength={2}
-                  placeholder="SP"
-                />
-                <label className="conta-check conta-form-field--full" htmlFor="af-default">
-                  <input
-                    id="af-default"
-                    type="checkbox"
-                    checked={af.isDefault}
-                    onChange={(e) => onAfChange("isDefault", e.target.checked)}
-                  />
-                  Usar este endereço como padrão de entrega
-                </label>
-                <div className="conta-form-actions">
-                  <button
-                    type="button"
-                    className="conta-head-action"
-                    onClick={() => {
-                      setAddrFormOpen(false);
-                      setAddrEditId(null);
-                    }}
-                    disabled={afBusy}
-                  >
-                    Cancelar
-                  </button>
-                  <button type="submit" className="btn-primary" disabled={afBusy}>
-                    {afBusy ? "Salvando…" : addrEditId ? "Salvar alterações" : "Salvar endereço"}
-                  </button>
-                </div>
-              </form>
-            ) : addrLoading ? (
-              <div className="conta-addr-list" aria-busy="true">
-                <div className="conta-card conta-card--skeleton" />
-                <div className="conta-card conta-card--skeleton" />
-              </div>
-            ) : addresses.length === 0 ? (
-              <div className="conta-empty">
-                <span className="conta-empty-icon" aria-hidden="true">
-                  <MapPin size={26} strokeWidth={1.6} />
-                </span>
-                <h2 className="conta-empty-title">Nenhum endereço salvo</h2>
-                <p className="conta-card-sub">
-                  Salve seu endereço uma vez — o checkout já vai preenchido.
-                </p>
-                <div className="conta-empty-actions">
-                  <button type="button" className="btn-primary" onClick={() => startAddressForm()}>
-                    Adicionar endereço
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <ul className="conta-addr-list">
-                {addresses.map((a) => (
-                  <li key={a.id} className={`conta-addr ${a.isDefault ? "conta-addr--default" : ""}`}>
-                    <div className="conta-addr__body">
-                      <div className="conta-addr__top">
-                        <strong className="conta-addr__name">{a.recipient}</strong>
-                        {a.isDefault && <span className="conta-addr__badge">PADRÃO</span>}
-                      </div>
-                      <p className="conta-addr__line">
-                        {a.street}, {a.number}
-                        {a.complement ? ` — ${a.complement}` : ""}
-                      </p>
-                      <p className="conta-addr__line">
-                        {a.neighborhood} · {a.city}/{a.state} · CEP {maskCep(a.zip)}
-                      </p>
-                    </div>
-                    <div className="conta-addr__actions">
-                      {!a.isDefault && (
-                        <button
-                          type="button"
-                          className="conta-order__btn conta-order__btn--buy"
-                          onClick={() => makeDefault(a)}
-                        >
-                          USAR NO CHECKOUT
-                        </button>
-                      )}
-                      <button type="button" className="conta-order__btn" onClick={() => startAddressForm(a)}>
-                        <Pencil size={12} strokeWidth={2} aria-hidden="true" /> EDITAR
-                      </button>
-                      <button
-                        type="button"
-                        className={`conta-order__btn conta-order__btn--danger ${
-                          confirmDeleteId === a.id ? "conta-order__btn--confirm" : ""
-                        }`}
-                        onClick={() => deleteAddress(a)}
-                        aria-label={`Excluir endereço de ${a.recipient}`}
-                      >
-                        <Trash2 size={12} strokeWidth={2} aria-hidden="true" />{" "}
-                        {confirmDeleteId === a.id ? "CONFIRMAR" : "EXCLUIR"}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </main>
-      </div>
-
-      {modal && (
-        <OrderDetailModal
-          orderNumber={modal.number}
-          mode={modal.mode}
-          onClose={() => setModal(null)}
-        />
-      )}
-    </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </ContaShell>
   );
 }

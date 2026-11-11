@@ -2,18 +2,15 @@
 // Homepage dirigida pelo CMS: a ordem e a ativação das seções vêm de
 // /api/store/home (homepage_sections). Títulos são editáveis no admin, com
 // fallback real; vitrines sem seção declarada entram após a última seção de
-// produtos. Benefícios saem das configurações comerciais — zero dado inventado.
+// produtos. Zero dado inventado: tudo sai do banco ou da configuração da loja.
 import Image from "next/image";
 import Link from "next/link";
-import { Clock, CreditCard, Headset, MapPin, Package, Percent, Truck } from "lucide-react";
 import { Header } from "./components/Header";
-import { NewsletterForm } from "./components/NewsletterForm";
 import { ProductCard } from "./components/ProductCard";
 import { SiteFooter } from "./components/SiteFooter";
 
 import {
   API_URL,
-  formatBRL,
   storeGet,
   type CommercialSettings,
   type StoreHome,
@@ -27,14 +24,11 @@ type SectionRow = StoreHome["sections"][number];
 /** Seções de fallback quando a API não responde (espelha o seed do CMS). */
 const DEFAULT_SECTIONS: SectionRow[] = [
   { id: "fb-hero", kind: "hero", title: "Campanha principal", subtitle: "", position: 0, config: {} },
-  { id: "fb-benefits", kind: "benefits", title: "Condições comerciais", subtitle: "", position: 1, config: {} },
-  { id: "fb-departments", kind: "departments", title: "Departamentos", subtitle: "", position: 2, config: {} },
-  { id: "fb-featured", kind: "featured", title: "Destaques", subtitle: "", position: 3, config: {} },
-  { id: "fb-news", kind: "news", title: "Novidades", subtitle: "", position: 4, config: {} },
-  { id: "fb-bestsellers", kind: "bestsellers", title: "Mais vendidos", subtitle: "", position: 5, config: {} },
-  { id: "fb-sale", kind: "sale", title: "Promoções", subtitle: "", position: 6, config: {} },
-  { id: "fb-inst", kind: "institutional", title: "Sobre a Airsoft Americana", subtitle: "", position: 7, config: {} },
-  { id: "fb-newsletter", kind: "newsletter", title: "Receba novidades", subtitle: "", position: 8, config: {} },
+  { id: "fb-departments", kind: "departments", title: "Departamentos", subtitle: "", position: 1, config: {} },
+  { id: "fb-featured", kind: "featured", title: "Destaques", subtitle: "", position: 2, config: {} },
+  { id: "fb-news", kind: "news", title: "Novidades", subtitle: "", position: 3, config: {} },
+  { id: "fb-bestsellers", kind: "bestsellers", title: "Mais vendidos", subtitle: "", position: 4, config: {} },
+  { id: "fb-sale", kind: "sale", title: "Promoções", subtitle: "", position: 5, config: {} },
 ];
 
 const PRODUCT_KINDS = new Set(["featured", "news", "bestsellers", "sale", "promo"]);
@@ -55,36 +49,6 @@ function vitrineFor(kind: string, home: StoreHome): { kicker: string; title: str
     default:
       return null;
   }
-}
-
-/**
- * Faixa de benefícios: só entra o que existe na configuração da loja
- * (fonte única /api/store/settings). Sem regra, sem chip.
- */
-function benefitChips(settings: CommercialSettings) {
-  const chips: { icon: React.ElementType; strong: string; em: string }[] = [];
-  const freeShipping = settings.free_shipping_from_cents ?? 0;
-  const pix = settings.pix_discount_percent ?? 0;
-  const inst = settings.installments ?? 1;
-  if (freeShipping > 0) {
-    chips.push({ icon: Truck, strong: "Frete grátis", em: `comprando acima de ${formatBRL(freeShipping)}` });
-  }
-  if (pix > 0) {
-    chips.push({ icon: Percent, strong: `PIX −${pix}%`, em: "pagamento aprovado na hora" });
-  }
-  if (inst > 1 && settings.installment_interest_free !== false) {
-    chips.push({ icon: CreditCard, strong: `${inst}x sem juros`, em: "no cartão de crédito" });
-  }
-  if (settings.whatsapp?.trim()) {
-    chips.push({ icon: Headset, strong: "Atendimento direto", em: "WhatsApp com a loja" });
-  } else if (settings.address?.city) {
-    chips.push({
-      icon: MapPin,
-      strong: "Loja física",
-      em: `${settings.address.city}${settings.address.state ? `/${settings.address.state}` : ""}`,
-    });
-  }
-  return chips;
 }
 
 function SectionHead({
@@ -167,7 +131,6 @@ export default async function HomePage() {
       }
     : null;
 
-  const chips = benefitChips(settings);
   const limitOf = (s: SectionRow) => {
     const n = Number(s.config?.limit);
     return Number.isFinite(n) && n > 0 ? n : 8;
@@ -232,24 +195,6 @@ export default async function HomePage() {
           </section>,
         ];
 
-      case "benefits":
-        if (chips.length === 0) return [];
-        return [
-          <section key={key} className="chips" aria-label="Condições comerciais da loja">
-            <ul className="chips__row">
-              {chips.map((c) => (
-                <li key={c.strong} className="chip">
-                  <c.icon size={20} strokeWidth={1.8} aria-hidden="true" />
-                  <span>
-                    <strong>{c.strong}</strong>
-                    <em>{c.em}</em>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>,
-        ];
-
       case "departments":
         if (home.departments.length === 0) return [];
         return [
@@ -262,27 +207,42 @@ export default async function HomePage() {
               label="Catálogo completo"
             />
             <ul className="dept-cards">
-              {home.departments.slice(0, limitOf(section)).map((dept) => (
-                <li key={dept.id}>
-                  <Link href={`/departamento/${dept.slug}`} className="dept-card">
-                    {dept.imageUrl && (
-                      <span className="dept-card__media">
-                        <Image
-                          src={dept.imageUrl}
-                          alt={dept.name}
-                          fill
-                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                          className="dept-card__img"
-                        />
+              {home.departments.slice(0, limitOf(section)).map((dept) => {
+                const subs = dept.children.slice(0, 3);
+                return (
+                  <li key={dept.id}>
+                    <Link href={`/departamento/${dept.slug}`} className="dept-card">
+                      {dept.imageUrl ? (
+                        <span className="dept-card__media">
+                          <Image
+                            src={dept.imageUrl}
+                            alt=""
+                            fill
+                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                            className="dept-card__img"
+                          />
+                        </span>
+                      ) : (
+                        <span className="dept-card__media dept-card__media--type" aria-hidden="true">
+                          <span className="dept-card__mono">{dept.name.charAt(0).toUpperCase()}</span>
+                        </span>
+                      )}
+                      <span className="dept-card__body">
+                        <strong>{dept.name}</strong>
+                        {dept.productCount > 0 && <em>{dept.productCount} produtos</em>}
+                        {subs.length > 0 && (
+                          <span className="dept-card__subs">
+                            {subs.map((s) => (
+                              <span key={s.id}>{s.name}</span>
+                            ))}
+                            {dept.children.length > 3 && <span>+{dept.children.length - 3}</span>}
+                          </span>
+                        )}
                       </span>
-                    )}
-                    <span className="dept-card__body">
-                      <strong>{dept.name}</strong>
-                      <em>{dept.children.length} categorias</em>
-                    </span>
-                  </Link>
-                </li>
-              ))}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </section>,
         ];
@@ -310,90 +270,6 @@ export default async function HomePage() {
                 </li>
               ))}
             </ul>
-          </section>,
-        ];
-
-      case "institutional": {
-        const facts: React.ReactNode[] = [];
-        const address = settings.address;
-        const fullAddress = [address?.street, address?.district].filter(Boolean).join(", ");
-        if (address?.city) {
-          facts.push(
-            <li key="addr">
-              <MapPin size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>
-                <strong>Loja</strong>
-                {fullAddress ? `${fullAddress} — ` : ""}
-                {address.city}
-                {address.state ? `/${address.state}` : ""}
-              </span>
-            </li>,
-          );
-        }
-        if (settings.service_hours?.trim()) {
-          facts.push(
-            <li key="hours">
-              <Clock size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>
-                <strong>Atendimento</strong>
-                {settings.service_hours}
-              </span>
-            </li>,
-          );
-        }
-        if (home.totals.products > 0) {
-          facts.push(
-            <li key="catalog">
-              <Package size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>
-                <strong>Catálogo</strong>
-                {home.totals.products} produtos à venda, entrega para todo o Brasil
-              </span>
-            </li>,
-          );
-        }
-        return [
-          <section key={key} className="block" aria-labelledby="institucional-title">
-            <div className="inst">
-              <div className="inst__copy">
-                <span className="sec-kicker">A loja</span>
-                <h2 id="institucional-title" className="sec-title">
-                  {section.title?.trim() || "Sobre a Airsoft Americana"}
-                </h2>
-                <p>
-                  {section.subtitle?.trim() ||
-                    "Loja especializada em airsoft e equipamentos táticos, com atendimento direto e entrega para todo o Brasil."}
-                </p>
-                <div className="inst__actions">
-                  <Link href="/por-que-comprar" className="btn-secondary">
-                    Por que comprar aqui
-                  </Link>
-                  <Link href="/atendimento" className="btn-ghost">
-                    Falar com a loja
-                  </Link>
-                </div>
-              </div>
-              {facts.length > 0 && <ul className="inst__facts">{facts}</ul>}
-            </div>
-          </section>,
-        ];
-      }
-
-      case "newsletter":
-        return [
-          <section key={key} className="block" aria-labelledby="newsletter-title">
-            <div className="newsletter-band">
-              <div>
-                <span className="sec-kicker">Fique por dentro</span>
-                <h2 id="newsletter-title" className="sec-title">
-                  {section.title?.trim() || "Receba novidades"}
-                </h2>
-                <p className="newsletter-band__sub">
-                  {section.subtitle?.trim() || "Reposições, lançamentos e ofertas direto no seu e-mail."}
-                </p>
-              </div>
-              <NewsletterForm />
-            </div>
           </section>,
         ];
 

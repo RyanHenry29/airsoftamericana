@@ -95,6 +95,8 @@ body:has(.auth-shell) {
 @keyframes authRise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .auth-panel__inner { animation: authRise 0.6s var(--ease-out) both; }
 .auth-panel__top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: clamp(1.5rem, 3vw, 2.25rem); }
+/* Com a régua logo abaixo, o espaçamento do cabeçalho encolhe — o trilho já abre o campo */
+.auth-panel__top:has(+ .auth-ruler) { margin-bottom: 0.85rem; }
 .auth-back { font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: #929890; text-decoration: none; transition: color 0.2s ease; }
 .auth-back:hover { color: var(--primary); }
 .auth-index { font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace); font-size: 0.62rem; letter-spacing: 0.2em; color: #929890; }
@@ -115,7 +117,7 @@ body:has(.auth-shell) {
 .auth-wrap:focus-within::after { opacity: 1; }
 .auth-input {
   width: 100%; min-height: 3rem; background: #0c0e0c; border: 1px solid #5a615a; border-radius: 2px;
-  padding: 0.85rem 0.9rem 0.85rem 2.6rem; color: #f4f5f2; font-size: 0.95rem; font-family: var(--font-body, Inter, system-ui, sans-serif);
+  padding: 0.85rem 0.9rem; color: #f4f5f2; font-size: 0.95rem; font-family: var(--font-body, Inter, system-ui, sans-serif);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 .auth-input::placeholder { color: #8a918a; }
@@ -123,17 +125,20 @@ body:has(.auth-shell) {
 .auth-input:focus { outline: none; border-color: var(--primary); background: #0f120f; box-shadow: 0 0 0 3px rgb(139 207 22 / 0.14); }
 .auth-input--eye { padding-right: 3.1rem; }
 .auth-input[aria-invalid="true"] { border-color: var(--destructive); box-shadow: 0 0 0 3px rgb(220 38 38 / 0.12); }
-.auth-wrap > svg:first-child { position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%); color: #8a918a; pointer-events: none; }
-.auth-wrap:focus-within > svg:first-child { color: var(--primary); }
 .auth-eye { position: absolute; right: 0.25rem; top: 50%; transform: translateY(-50%); width: 2.75rem; height: 2.75rem; display: grid; place-items: center; background: transparent; border: 0; border-radius: 2px; color: #929890; cursor: pointer; transition: color 0.2s ease, background 0.2s ease; }
 .auth-eye:hover { color: var(--primary); background: rgb(139 207 22 / 0.1); }
 .auth-hint { font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace); font-size: 0.62rem; letter-spacing: 0.06em; color: #929890; margin-top: 0.45rem; line-height: 1.5; }
 .auth-hint--ok { color: var(--primary); }
 .auth-hint--bad { color: #f87171; }
 
-/* Blocos numerados do cadastro */
+/* Blocos numerados — mesma moldura do spec-plate do manifesto */
 .auth-block { position: relative; border: 1px solid #2a302a; background: #0a0c0a; padding: 1.35rem 1.15rem 1.15rem; margin-bottom: 1.1rem; }
+.auth-block::before, .auth-block::after { content: ""; position: absolute; width: 10px; height: 10px; border: 1px solid var(--primary); opacity: 0.75; pointer-events: none; }
+.auth-block::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.auth-block::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
 .auth-block__num { position: absolute; top: -0.62rem; left: 1rem; background: #070807; padding: 0 0.5rem; font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace); font-size: 0.58rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--primary); }
+/* Rodapé do bloco — ação secundária alinhada à direita (ex.: esqueci a senha) */
+.auth-block__foot { display: flex; justify-content: flex-end; margin-top: -0.15rem; font-size: 0.8rem; }
 
 /* Medidor de senha */
 .strength { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 0.55rem; }
@@ -192,17 +197,17 @@ body:has(.auth-shell) {
 /* Utilitário de texto mono usado no rodapé do manifesto */
 .font-mono-t { font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace); letter-spacing: 0.02em; }
 
-/* Acesso social (Google) */
+/* Acesso social (Google) — variante secundária do registro industrial */
 .auth-divider { display: flex; align-items: center; gap: 0.75rem; margin: 1.25rem 0; font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: #929890; }
 .auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .auth-google {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem;
-  width: 100%; min-height: 3rem; padding: 0.85rem 1.2rem; border: 1px solid var(--border); border-radius: 2px;
-  background: var(--card); color: #f4f5f2;
+  width: 100%; min-height: 3rem; padding: 0.85rem 1.2rem; border: 1px solid #2a302a; border-radius: 2px;
+  background: transparent; color: #f4f5f2;
   font-family: var(--font-display, "Barlow Condensed", "Oswald", sans-serif); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.98rem;
   cursor: pointer; transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s var(--ease-out);
 }
-.auth-google:hover:not([disabled]) { border-color: #c8cbc8; background: rgb(255 255 255 / 0.04); transform: translateY(-1px); }
+.auth-google:hover:not([disabled]) { border-color: var(--primary); background: rgb(139 207 22 / 0.06); transform: translateY(-1px); }
 .auth-google[disabled] { opacity: 0.55; cursor: not-allowed; transform: none; }
 .auth-google svg { flex: none; }
 

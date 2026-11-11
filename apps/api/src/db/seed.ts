@@ -98,11 +98,8 @@ export async function seed(db: Db) {
     if (existingSections.length === 0) {
       await db.insert(homepageSections).values([
         { kind: "hero", title: "Campanha principal", subtitle: "Banners administráveis", position: 0, active: true, config: { limit: 5 } },
-        { kind: "benefits", title: "Condições comerciais", subtitle: "Regras vindas da configuração da loja", position: 1, active: true, config: {} },
-        { kind: "departments", title: "Departamentos", subtitle: "Categorias da loja", position: 2, active: true, config: { limit: 8 } },
-        { kind: "featured", title: "Seleção da loja", subtitle: "Produtos escolhidos pelo administrador", position: 3, active: true, config: { limit: 8 } },
-        { kind: "institutional", title: "Sobre a Airsoft Americana", subtitle: "Loja física em Americana, entrega para todo o Brasil", position: 4, active: true, config: {} },
-        { kind: "newsletter", title: "Receba novidades", subtitle: "Atualizações da loja", position: 5, active: true, config: {} },
+        { kind: "departments", title: "Departamentos", subtitle: "Categorias da loja", position: 1, active: true, config: { limit: 8 } },
+        { kind: "featured", title: "Seleção da loja", subtitle: "Produtos escolhidos pelo administrador", position: 2, active: true, config: { limit: 8 } },
       ]);
       console.log("✅ CMS homepage sections seeded");
     }

@@ -4,8 +4,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShieldCheck, Truck, Zap } from "lucide-react";
+import { fetchViaCep, formatCep, isCompleteCep, mergeCepLookup } from "../lib/viacep";
 
 const API_URL = "";
 
@@ -42,6 +43,9 @@ export function CheckoutForm() {
     terms: false,
     ageConfirmed: false,
   });
+  // Consulta ViaCEP no checkout: rua/bairro/cidade/uf vêm prontos, número é do cliente.
+  const [zipStatus, setZipStatus] = useState<"idle" | "busy" | "ok" | "miss">("idle");
+  const zipDone = useRef("");
 
   useEffect(() => {
     async function load() {
@@ -78,7 +82,7 @@ export function CheckoutForm() {
               setData((d) => ({
                 ...d,
                 recipient: d.recipient || def.recipient,
-                zip: d.zip || def.zip,
+                zip: d.zip || formatCep(def.zip),
                 street: d.street || def.street,
                 number: d.number || def.number,
                 complement: d.complement || def.complement || "",
@@ -96,6 +100,27 @@ export function CheckoutForm() {
 
   const set = (k: keyof typeof data) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setData((d) => ({ ...d, [k]: e.target.value }));
+
+  function onZipChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const masked = formatCep(e.target.value);
+    setData((d) => ({ ...d, zip: masked }));
+    if (isCompleteCep(masked)) void lookupZip(masked);
+  }
+
+  /** Mesma regra da conta: falha ou CEP inexistente vira null e o cliente digita. */
+  async function lookupZip(value: string) {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length !== 8 || zipDone.current === digits) return;
+    zipDone.current = digits;
+    setZipStatus("busy");
+    const found = await fetchViaCep(digits);
+    if (!found) {
+      setZipStatus("miss");
+      return;
+    }
+    setData((d) => mergeCepLookup(d, found));
+    setZipStatus("ok");
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -169,7 +194,27 @@ export function CheckoutForm() {
             </div>
             <div className="checkout-field">
               <label htmlFor="zip" className="checkout-label">CEP</label>
-              <input id="zip" className="checkout-input" inputMode="numeric" placeholder="00000-000" autoComplete="postal-code" value={data.zip} onChange={set("zip")} required />
+              <input
+                id="zip"
+                className="checkout-input"
+                inputMode="numeric"
+                placeholder="00000-000"
+                autoComplete="postal-code"
+                value={data.zip}
+                onChange={onZipChange}
+                onBlur={() => void lookupZip(data.zip)}
+                maxLength={9}
+                required
+              />
+              {zipStatus !== "idle" && (
+                <span className="checkout-cep-hint">
+                  {zipStatus === "busy"
+                    ? "Buscando CEP na ViaCEP…"
+                    : zipStatus === "ok"
+                      ? "Logradouro preenchido — confira e digite o número."
+                      : "CEP fora da base — preencha os campos na mão."}
+                </span>
+              )}
             </div>
             <div className="checkout-field checkout-field--full">
               <label htmlFor="street" className="checkout-label">Rua</label>

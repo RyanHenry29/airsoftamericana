@@ -7,8 +7,10 @@ import "./css/home.css";
 import "./css/catalog.css";
 import "./css/pdp.css";
 import "./css/pages.css";
+import "./css/responsive.css"; // por último: vence layout/home/catalog/pdp/pages
 import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, Inter } from "next/font/google";
+import { AutoLayout } from "./components/AutoLayout";
 import { CookieConsent } from "./components/CookieConsent";
 import { API_URL, formatBRL, storeGet } from "./lib/store";
 
@@ -138,6 +140,7 @@ export default async function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
         />
+        <AutoLayout />
         {children}
         <CookieConsent />
       </body>

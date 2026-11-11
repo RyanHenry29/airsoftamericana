@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, ilike, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { listProducts, type SortKey } from "./catalog.js";
+import { countProductsByCategory } from "./taxonomy.js";
 import { getCommercialSettings, type CommercialSettings, DEFAULT_COMMERCIAL } from "./settings.js";
 
 // Re-exporta a fonte única — quem importava daqui continua compilando, mas a
@@ -50,6 +51,16 @@ export async function buildHome(db: Db) {
   ]);
 
   const roots = categories.filter((c) => !c.parentId);
+
+  // Contagem real por departamento: subárvore inteira (raiz → categoria →
+  // subcategoria), soma feita no banco. Número de vitrine nunca é inventado.
+  const subtreeIds = (root: { id: string }) => {
+    const kids = categories.filter((c) => c.parentId === root.id);
+    const grands = categories.filter((c) => kids.some((k) => k.id === c.parentId));
+    return [root.id, ...kids.map((k) => k.id), ...grands.map((g) => g.id)];
+  };
+  const deptCounts = await countProductsByCategory(db, roots.flatMap(subtreeIds));
+
   const departments = roots.map((root) => ({
     id: root.id,
     name: root.name,
@@ -57,6 +68,7 @@ export async function buildHome(db: Db) {
     description: root.description,
     imageUrl: root.imageUrl,
     ageRestricted: root.ageRestricted,
+    productCount: subtreeIds(root).reduce((sum, id) => sum + (deptCounts.get(id) ?? 0), 0),
     children: categories
       .filter((c) => c.parentId === root.id)
       .map((c) => ({

@@ -3,13 +3,14 @@ import { asc, and, count, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
 import { hashPassword, verifyPasswordDetailed } from "../lib/crypto.js";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
-import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customerAddresses, customers, inventory, inventoryMovements, newsletterSubscribers, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
+import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customerAddresses, customerAvatars, customers, inventory, inventoryMovements, newsletterSubscribers, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
 import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
 import { adminGuard, normalizeRole } from "../lib/rbac.js";
 import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
 import { acceptInvite } from "../services/invites.js";
 import { isLocked, registerFailure, registerSuccess, lockoutKeys } from "../services/lockout.js";
 import { outboxNotify, loginNewDeviceBody } from "../services/outbox.js";
+import { sniffImageMime } from "../services/ai-assistant.js";
 import { schema } from "../db/index.js";
 import { appendProductHistory, canSeeCost } from "../services/product-history.js";
 import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule, forgotRateLimitRule } from "../middleware/authRateLimit.js";
@@ -880,6 +881,94 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       return;
     }
     reply.send({ success: true });
+  });
+
+  // ------------------------------------------- Foto de perfil do cliente
+  // Uma por conta (índice único → upsert no POST). O navegador já reduz a
+  // 512px antes de enviar; aqui a régua é magic bytes (JPEG/PNG/WebP) e 1 MB.
+  const AVATAR_MAX_BYTES = 1024 * 1024;
+
+  app.get("/api/customer/avatar", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const rows = await db
+      .select({ mime: customerAvatars.mime, bytes: customerAvatars.bytes })
+      .from(customerAvatars)
+      .where(eq(customerAvatars.customerId, customer.id))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Sem foto de perfil" } });
+      return;
+    }
+    reply.header("cache-control", "private, max-age=600");
+    reply.type(row.mime);
+    reply.send(row.bytes);
+  });
+
+  app.post("/api/customer/avatar", { bodyLimit: 4 * 1024 * 1024 }, async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const body = request.body as { image?: string };
+    const data = typeof body?.image === "string" ? body.image : "";
+    if (!data) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Campo 'image' (base64) é obrigatório" } });
+      return;
+    }
+    const b64 = data.startsWith("data:") ? data.slice(data.indexOf(",") + 1) : data;
+    if (!b64 || b64.length > Math.ceil((AVATAR_MAX_BYTES * 4) / 3) + 1024) {
+      reply.status(400);
+      reply.send({ error: { code: "image_too_large", message: `Imagem excede ${Math.round(AVATAR_MAX_BYTES / 1024)} KB.` } });
+      return;
+    }
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(b64, "base64");
+    } catch {
+      reply.status(400);
+      reply.send({ error: { code: "image_invalid", message: "Imagem em base64 inválida." } });
+      return;
+    }
+    if (buf.length === 0 || buf.length > AVATAR_MAX_BYTES) {
+      reply.status(400);
+      reply.send({ error: { code: "image_too_large", message: `Imagem excede ${Math.round(AVATAR_MAX_BYTES / 1024)} KB.` } });
+      return;
+    }
+    const mime = sniffImageMime(buf);
+    if (!mime) {
+      reply.status(400);
+      reply.send({ error: { code: "image_type", message: "Formato não suportado: envie JPEG, PNG ou WebP." } });
+      return;
+    }
+    await db
+      .insert(customerAvatars)
+      .values({ customerId: customer.id, mime, bytes: buf, sizeBytes: buf.length })
+      .onConflictDoUpdate({
+        target: customerAvatars.customerId,
+        set: { mime, bytes: buf, sizeBytes: buf.length },
+      });
+    reply.send({ avatar: true, mime, sizeBytes: buf.length });
+  });
+
+  app.delete("/api/customer/avatar", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    await db.delete(customerAvatars).where(eq(customerAvatars.customerId, customer.id));
+    reply.send({ ok: true });
   });
 
   // Convite de admin (B.3): aceite público controlado por token — NÃO cria admin sem convite.

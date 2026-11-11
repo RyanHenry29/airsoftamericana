@@ -143,10 +143,10 @@ export function EsqueciForm() {
 
       <div className="auth-field">
         <label className="auth-label" htmlFor="email">
+          <Mail size={14} strokeWidth={2} aria-hidden="true" />
           E-mail
         </label>
         <div className="auth-wrap">
-          <Mail size={16} strokeWidth={1.8} aria-hidden="true" />
           <input
             id="email"
             type="email"

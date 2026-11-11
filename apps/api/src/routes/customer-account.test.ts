@@ -1,5 +1,6 @@
 // language: TS, file: apps/api/src/routes/customer-account.test.ts, target: vitest
-// Perfil e endereços do cliente: PUT /api/auth/me + CRUD /api/customer/addresses.
+// Perfil, endereços e foto do cliente: PUT /api/auth/me + CRUD
+// /api/customer/addresses + /api/customer/avatar (upload/serve/remove).
 // Sessão via Bearer (customerToken lê authorization/cookie), app.inject real.
 import { describe, it, expect, beforeAll } from "vitest";
 import fastify from "fastify";
@@ -252,5 +253,105 @@ describe("CRUD /api/customer/addresses", () => {
     });
     expect(list.statusCode).toBe(200);
     expect(list.json().items).toHaveLength(0);
+  });
+});
+
+describe("Foto de perfil /api/customer/avatar", () => {
+  // O servidor só confere magic bytes (não decodifica): assinatura PNG/JPEG
+  // + lixo é suficiente pra exercitar a rota inteira.
+  const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const pngB64 = Buffer.concat([PNG_SIG, Buffer.alloc(64, 7)]).toString("base64");
+  const jpegB64 = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64, 9)]).toString("base64");
+
+  it("exige sessão nos três verbos (401)", async () => {
+    expect((await app.inject({ method: "GET", url: "/api/customer/avatar" })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/api/customer/avatar", payload: { image: pngB64 } })).statusCode).toBe(401);
+    expect((await app.inject({ method: "DELETE", url: "/api/customer/avatar" })).statusCode).toBe(401);
+  });
+
+  it("GET sem foto responde 404 (o fallback da UI são as iniciais)", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/customer/avatar", headers: auth(ownerToken) });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("not_found");
+  });
+
+  it("POST sem campo image é 400 com o campo nomeado", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/customer/avatar", headers: auth(ownerToken), payload: {} });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("invalid_input");
+  });
+
+  it("POST de conteúdo que não é imagem é 400 image_type", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/customer/avatar",
+      headers: auth(ownerToken),
+      payload: { image: Buffer.from("sou um texto, nao uma foto").toString("base64") },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("image_type");
+  });
+
+  it("POST acima de 1 MB é 400 image_too_large", async () => {
+    const big = Buffer.alloc(1024 * 1024 + 1, 0);
+    PNG_SIG.copy(big, 0);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/customer/avatar",
+      headers: auth(ownerToken),
+      payload: { image: big.toString("base64") },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("image_too_large");
+  });
+
+  it("POST aceita PNG e o GET devolve os mesmos bytes com o mime certo", async () => {
+    const up = await app.inject({
+      method: "POST",
+      url: "/api/customer/avatar",
+      headers: auth(ownerToken),
+      payload: { image: `data:image/png;base64,${pngB64}` },
+    });
+    expect(up.statusCode).toBe(200);
+    expect(up.json()).toMatchObject({ avatar: true, mime: "image/png" });
+
+    const get = await app.inject({ method: "GET", url: "/api/customer/avatar", headers: auth(ownerToken) });
+    expect(get.statusCode).toBe(200);
+    expect(get.headers["content-type"]).toContain("image/png");
+    expect(get.rawPayload.subarray(0, 8).equals(PNG_SIG)).toBe(true);
+    const rows = await db.select().from(schema.customerAvatars).where(eq(schema.customerAvatars.customerId, ownerId));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("segundo upload substitui o primeiro (uma foto por conta, não acumula)", async () => {
+    const up = await app.inject({
+      method: "POST",
+      url: "/api/customer/avatar",
+      headers: auth(ownerToken),
+      payload: { image: jpegB64 },
+    });
+    expect(up.statusCode).toBe(200);
+    expect(up.json().mime).toBe("image/jpeg");
+
+    const rows = await db.select().from(schema.customerAvatars).where(eq(schema.customerAvatars.customerId, ownerId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].mime).toBe("image/jpeg");
+
+    const get = await app.inject({ method: "GET", url: "/api/customer/avatar", headers: auth(ownerToken) });
+    expect(get.headers["content-type"]).toContain("image/jpeg");
+  });
+
+  it("outro cliente não enxerga a foto alheia (404)", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/customer/avatar", headers: auth(intruderToken) });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("DELETE remove a foto e o GET volta a 404", async () => {
+    const del = await app.inject({ method: "DELETE", url: "/api/customer/avatar", headers: auth(ownerToken) });
+    expect(del.statusCode).toBe(200);
+    expect(del.json().ok).toBe(true);
+    expect((await app.inject({ method: "GET", url: "/api/customer/avatar", headers: auth(ownerToken) })).statusCode).toBe(404);
+    const rows = await db.select().from(schema.customerAvatars).where(eq(schema.customerAvatars.customerId, ownerId));
+    expect(rows).toHaveLength(0);
   });
 });

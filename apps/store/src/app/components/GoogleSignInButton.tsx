@@ -48,7 +48,7 @@ export function GoogleSignInButton({ label }: { label: string }) {
         {busy ? "Abrindo Google" : label}
       </button>
       {error && (
-        <p role="alert" className="auth-hint auth-hint--bad" style={{ marginTop: "0.5rem" }}>
+        <p role="alert" className="auth-hint auth-hint--bad">
           {error}
         </p>
       )}

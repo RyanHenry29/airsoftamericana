@@ -152,7 +152,10 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
   }
 
   return (
-    <header className={`site-header ${scrolled ? "is-scrolled" : ""} ${topbarVisible ? "" : "is-topbar-hidden"}`}>
+    <header
+      data-site-header
+      className={`site-header ${scrolled ? "is-scrolled" : ""} ${topbarVisible ? "" : "is-topbar-hidden"}`}
+    >
       {/* Topbar: promessa à esquerda, atalhos à direita (mesma leitura da referência). */}
       <div className="header-topbar" aria-hidden={!topbarVisible}>
         <div className="header-topbar__inner">

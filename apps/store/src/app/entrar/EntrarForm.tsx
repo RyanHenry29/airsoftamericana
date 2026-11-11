@@ -162,79 +162,85 @@ export function EntrarForm() {
         ou
       </div>
 
-      <div className="auth-field">
-        <label className="auth-label" htmlFor="email">
-          E-mail
-        </label>
-        <div className="auth-wrap">
-          <Mail size={16} strokeWidth={1.8} aria-hidden="true" />
-          <input
-            id="email"
-            type="email"
-            inputMode="email"
-            className="auth-input"
-            autoComplete="email"
-            required
-            placeholder="voce@email.com"
-            value={values.email}
-            onChange={(event) => set("email")(event.target.value)}
-            onBlur={blur("email")}
-            aria-invalid={Boolean(touched.email && errors.email)}
-            aria-describedby={
-              touched.email && errors.email ? "email-erro" : undefined
-            }
-          />
-        </div>
-        {touched.email && errors.email && (
-          <p className="auth-hint auth-hint--bad" id="email-erro">
-            {errors.email}
-          </p>
-        )}
-      </div>
+      <fieldset className="auth-block" aria-label="Credenciais">
+        <span className="auth-block__num" aria-hidden="true">
+          01 — Credenciais
+        </span>
 
-      <div className="auth-field">
-        <label className="auth-label" htmlFor="password">
-          Senha
-        </label>
-        <div className="auth-wrap">
-          <Lock size={16} strokeWidth={1.8} aria-hidden="true" />
-          <input
-            id="password"
-            type={showPassword ? "text" : "password"}
-            className="auth-input auth-input--eye"
-            autoComplete="current-password"
-            required
-            placeholder="sua senha"
-            value={values.password}
-            onChange={(event) => set("password")(event.target.value)}
-            onBlur={blur("password")}
-            aria-invalid={Boolean(touched.password && errors.password)}
-            aria-describedby={
-              touched.password && errors.password ? "senha-erro" : undefined
-            }
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword((visible) => !visible)}
-            className="auth-eye"
-            aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-            aria-pressed={showPassword}
-          >
-            {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-          </button>
+        <div className="auth-field">
+          <label className="auth-label" htmlFor="email">
+            <Mail size={14} strokeWidth={2} aria-hidden="true" />
+            E-mail
+          </label>
+          <div className="auth-wrap">
+            <input
+              id="email"
+              type="email"
+              inputMode="email"
+              className="auth-input"
+              autoComplete="email"
+              required
+              placeholder="voce@email.com"
+              value={values.email}
+              onChange={(event) => set("email")(event.target.value)}
+              onBlur={blur("email")}
+              aria-invalid={Boolean(touched.email && errors.email)}
+              aria-describedby={
+                touched.email && errors.email ? "email-erro" : undefined
+              }
+            />
+          </div>
+          {touched.email && errors.email && (
+            <p className="auth-hint auth-hint--bad" id="email-erro">
+              {errors.email}
+            </p>
+          )}
         </div>
-        {touched.password && errors.password && (
-          <p className="auth-hint auth-hint--bad" id="senha-erro">
-            {errors.password}
-          </p>
-        )}
-      </div>
 
-      <p style={{ marginTop: "-0.35rem", marginBottom: "1.1rem", textAlign: "right" }}>
-        <Link href="/esqueci-a-senha" className="auth-link" style={{ fontSize: "0.8rem" }}>
-          Esqueci a senha
-        </Link>
-      </p>
+        <div className="auth-field">
+          <label className="auth-label" htmlFor="password">
+            <Lock size={14} strokeWidth={2} aria-hidden="true" />
+            Senha
+          </label>
+          <div className="auth-wrap">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              className="auth-input auth-input--eye"
+              autoComplete="current-password"
+              required
+              placeholder="sua senha"
+              value={values.password}
+              onChange={(event) => set("password")(event.target.value)}
+              onBlur={blur("password")}
+              aria-invalid={Boolean(touched.password && errors.password)}
+              aria-describedby={
+                touched.password && errors.password ? "senha-erro" : undefined
+              }
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              className="auth-eye"
+              aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+              aria-pressed={showPassword}
+            >
+              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
+          {touched.password && errors.password && (
+            <p className="auth-hint auth-hint--bad" id="senha-erro">
+              {errors.password}
+            </p>
+          )}
+        </div>
+
+        <p className="auth-block__foot">
+          <Link href="/esqueci-a-senha" className="auth-link">
+            Esqueci a senha
+          </Link>
+        </p>
+      </fieldset>
 
       {serverError && (
         <p role="alert" className="auth-error mb-5">

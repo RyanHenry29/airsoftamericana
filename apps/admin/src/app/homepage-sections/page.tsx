@@ -20,15 +20,12 @@ type Section = {
 /** kinds que a loja sabe renderizar (apps/store/src/app/page.tsx). */
 const KIND_LABELS: Record<string, string> = {
   hero: "Hero (banner principal)",
-  benefits: "Faixa de benefícios",
   departments: "Departamentos",
   featured: "Destaques (vitrine)",
   news: "Novidades (vitrine)",
   bestsellers: "Mais vendidos (vitrine)",
   sale: "Promoções (vitrine)",
   brands: "Marcas",
-  institutional: "Bloco institucional",
-  newsletter: "Newsletter",
 };
 
 const LIMIT_KINDS = new Set(["departments", "featured", "news", "bestsellers", "sale", "brands"]);

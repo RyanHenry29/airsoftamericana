@@ -1,0 +1,236 @@
+/* language: CSS, file: apps/store/src/app/css/responsive.css, target: Next.js App Router
+ * RESPONSIVO UNIVERSAL — Airsoft Americana (código-base do Kai, adaptado às
+ * classes reais da casa). Importado POR ÚLTIMO no layout.tsx: globals.css
+ * entra primeiro e layout.css/home.css sobrescreveriam regras de mesmo seletor.
+ *
+ * Adaptações ao markup real:
+ *   .site-header__inner → .header-main · .site-header__search → .header-search
+ *   .header-label → .header-action__label · .site-header__brand-sub → .brand__tag
+ *   .nav → .dept-strip · .mega → .mega-panel (renderizado condicionalmente,
+ *   sem atributo hidden — a abertura é JS/React, não CSS :hover)
+ * Tokens da casa preservados: --radius: 2px, --container: 1280px.
+ * h1/h2 vivem em @layer base para não pisar no text-xl das páginas legais
+ * (utilitário Tailwind > camada base; classe da casa > tudo).
+ * Princípios: fluido por padrão, o CONTEÚDO decide o layout (não o aparelho),
+ * nada passa da viewport, nada fica cortado sem scroll.
+ */
+
+/* ---------- 1. TOKENS FLUIDOS (escalam sozinhos de 320px a 2560px+) ------- */
+:root {
+  --gutter: clamp(12px, 3vw, 40px);
+  --space: clamp(8px, 1.2vw, 20px);
+  --touch: 44px; /* alvo mínimo de toque (--radius/--container são da casa) */
+
+  --fs-xs: clamp(0.68rem, 0.64rem + 0.18vw, 0.8rem);
+  --fs-sm: clamp(0.78rem, 0.74rem + 0.25vw, 0.9rem);
+  --fs-md: clamp(0.9rem, 0.85rem + 0.3vw, 1.05rem);
+  --fs-lg: clamp(1.1rem, 1rem + 0.7vw, 1.6rem);
+  --fs-xl: clamp(1.5rem, 1.1rem + 2vw, 3.25rem);
+
+  --container-max: 1440px;
+
+  /* Atualizada AUTOMATICAMENTE pelo <AutoLayout /> (altura real do header) */
+  --header-h: 120px;
+}
+
+/* ---------- 2. RESET DEFENSIVO ------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: var(--header-h);
+}
+
+body {
+  min-height: 100dvh;
+  overflow-x: clip; /* nunca cria scroll horizontal */
+  font-size: var(--fs-md);
+  padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+}
+
+img,
+video,
+svg,
+canvas,
+iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Texto longo nunca estoura o container */
+h1, h2, h3, h4, p, a, li, span {
+  overflow-wrap: anywhere;
+}
+
+/* Filhos de flex/grid podem encolher (evita o clássico "estouro") */
+.flex > *,
+.grid-auto > *,
+[class*="__inner"] > * {
+  min-width: 0;
+}
+
+/* Tabelas largas rolam dentro delas mesmas */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- 3. LAYOUT UTILITÁRIO ----------------------------------------- */
+.container {
+  width: min(100% - 2 * var(--gutter), var(--container-max));
+  margin-inline: auto;
+}
+
+/* Grid que se ajusta sozinho — zero media query */
+.grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: var(--space);
+}
+
+/* Títulos fluidos só onde a página não define tamanho. Em @layer base:
+   text-xl (Tailwind, camada utilities) continua mandando nas páginas legais. */
+@layer base {
+  h1 { font-size: var(--fs-xl); }
+  h2 { font-size: var(--fs-lg); }
+}
+
+/* ---------- 4. HEADER (adapta pela LARGURA DO PRÓPRIO HEADER) ------------- */
+/* sticky/top/z-index já vêm do globals.css — aqui só o container query. */
+.site-header {
+  container: header / inline-size;
+}
+
+/* Quebra em vez de cortar: vale de qualquer largura (rede de segurança para
+   zoom de navegador e fonte do sistema; ≤860 já quebrava no layout.css). */
+.header-main {
+  flex-wrap: wrap;
+}
+
+/* Ações de conta/carrinho alinhadas à direita — inclusive na linha que
+   quebra (o .header-actions base não tem margin-left: auto). */
+.header-actions {
+  margin-left: auto;
+}
+
+@media (min-width: 861px) {
+  /* Base 220px: a busca ocupa o que sobrar; se não couber, as ações descem.
+   ≤860 é do layout.css (order 3, base 100% — linha própria no mobile). */
+  .header-search {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+}
+
+.header-search__input {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+/* Header estreito: some o texto, ficam só os ícones */
+@container header (max-width: 760px) {
+  .header-action__label {
+    display: none;
+  }
+  .brand__tag {
+    display: none;
+  }
+}
+
+/* ---------- 5. NAV (barra de departamentos) ------------------------------ */
+.dept-strip {
+  flex-wrap: nowrap; /* nunca empilha: rola (os cortes do layout.css já encolhem) */
+  justify-content: safe center; /* centraliza se couber, rola se não couber */
+  scroll-snap-type: x proximity;
+}
+.dept-strip > * {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+/* ---------- 6. MEGA MENU (o que estava bugado) ---------------------------- */
+/*
+   Problemas corrigidos:
+   - altura maior que a tela  → max-height + scroll interno
+   - largura fixa             → fluida, limitada pela viewport
+   - colunas fixas            → container query (o aside cai para baixo)
+   - mobile/touch             → vira painel de tela cheia
+   O painel passa a ser fixo sob o header (altura medida pelo AutoLayout).
+   background/border/padding/z-index continuam do globals.css.
+*/
+.mega-panel {
+  position: fixed;
+  top: var(--header-h);
+  left: var(--gutter);
+  right: var(--gutter);
+  max-width: 1280px;
+  margin-inline: auto;
+
+  max-height: calc(100dvh - var(--header-h) - var(--gutter));
+  overflow-y: auto;
+  overscroll-behavior: contain; /* scroll do menu não rola a página atrás */
+  scrollbar-gutter: stable;
+
+  container: mega / inline-size;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+/* Painel estreito → o destaque lateral vai pra baixo */
+@container mega (max-width: 640px) {
+  .mega-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Mobile / touch / tablet: painel de tela cheia. O display: block vence o
+   corte ≤900 do layout.css (861–900px tinha barra visível e painel morto);
+   ≤860 a barra some e o hambúrguer é a navegação. */
+@media (max-width: 1023px), (hover: none) {
+  .mega-panel {
+    display: block;
+    left: 0;
+    right: 0;
+    max-width: none;
+    height: calc(100dvh - var(--header-h));
+    max-height: none;
+    border-radius: 0;
+    padding-bottom: calc(var(--space) + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------- 7. TOQUE E ACESSIBILIDADE ------------------------------------ */
+@media (pointer: coarse) {
+  .dept-strip a,
+  .mega-panel a,
+  button,
+  [role="button"] {
+    min-height: var(--touch);
+    min-width: var(--touch);
+  }
+}
+
+:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- 8. TELAS GIGANTES (ultrawide / 4K) --------------------------- */
+@media (min-width: 1920px) {
+  :root { --container-max: 1680px; }
+}
