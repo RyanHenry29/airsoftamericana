@@ -37,6 +37,17 @@ export const registerSchema = z.object({
   phone: z.string().trim().max(20, "Telefone longo demais").optional(),
 });
 
+/** Edição dos próprios dados na conta (PUT /api/auth/me). */
+export const updateProfileSchema = z.object({
+  name: z.string().trim().min(2, "Coloque seu nome completo").max(120, "Nome longo demais"),
+  cpf: z
+    .string()
+    .regex(/^\d{11}$/, "CPF deve conter 11 dígitos")
+    .optional()
+    .or(z.literal("")),
+  phone: z.string().trim().max(20, "Telefone longo demais").optional().or(z.literal("")),
+});
+
 // ------------------------------------------------------------- Endereço
 export const addressSchema = z.object({
   recipient: z.string().trim().min(2).max(120),
@@ -48,6 +59,11 @@ export const addressSchema = z.object({
   city: z.string().trim().min(2).max(80),
   state: z.string().trim().length(2, "Use a sigla UF"),
   country: z.string().trim().length(2).default("BR"),
+});
+
+/** Endereço salvo na conta do cliente (CRUD /api/customer/addresses). */
+export const savedAddressSchema = addressSchema.extend({
+  isDefault: z.boolean().optional(),
 });
 
 // ------------------------------------------------------------- Carrinho / Checkout
@@ -198,6 +214,8 @@ export const adminCustomerSchema = z.object({
 export type AdminCustomerInput = z.infer<typeof adminCustomerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type SavedAddressInput = z.infer<typeof savedAddressSchema>;
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type AddressInput = z.infer<typeof addressSchema>;
 export type ProductInput = z.infer<typeof productSchema>;

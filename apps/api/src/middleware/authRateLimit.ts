@@ -128,6 +128,21 @@ export function registerRateLimitRule(config: Config): AuthRateLimitRule {
 }
 
 /**
+ * "Esqueci a senha". Balde próprio (não disputa com login/cadastro) com os
+ * mesmos números do login: segura enumeração por disparo em massa sem punir
+ * quem errou o e-mail uma vez.
+ */
+export function forgotRateLimitRule(config: Config): AuthRateLimitRule {
+  return {
+    scope: "auth.forgot",
+    max: config.AUTH_LOGIN_MAX,
+    windowMs: config.AUTH_LOGIN_WINDOW_MS,
+    blockMs: config.AUTH_LOGIN_BLOCK_MS,
+    message: `Muitas solicitações de redefinição em pouco tempo. Espera ${humanizeWait(config.AUTH_LOGIN_BLOCK_MS)} antes de tentar de novo.`,
+  };
+}
+
+/**
  * Login do painel. Escopo próprio: as tentativas no admin não competem com
  * o balde do cliente nem com a guarda global de requisições.
  */

@@ -12,7 +12,7 @@ import { resolveActiveAdapter, loadGatewayConfig } from "./payments/types.js";
 import { initAdapters } from "./payments/index.js";
 import { sha256, CredentialDecryptionError } from "../lib/crypto.js";
 import { audit } from "../lib/audit.js";
-import type { CheckoutInput, OrderStatus, PaymentMethod } from "@airsoft/shared";
+import type { CheckoutInput, OrderStatus, PaymentMethod, PaymentStatus } from "@airsoft/shared";
 
 export interface CheckoutResult {
   orderId: string;
@@ -21,7 +21,7 @@ export interface CheckoutResult {
   payment: {
     method: PaymentMethod;
     provider: string;
-    status: "pendente" | "autorizado" | "aprovado" | "recusado";
+    status: PaymentStatus;
     payload?: string;
     expiresAt?: Date;
     providerTransactionId: string;
@@ -49,17 +49,17 @@ export async function handleCheckout(
       return {
         orderId: order.id,
         orderNumber: order.number,
-        status: order.status,
+        status: order.status as OrderStatus,
         payment: payment
           ? {
-              method: payment.method,
+              method: payment.method as PaymentMethod,
               provider: payment.provider,
-              status: (payment.status === "aprovado" ? "aprovado" : payment.status === "recusado" ? "recusado" : "pendente") as "pendente" | "autorizado" | "aprovado" | "recusado",
+              status: (payment.status === "aprovado" ? "aprovado" : payment.status === "recusado" ? "recusado" : "pendente") as PaymentStatus,
               payload: payment.payload ?? undefined,
               expiresAt: payment.expiresAt ?? undefined,
               providerTransactionId: payment.providerTransactionId ?? "",
             }
-          : { method: input.paymentMethod, provider: "sandbox", status: "pendente", providerTransactionId: "" },
+          : { method: input.paymentMethod as PaymentMethod, provider: "sandbox", status: "pendente" as PaymentStatus, providerTransactionId: "" },
       };
     }
   }
@@ -229,6 +229,7 @@ export async function handleCheckout(
       orderId,
       fromStatus: null,
       toStatus: "aguardando_pagamento",
+      actorType: "system",
       actorSystem: true,
       createdAt: new Date(),
     });

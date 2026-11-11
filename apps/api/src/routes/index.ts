@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { asc, and, count, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { asc, and, count, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
 import { hashPassword, verifyPasswordDetailed } from "../lib/crypto.js";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
-import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customers, inventory, inventoryMovements, newsletterSubscribers, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
+import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customerAddresses, customers, inventory, inventoryMovements, newsletterSubscribers, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
 import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
 import { adminGuard, normalizeRole } from "../lib/rbac.js";
 import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
@@ -12,9 +12,18 @@ import { isLocked, registerFailure, registerSuccess, lockoutKeys } from "../serv
 import { outboxNotify, loginNewDeviceBody } from "../services/outbox.js";
 import { schema } from "../db/index.js";
 import { appendProductHistory, canSeeCost } from "../services/product-history.js";
-import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule } from "../middleware/authRateLimit.js";
+import { authRateLimit, adminLoginRateLimitRule, loginRateLimitRule, registerRateLimitRule, forgotRateLimitRule } from "../middleware/authRateLimit.js";
 import type { Config } from "../config.js";
-import { registerSchema, loginSchema, adminCustomerSchema, checkoutSchema, cartItemSchema, orderStatusSchema, stockMovementSchema, productSchema, orderVolumeLimitsSchema, gatewayConfigSchema, chargebackStatusSchema } from "@airsoft/shared";
+import { registerSchema, loginSchema, adminCustomerSchema, checkoutSchema, cartItemSchema, orderStatusSchema, stockMovementSchema, productSchema, orderVolumeLimitsSchema, gatewayConfigSchema, chargebackStatusSchema, updateProfileSchema, savedAddressSchema, emailSchema, passwordSchema } from "@airsoft/shared";
+import {
+  consumePasswordReset,
+  createPasswordReset,
+  mailConfigured,
+  MailNotConfiguredError,
+  reportMailFailure,
+  resetUrl,
+  sendResetEmail,
+} from "../services/password-reset.js";
 import { handleCheckout } from "../services/checkout.js";
 import { transitionOrder, getOrderDetailForCustomer } from "../services/orders.js";
 import { validateCoupon } from "../services/coupons.js";
@@ -507,6 +516,104 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     },
   );
 
+  // ---------------------------------------------------- Esqueci a senha (1/2)
+  // Resposta genérica por desenho: o que o cliente vê nunca depende de o
+  // e-mail existir (anti-enumeration). Sem chave de e-mail → 503 rotulado,
+  // afetando todo mundo igual — aí não vaza nada.
+  app.post(
+    "/api/auth/forgot-password",
+    { preHandler: authRateLimit(forgotRateLimitRule(config)) },
+    async (request, reply) => {
+      if (!mailConfigured(config)) {
+        reply.status(503);
+        reply.send({
+          error: {
+            code: "not_configured",
+            message: new MailNotConfiguredError().message,
+          },
+        });
+        return;
+      }
+
+      const body = request.body as { email?: unknown };
+      const parsed = emailSchema.safeParse(body?.email);
+      if (!parsed.success) {
+        reply.status(400);
+        reply.send({ error: { code: "invalid_input", message: "E-mail inválido — confere o formato" } });
+        return;
+      }
+      const email = parsed.data;
+
+      const found = await db.select().from(customers).where(eq(customers.email, email)).limit(1);
+      const customer = found[0];
+      if (customer) {
+        try {
+          const { token } = await createPasswordReset(db, { customerId: customer.id, ip: request.ip });
+          await sendResetEmail(config, {
+            to: customer.email,
+            name: customer.name,
+            url: resetUrl(config, token),
+          });
+          await writeAudit(db, request, {
+            action: "auth.password.forgot",
+            entity: "customer",
+            entityId: customer.id,
+            actorLabel: maskEmail(email),
+          });
+        } catch (error) {
+          // Falha de envio não muda a resposta (vazaria existência) — vai pra outbox.
+          const reason = error instanceof Error ? error.message : String(error);
+          request.log.error({ err: error }, "falha ao enviar redefinição de senha");
+          await reportMailFailure(db, reason);
+        }
+      }
+
+      reply.send({
+        success: true,
+        message: "Se houver uma conta com esse e-mail, o link de redefinição chega em instantes. Confira também o spam.",
+      });
+    },
+  );
+
+  // ---------------------------------------------------- Esqueci a senha (2/2)
+  app.post("/api/auth/reset-password", async (request, reply) => {
+    const body = request.body as { token?: unknown; password?: unknown };
+    const password = typeof body?.password === "string" ? body.password : "";
+    const token = typeof body?.token === "string" ? body.token.trim() : "";
+    const pw = passwordSchema.safeParse(password);
+    if (!token || token.length < 16 || token.length > 128 || !pw.success) {
+      reply.status(400);
+      reply.send({
+        error: {
+          code: "invalid_input",
+          message: !pw.success ? "Dados inválidos" : "Link de redefinição inválido",
+          details: pw.success ? undefined : pw.error.flatten(),
+        },
+      });
+      return;
+    }
+
+    const result = await consumePasswordReset(db, { token, newPassword: password });
+    if (!result.ok) {
+      reply.status(400);
+      reply.send({
+        error: {
+          code: result.reason === "expired" ? "link_expired" : "link_invalid",
+          message:
+            result.reason === "expired"
+              ? "Este link expirou — peça um novo em “Esqueci a senha”."
+              : "Este link já foi usado ou não é válido — peça um novo em “Esqueci a senha”.",
+        },
+      });
+      return;
+    }
+
+    reply.send({
+      success: true,
+      message: "Senha alterada. Entre com a nova senha.",
+    });
+  });
+
   app.post(
     "/api/auth/login",
     { preHandler: authRateLimit(loginRateLimitRule(config)) },
@@ -568,6 +675,211 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       reply.status(401);
       reply.send({ error: { code: "unauthorized", message: "Token inválido ou expirado" } });
     }
+  });
+
+  // ------------------------------------------- Edição dos próprios dados (conta)
+  app.put("/api/auth/me", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const parsed = updateProfileSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+      return;
+    }
+    const cpf = parsed.data.cpf ? parsed.data.cpf.replace(/\D/g, "") : null;
+    const phone = parsed.data.phone?.trim() || null;
+    const updated = await db
+      .update(customers)
+      .set({ name: parsed.data.name, cpf, phone })
+      .where(eq(customers.id, customer.id))
+      .returning();
+    const row = updated[0];
+    if (!row) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    await writeAudit(db, request, {
+      action: "customer.profile.update",
+      entity: "customer",
+      entityId: row.id,
+      actorLabel: maskEmail(row.email),
+    });
+    reply.send({ customer: publicCustomer(row) });
+  });
+
+  // ------------------------------------------- Endereços salvos do cliente
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  app.get("/api/customer/addresses", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const rows = await db
+      .select()
+      .from(customerAddresses)
+      .where(eq(customerAddresses.customerId, customer.id))
+      .orderBy(desc(customerAddresses.isDefault));
+    reply.send({ items: rows });
+  });
+
+  app.post("/api/customer/addresses", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const parsed = savedAddressSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+      return;
+    }
+    const input = parsed.data;
+    const wantDefault = input.isDefault === true;
+    const created = await db.transaction(async (tx) => {
+      const existing = await tx
+        .select({ n: count() })
+        .from(customerAddresses)
+        .where(eq(customerAddresses.customerId, customer.id));
+      const isFirst = (existing[0]?.n ?? 0) === 0;
+      const makeDefault = wantDefault || isFirst;
+      if (makeDefault) {
+        await tx
+          .update(customerAddresses)
+          .set({ isDefault: false })
+          .where(eq(customerAddresses.customerId, customer.id));
+      }
+      const rows = await tx
+        .insert(customerAddresses)
+        .values({
+          customerId: customer.id,
+          recipient: input.recipient,
+          zip: input.zip,
+          street: input.street,
+          number: input.number,
+          complement: input.complement || null,
+          neighborhood: input.neighborhood,
+          city: input.city,
+          state: input.state.toUpperCase(),
+          country: input.country,
+          isDefault: makeDefault,
+        })
+        .returning();
+      return rows[0]!;
+    });
+    reply.status(201);
+    reply.send({ address: created });
+  });
+
+  app.put("/api/customer/addresses/:id", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const parsed = savedAddressSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
+      return;
+    }
+    if (!UUID_RE.test(id)) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Endereço não encontrado" } });
+      return;
+    }
+    const found = await db
+      .select()
+      .from(customerAddresses)
+      .where(eq(customerAddresses.id, id))
+      .limit(1);
+    if (!found[0] || found[0].customerId !== customer.id) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Endereço não encontrado" } });
+      return;
+    }
+    const input = parsed.data;
+    const wantDefault = input.isDefault === true;
+    const updated = await db.transaction(async (tx) => {
+      if (wantDefault) {
+        await tx
+          .update(customerAddresses)
+          .set({ isDefault: false })
+          .where(and(eq(customerAddresses.customerId, customer.id), ne(customerAddresses.id, id)));
+      }
+      const rows = await tx
+        .update(customerAddresses)
+        .set({
+          recipient: input.recipient,
+          zip: input.zip,
+          street: input.street,
+          number: input.number,
+          complement: input.complement || null,
+          neighborhood: input.neighborhood,
+          city: input.city,
+          state: input.state.toUpperCase(),
+          country: input.country,
+          ...(wantDefault ? { isDefault: true } : {}),
+        })
+        .where(eq(customerAddresses.id, id))
+        .returning();
+      return rows[0]!;
+    });
+    reply.send({ address: updated });
+  });
+
+  app.delete("/api/customer/addresses/:id", async (request, reply) => {
+    const customer = await requireCustomer(request as never);
+    if (!customer) {
+      reply.status(401);
+      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      return;
+    }
+    const { id } = request.params as { id: string };
+    if (!UUID_RE.test(id)) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Endereço não encontrado" } });
+      return;
+    }
+    const removed = await db.transaction(async (tx) => {
+      const found = await tx
+        .select()
+        .from(customerAddresses)
+        .where(eq(customerAddresses.id, id))
+        .limit(1);
+      const row = found[0];
+      if (!row || row.customerId !== customer.id) return null;
+      await tx.delete(customerAddresses).where(eq(customerAddresses.id, id));
+      if (row.isDefault) {
+        const rest = await tx
+          .select({ id: customerAddresses.id })
+          .from(customerAddresses)
+          .where(eq(customerAddresses.customerId, customer.id))
+          .limit(1);
+        if (rest[0]?.id) {
+          await tx.update(customerAddresses).set({ isDefault: true }).where(eq(customerAddresses.id, rest[0].id));
+        }
+      }
+      return { id: row.id };
+    });
+    if (!removed) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Endereço não encontrado" } });
+      return;
+    }
+    reply.send({ success: true });
   });
 
   // Convite de admin (B.3): aceite público controlado por token — NÃO cria admin sem convite.
@@ -1231,7 +1543,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         reply.send({ error: { code: "not_found", message: "Pedido não encontrado" } });
         return;
       }
-      if (!canTransition(order.status, parsed.data.status)) {
+      if (!canTransition(order.status as OrderStatus, parsed.data.status as OrderStatus)) {
         reply.status(409);
         reply.send({ error: { code: "invalid_transition", message: `Transição ${order.status} → ${parsed.data.status} não permitida` } });
         return;

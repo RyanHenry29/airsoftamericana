@@ -113,9 +113,9 @@ export async function transitionOrder(
   const order = rows[0];
   if (!order) throw notFound("Pedido não encontrado");
 
-  const from = order.status;
+  const from = order.status as OrderStatus;
   if (from === input.to) return;
-  if (!canTransition(from, input.to)) {
+  if (!canTransition(from, input.to as OrderStatus)) {
     throw conflict(
       "invalid_transition",
       `Transição inválida: ${from} → ${input.to}`,
@@ -135,6 +135,7 @@ export async function transitionOrder(
       toStatus: input.to,
       reason: input.reason ?? null,
       actorUserId: input.actorUserId ?? null,
+      actorType: input.actorUserId ? "user" : "system",
       actorSystem: !input.actorUserId,
       createdAt: new Date(),
     });

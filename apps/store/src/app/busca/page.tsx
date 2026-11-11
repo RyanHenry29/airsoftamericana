@@ -13,6 +13,7 @@ import {
   type CommercialSettings,
   type StoreHome,
 } from "../lib/store";
+import { PRICE_BANDS } from "../lib/filters";
 
 export const dynamic = "force-dynamic";
 
@@ -239,12 +240,7 @@ export default async function BuscaPage({
               <section className="filters__group">
                 <h2 className="filters__title">Faixa de preço</h2>
                 <ul className="filters__list">
-                  {[
-                    { label: "Até R$ 150", min: "", max: "15000" },
-                    { label: "R$ 150 a R$ 400", min: "15000", max: "40000" },
-                    { label: "R$ 400 a R$ 900", min: "40000", max: "90000" },
-                    { label: "Acima de R$ 900", min: "90000", max: "" },
-                  ].map((range) => (
+                  {PRICE_BANDS.map((range) => (
                     <li key={range.label}>
                       <Link
                         href={buildHref({ minPrice: range.min, maxPrice: range.max, page: "1" })}

@@ -60,6 +60,11 @@ const envSchema = z.object({
   // responde 503 rotulado "não configurado" — nunca finge integração.
   GROQ_API_KEY: z.string().optional().default(""),
   GROQ_MODEL: z.string().optional().default("qwen/qwen3.8-27b"),
+  // Resend (envio de e-mail transacional — redefinição de senha). Opcional por
+  // desenho: sem chave a rota responde 503 rotulado "não configurado" — nunca
+  // finge que o e-mail saiu. MAIL_FROM precisa ser domínio verificado no Resend.
+  RESEND_API_KEY: z.string().optional().default(""),
+  MAIL_FROM: z.string().optional().default("Airsoft Americana <no-reply@airsoftamericana.com.br>"),
 });
 
 const parsed = envSchema.safeParse(process.env);

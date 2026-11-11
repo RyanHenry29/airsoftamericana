@@ -230,6 +230,12 @@ export function EntrarForm() {
         )}
       </div>
 
+      <p style={{ marginTop: "-0.35rem", marginBottom: "1.1rem", textAlign: "right" }}>
+        <Link href="/esqueci-a-senha" className="auth-link" style={{ fontSize: "0.8rem" }}>
+          Esqueci a senha
+        </Link>
+      </p>
+
       {serverError && (
         <p role="alert" className="auth-error mb-5">
           <AlertTriangle size={15} strokeWidth={2.2} aria-hidden="true" />

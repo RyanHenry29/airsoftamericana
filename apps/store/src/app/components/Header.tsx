@@ -178,11 +178,12 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
 
       <div className="header-main">
         <Link href="/" className="brand" aria-label="Airsoft Americana — página inicial">
-          <Image src="/logo.png" alt="Airsoft Americana" width={84} height={84} className="brand__logo" priority quality={90} />
+          <Image src="/emblema.png" alt="" width={537} height={512} className="brand__logo" priority quality={90} />
           <span className="brand__text">
             <span className="brand__name">
               AIRSOFT <span className="brand__accent">AMERICANA</span>
             </span>
+            <span className="brand__tag">Equipamentos e acessórios</span>
           </span>
         </Link>
 

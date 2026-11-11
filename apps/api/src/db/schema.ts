@@ -1,6 +1,5 @@
 import {
   pgTable,
-  pgEnum,
   text,
   integer,
   boolean,
@@ -23,54 +22,73 @@ export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   },
 });
 
-export const orderStatusEnum = pgEnum("order_status", [
-  "aguardando_pagamento",
-  "pagamento_em_processamento",
-  "em_analise_antifraude",
-  "aguardando_revisao_manual",
-  "pagamento_aprovado",
-  "separacao",
-  "preparando_envio",
-  "enviado",
-  "entregue",
-  "cancelado",
-  "reembolsado",
-  "em_disputa",
-  "chargeback_recebido",
-]);
+// ---------------------------------------------------------------- Tipos de enum (string literals para TypeScript)
+// Enums são criados no banco como varchar + CHECK constraints (compatível com PGlite).
+// Aqui mantemos apenas os tipos TS para uso no código.
+export type OrderStatusType =
+  | "aguardando_pagamento"
+  | "pagamento_em_processamento"
+  | "em_analise_antifraude"
+  | "aguardando_revisao_manual"
+  | "pagamento_aprovado"
+  | "separacao"
+  | "preparando_envio"
+  | "enviado"
+  | "entregue"
+  | "cancelado"
+  | "reembolsado"
+  | "em_disputa"
+  | "chargeback_recebido";
 
-export const paymentMethodEnum = pgEnum("payment_method", ["pix", "cartao", "boleto"]);
-export const paymentStatusEnum = pgEnum("payment_status", [
-  "pendente",
-  "autorizado",
-  "aprovado",
-  "recusado",
-  "expirado",
-  "estornado",
-  "chargeback",
-]);
-export const chargebackStatusEnum = pgEnum("chargeback_status", [
-  "notificado",
-  "aguardando_analise",
-  "documentacao_pendente",
-  "defesa_preparada",
-  "defesa_enviada",
-  "em_analise",
-  "ganho",
-  "perdido",
-  "encerrado",
-]);
-export const riskLevelEnum = pgEnum("risk_level", ["baixo", "medio", "alto"]);
-export const movementTypeEnum = pgEnum("movement_type", [
-  "entrada",
-  "saida",
-  "ajuste",
-  "reserva",
-  "liberacao",
-  "transferencia",
-]);
+export type PaymentMethodType = "pix" | "cartao" | "boleto";
+
+export type PaymentStatusType =
+  | "pendente"
+  | "autorizado"
+  | "aprovado"
+  | "recusado"
+  | "expirado"
+  | "estornado"
+  | "chargeback";
+
+export type ChargebackStatusType =
+  | "notificado"
+  | "aguardando_analise"
+  | "documentacao_pendente"
+  | "defesa_preparada"
+  | "defesa_enviada"
+  | "em_analise"
+  | "ganho"
+  | "perdido"
+  | "encerrado";
+
+export type RiskLevelType = "baixo" | "medio" | "alto";
+
+export type MovementTypeType =
+  | "entrada"
+  | "saida"
+  | "ajuste"
+  | "reserva"
+  | "liberacao"
+  | "transferencia";
+
 // Legado: mantido para compatibilidade de import; papéis reais em lib/rbac.ts (7 papéis).
-export const userRoleEnum = { enumValues: ["admin","manager","operator","viewer","superadmin","gerente","estoque","atendimento","marketing","financeiro","somente-leitura"] as const };
+export const userRoleEnum = {
+  enumValues: [
+    "admin",
+    "manager",
+    "operator",
+    "viewer",
+    "superadmin",
+    "gerente",
+    "estoque",
+    "atendimento",
+    "marketing",
+    "financeiro",
+    "somente-leitura",
+  ] as const,
+};
+export type UserRoleType = (typeof userRoleEnum)["enumValues"][number];
 
 export const users = pgTable(
   "users",
@@ -210,6 +228,26 @@ export const customerAddresses = pgTable(
   (t) => [index("customer_addresses_customer_idx").on(t.customerId)],
 );
 
+export const passwordResets = pgTable(
+  "password_resets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    customerId: uuid("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+    /** SHA-256 hex do token de redefinição. Nunca armazenar o token cru. */
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    /** TTL de 60 minutos. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Marcado no consumo — a gravação é atômica (update ... where used_at is null). */
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    requestedIp: varchar("requested_ip", { length: 45 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [
+    uniqueIndex("password_resets_token_idx").on(t.tokenHash),
+    index("password_resets_customer_idx").on(t.customerId),
+  ],
+);
+
 export const brands = pgTable(
   "brands",
   {
@@ -331,7 +369,7 @@ export const inventoryMovements = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     variantId: uuid("variant_id").notNull().references(() => productVariants.id),
-    type: movementTypeEnum("type").notNull(),
+    type: varchar("type", { length: 20 }).notNull(),
     quantity: integer("quantity").notNull(),
     physicalBefore: integer("physical_before").notNull(),
     physicalAfter: integer("physical_after").notNull(),
@@ -375,20 +413,20 @@ export const orders = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     number: varchar("number", { length: 20 }).notNull(),
     customerId: uuid("customer_id").notNull().references(() => customers.id),
-    status: orderStatusEnum("status").notNull().default("aguardando_pagamento"),
+    status: varchar("status", { length: 32 }).notNull().default("aguardando_pagamento"),
     subtotalCents: integer("subtotal_cents").notNull(),
     discountCents: integer("discount_cents").notNull().default(0),
     shippingCents: integer("shipping_cents").notNull().default(0),
     totalCents: integer("total_cents").notNull(),
     couponCode: varchar("coupon_code", { length: 40 }),
-    paymentMethod: paymentMethodEnum("payment_method"),
+    paymentMethod: varchar("payment_method", { length: 32 }),
     addressJson: jsonb("address_json").notNull(),
     customerNotes: text("customer_notes"),
     termsVersion: varchar("terms_version", { length: 20 }),
     termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
     termsIp: varchar("terms_ip", { length: 45 }),
     volumeDay: varchar("volume_day", { length: 10 }),
-    riskLevel: riskLevelEnum("risk_level"),
+    riskLevel: varchar("risk_level", { length: 16 }),
     riskScore: integer("risk_score").default(0),
     riskReasons: jsonb("risk_reasons"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
@@ -423,10 +461,11 @@ export const orderStatusHistory = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
-    fromStatus: orderStatusEnum("from_status"),
-    toStatus: orderStatusEnum("to_status").notNull(),
+    fromStatus: varchar("from_status", { length: 32 }),
+    toStatus: varchar("to_status", { length: 32 }).notNull(),
     reason: text("reason"),
     actorUserId: uuid("actor_user_id").references(() => users.id),
+    actorType: varchar("actor_type", { length: 20 }).notNull().default("system"),
     actorSystem: boolean("actor_system").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
@@ -439,8 +478,8 @@ export const payments = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orderId: uuid("order_id").notNull().references(() => orders.id),
     provider: varchar("provider", { length: 32 }).notNull(),
-    method: paymentMethodEnum("method").notNull(),
-    status: paymentStatusEnum("status").notNull().default("pendente"),
+    method: varchar("method", { length: 32 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("pendente"),
     amountCents: integer("amount_cents").notNull(),
     authorizedCents: integer("authorized_cents"),
     providerTransactionId: varchar("provider_transaction_id", { length: 120 }),
@@ -468,7 +507,10 @@ export const paymentEvents = pgTable(
     processedAt: timestamp("processed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
-  (t) => [uniqueIndex("payment_events_event_idx").on(t.provider, t.eventId), index("payment_events_payment_idx").on(t.paymentId)],
+  (t) => [
+    uniqueIndex("payment_events_event_idx").on(t.provider, t.eventId),
+    index("payment_events_payment_idx").on(t.paymentId),
+  ],
 );
 
 export const refunds = pgTable("refunds", {
@@ -502,7 +544,7 @@ export const fraudAssessments = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orderId: uuid("order_id").notNull().references(() => orders.id),
     score: integer("score").notNull(),
-    level: riskLevelEnum("level").notNull(),
+    level: varchar("level", { length: 16 }).notNull(),
     action: varchar("action", { length: 20 }).notNull(),
     reasons: jsonb("reasons").notNull(),
     ip: varchar("ip", { length: 45 }),
@@ -550,7 +592,7 @@ export const chargebacks = pgTable(
     paymentId: uuid("payment_id").references(() => payments.id),
     provider: varchar("provider", { length: 32 }).notNull(),
     providerDisputeId: varchar("provider_dispute_id", { length: 120 }).notNull(),
-    status: chargebackStatusEnum("status").notNull().default("notificado"),
+    status: varchar("status", { length: 32 }).notNull().default("notificado"),
     amountCents: integer("amount_cents").notNull(),
     reason: varchar("reason", { length: 120 }),
     reasonCode: varchar("reason_code", { length: 30 }),
@@ -680,7 +722,11 @@ export const auditLogs = pgTable(
     correlationId: varchar("correlation_id", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
-  (t) => [index("audit_logs_actor_idx").on(t.actorUserId), index("audit_logs_entity_idx").on(t.entity, t.entityId), index("audit_logs_created_idx").on(t.createdAt)],
+  (t) => [
+    index("audit_logs_actor_idx").on(t.actorUserId),
+    index("audit_logs_entity_idx").on(t.entity, t.entityId),
+    index("audit_logs_created_idx").on(t.createdAt),
+  ],
 );
 
 export const systemSettings = pgTable("system_settings", {
@@ -727,7 +773,6 @@ export const newsletterSubscribers = pgTable(
   },
   (t) => [uniqueIndex("newsletter_subscribers_email_idx").on(t.email)],
 );
-
 
 export const banners = pgTable(
   "banners",
@@ -963,11 +1008,3 @@ export const aiDrafts = pgTable(
 );
 
 export const categoriesParentFk = foreignKey({ columns: [categories.parentId], foreignColumns: [categories.id] });
-
-export type OrderStatusType = (typeof orderStatusEnum)["enumValues"][number];
-export type PaymentMethodType = (typeof paymentMethodEnum)["enumValues"][number];
-export type PaymentStatusType = (typeof paymentStatusEnum)["enumValues"][number];
-export type ChargebackStatusType = (typeof chargebackStatusEnum)["enumValues"][number];
-export type RiskLevelType = (typeof riskLevelEnum)["enumValues"][number];
-export type MovementTypeType = (typeof movementTypeEnum)["enumValues"][number];
-export type UserRoleType = (typeof userRoleEnum)["enumValues"][number];

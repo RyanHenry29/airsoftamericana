@@ -53,7 +53,42 @@ export function CheckoutForm() {
       } catch { /* offline */ }
       try {
         const me = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" });
-        if (!me.ok) setNeedLogin(true);
+        if (!me.ok) {
+          setNeedLogin(true);
+        } else {
+          // Endereço padrão da conta preenche o formulário (só campos vazios).
+          try {
+            const adr = await fetch(`${API_URL}/api/customer/addresses`, { credentials: "include" });
+            const json = (await adr.json().catch(() => ({}))) as {
+              items?: {
+                recipient: string;
+                zip: string;
+                street: string;
+                number: string;
+                complement: string | null;
+                neighborhood: string;
+                city: string;
+                state: string;
+                isDefault: boolean;
+              }[];
+            };
+            // a API devolve o padrão primeiro
+            const def = (json.items ?? [])[0];
+            if (adr.ok && def) {
+              setData((d) => ({
+                ...d,
+                recipient: d.recipient || def.recipient,
+                zip: d.zip || def.zip,
+                street: d.street || def.street,
+                number: d.number || def.number,
+                complement: d.complement || def.complement || "",
+                neighborhood: d.neighborhood || def.neighborhood,
+                city: d.city || def.city,
+                state: d.state || def.state,
+              }));
+            }
+          } catch { /* sem endereço salvo: o cliente preenche à mão */ }
+        }
       } catch { setNeedLogin(true); }
     }
     load();

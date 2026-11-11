@@ -63,8 +63,6 @@ export function DeptStrip({ departments = [] }: { departments?: StoreDepartment[
   return (
     <>
       <nav className="dept-strip" aria-label="Navegação por departamento">
-        <span className="dept-strip__label">Departamentos</span>
-
         {departments.map((dept) => (
           <div
             key={dept.id}

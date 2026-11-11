@@ -73,7 +73,7 @@ function parseCookies(req: IncomingMessage): Record<string, string> {
   return out;
 }
 
-function isDelegatedPath(path: string): boolean {
+function isDelegatedPath(path: string, method: string): boolean {
   return (
     path.startsWith("/api/admin") ||
     path === "/api/auth/admin-login" ||
@@ -82,7 +82,15 @@ function isDelegatedPath(path: string): boolean {
     path.startsWith("/api/webhooks") ||
     // Blog: leitura pública e gestão do painel vivem nas rotas Fastify —
     // uma implementação só, delegada como os demais caminhos administrativos.
-    path.startsWith("/api/store/blog")
+    path.startsWith("/api/store/blog") ||
+    // Perfil e endereços do cliente: implementação única nas rotas Fastify
+    // (PUT /api/auth/me; GET/POST/PUT/DELETE abaixo). O GET /api/auth/me
+    // continua no handler crudo — é chamado em toda página e não precisa
+    // do peso do Fastify.
+    path.startsWith("/api/customer/addresses") ||
+    (method === "PUT" && path === "/api/auth/me") ||
+    // Esqueci a senha: rate-limit e serviço de e-mail vivem no Fastify.
+    (method === "POST" && (path === "/api/auth/forgot-password" || path === "/api/auth/reset-password"))
   );
 }
 
@@ -212,7 +220,7 @@ export default async function handler(
     return;
   }
 
-  if (isDelegatedPath(path)) {
+  if (isDelegatedPath(path, method)) {
     try {
       await delegateToFastify(req, res);
     } catch (e) {

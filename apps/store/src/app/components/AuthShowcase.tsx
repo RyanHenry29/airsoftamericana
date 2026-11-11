@@ -116,10 +116,10 @@ export function AuthShowcase({ variant }: { variant: Variant }) {
       <div className="relative">
         <Link href="/" className="auth-brand group">
           <Image
-            src="/logo.png"
-            alt="Airsoft Americana"
-            width={52}
-            height={52}
+            src="/emblema.png"
+            alt=""
+            width={537}
+            height={512}
             className="h-13 w-13 object-contain"
             priority
           />

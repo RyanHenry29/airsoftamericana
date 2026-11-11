@@ -117,23 +117,41 @@
   padding: 0.9rem clamp(1rem, 4vw, 2.5rem);
 }
 
-.brand { display: flex; align-items: center; gap: 0.9rem; text-decoration: none; flex: none; }
-.brand__logo { width: 84px; height: 84px; object-fit: contain; }
-.brand__text { display: flex; flex-direction: column; gap: 0.15rem; }
+/* Lockup da marca: emblema sem fundo + wordmark + assinatura técnica.
+   Fonte única do .brand* — o bloco duplicado saiu do globals.css. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  text-decoration: none;
+  flex: none;
+  min-width: 0;
+  color: var(--foreground);
+}
+.brand__logo { width: 68px; height: 68px; object-fit: contain; flex-shrink: 0; }
+.brand__text { display: flex; flex-direction: column; gap: 0.3rem; line-height: 1.05; }
 .brand__name {
   font-family: var(--font-display);
   font-weight: 800;
   text-transform: uppercase;
-  font-size: 1.45rem;
+  font-size: clamp(1.2rem, 1.4vw + 0.55rem, 1.5rem);
   line-height: 1;
   letter-spacing: 0.04em;
   color: #ffffff;
 }
 .brand__accent { color: var(--primary); }
+.brand__tag {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
 @media (max-width: 768px) {
   .brand { gap: 0.6rem; }
-  .brand__logo { width: 56px; height: 56px; }
+  .brand__logo { width: 52px; height: 52px; }
   .brand__name { font-size: 1.1rem; }
+  .brand__tag { display: none; }
 }
 
 /* Busca com sugestÃ£o */
@@ -321,36 +339,21 @@
 .mega-highlight__img { object-fit: cover; }
 .mega-highlight__body { display: flex; flex-direction: column; gap: 0.5rem; }
 
-/* ——————— Barra horizontal de departamentos (estilo Image 3) ——————— */
-/* Barra de departamentos: rótulo + itens em linha única, de ponta a ponta.
-   Os itens se distribuem igualmente (flex: 1) — mesma leitura da barra de
-   referência, sem colunas espremidas nem conteúdo duplicado. */
+/* ——————— Barra horizontal de departamentos ——————— */
+/* Barra de departamentos: linha única com os itens centralizados no meio da
+   barra (sem bloco de rótulo). Apertou o desktop, a tipografia encolhe nos
+   cortes abaixo — a barra nunca quebra em duas fileiras. */
 .dept-strip {
   display: flex;
   align-items: stretch;
-  flex-wrap: wrap; /* adaptativa: apertou, os itens descem de linha — nunca rolam */
+  justify-content: center;
+  flex-wrap: wrap; /* só como rede: os cortes abaixo evitam a segunda fileira */
   border-top: 1px solid var(--line);
   background: #050605;
   overflow-x: auto;
   scrollbar-width: none;
 }
 .dept-strip::-webkit-scrollbar { display: none; }
-/* Rótulo como bloco sólido da marca — ancora a barra e não parece texto solto. */
-.dept-strip__label {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.85rem 1.3rem;
-  font-family: var(--font-display);
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #06120a;
-  background: var(--primary);
-  white-space: nowrap;
-}
 .dept-strip__item {
   display: inline-flex;
   align-items: center;
@@ -366,15 +369,14 @@
   text-decoration: none;
   white-space: nowrap;
   border-right: 1px solid var(--line);
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   transition: color 0.2s ease, background 0.2s ease;
 }
 .dept-strip__item:last-child { border-right: 0; }
 .dept-strip__item:hover,
 .dept-strip__item.is-open { color: var(--primary); background: #0a0c0a; }
 /* Slot do departamento: âncora de hover; o painel fica fora do scroll da barra. */
-.dept-strip__slot { display: flex; flex: 1 1 auto; min-width: 0; }
-.dept-strip__slot .dept-strip__item { flex: 1 1 auto; }
+.dept-strip__slot { display: flex; flex: 0 1 auto; min-width: 0; }
 /* Chevron pequeno no lugar da seta grande — gira quando o painel abre. */
 .dept-strip__chev {
   flex: none;
@@ -390,14 +392,17 @@
   flex: 0 0 auto;
 }
 .dept-strip__item--all:hover { color: var(--primary-dark); }
-/* Ladeira estreita: só aperta o rótulo — os itens esticam na linha (e na
-   linha que sobrar), mantendo o preenchimento ponta a ponta. */
-@media (max-width: 1180px) {
-  .dept-strip__label { padding-inline: 1rem; }
+/* Ladeira estreita: a barra encolhe em tipografia/padding para caber em uma
+   linha só desde 861px — nunca joga item para uma segunda fileira. */
+@media (max-width: 1320px) {
+  .dept-strip__item { padding: 0.8rem 0.8rem; font-size: 0.84rem; letter-spacing: 0.06em; }
 }
-@media (max-width: 768px) {
-  .dept-strip__item { padding: 0.7rem 0.85rem; font-size: 0.8rem; }
-  .dept-strip__label { padding: 0.7rem 0.95rem; font-size: 0.68rem; }
+@media (max-width: 1120px) {
+  .dept-strip__item { padding: 0.78rem 0.62rem; font-size: 0.78rem; letter-spacing: 0.05em; gap: 0.4rem; }
+  .dept-strip__chev { width: 11px; height: 11px; }
+}
+@media (max-width: 940px) {
+  .dept-strip__item { padding: 0.72rem 0.5rem; font-size: 0.72rem; }
 }
 /* Mobile (≤860 = mesmo corte do hambúrguer): a barra de departamentos some e
    a navegação inteira passa para o menu do hambúrguer — design próprio do
@@ -799,25 +804,6 @@ address.footer__line { font-style: normal; }
   margin: 0 0 1.75rem 0;
   max-width: 42rem;
 }
-.hero__facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-.hero__fact {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--muted-foreground);
-  padding: 0.55rem 0.9rem;
-  border: 1px solid var(--border);
-  background: rgb(36 40 39 / 0.5);
-  border-radius: 2px;
-}
-.hero__fact b { color: var(--primary); }
 .hero__image {
   position: relative;
   height: clamp(30rem, 60vw, 52rem);
@@ -2240,6 +2226,131 @@ address.footer__line { font-style: normal; }
 }
 .conta-field-label svg { color: var(--primary); flex: none; }
 .conta-field-value { font-size: 0.92rem; color: var(--foreground); word-break: break-word; }
+
+/* ------------------------------------------------ Edição de dados + endereços */
+.conta-head-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--primary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  padding: 0.55rem 0.85rem;
+  min-height: 38px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.conta-head-action:hover:not(:disabled) { border-color: var(--primary); background: rgb(122 154 90 / 0.08); }
+.conta-head-action:disabled { opacity: 0.55; cursor: default; }
+
+.conta-msg {
+  margin-top: 0.9rem;
+  padding: 0.65rem 0.85rem;
+  border-left: 2px solid var(--border-strong);
+  background: #121514;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.conta-msg--ok { border-left-color: var(--primary); color: var(--foreground); }
+.conta-msg--err { border-left-color: var(--destructive); color: #fca5a5; }
+
+.conta-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.1rem;
+}
+.conta-form-field { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.conta-form-field--full { grid-column: 1 / -1; }
+.conta-form-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.conta-input {
+  width: 100%;
+  background: #121514;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--foreground);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  padding: 0.7rem 0.85rem;
+  min-height: 42px;
+  transition: border-color 0.15s ease;
+}
+.conta-input::placeholder { color: var(--dim); }
+.conta-input:focus { border-color: var(--primary); outline: none; }
+.conta-input[aria-invalid="true"] { border-color: var(--destructive); }
+.conta-err { font-size: 0.75rem; line-height: 1.4; color: #fca5a5; }
+.conta-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.conta-check {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  min-height: 44px;
+}
+.conta-check input { width: 17px; height: 17px; accent-color: var(--primary); flex: none; }
+
+.conta-addr-list { display: grid; gap: 0.85rem; margin-top: 1.1rem; }
+.conta-addr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem 1rem;
+  align-items: start;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 2px;
+  background: #121514;
+}
+.conta-addr--default { border-left-color: var(--primary); }
+.conta-addr__body { min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.conta-addr__top { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.conta-addr__name { font-size: 0.95rem; color: var(--foreground); }
+.conta-addr__badge {
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--primary);
+  border: 1px solid rgb(122 154 90 / 0.55);
+  border-radius: 2px;
+  padding: 0.16rem 0.45rem;
+}
+.conta-addr__line { font-size: 0.85rem; line-height: 1.5; color: var(--muted-foreground); }
+.conta-addr__actions { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
+.conta-order__btn--danger { color: #fca5a5; border-color: rgb(220 38 38 / 0.45); }
+.conta-order__btn--danger:hover { color: #fff; border-color: var(--destructive); background: rgb(220 38 38 / 0.12); }
+.conta-order__btn--confirm { color: #fff; border-color: var(--destructive); background: rgb(220 38 38 / 0.28); }
+
+@media (max-width: 640px) {
+  .conta-form { grid-template-columns: 1fr; }
+  .conta-addr { grid-template-columns: 1fr; }
+  .conta-addr__actions { justify-content: flex-start; }
+}
 
 /* Conta em telas estreitas: menu vira abas, pedido em duas colunas */
 @media (max-width: 900px) {

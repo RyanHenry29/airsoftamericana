@@ -7,12 +7,13 @@ export default defineConfig({
     globals: false,
     setupFiles: ["./vitest.setup.ts"],
     // PGlite usa diretório exclusivo (apps/api/data-test) — execução 100%
-    // sequencial, 1 worker/processo, sem isolamento por arquivo (singleton DB).
+    // sequencial, 1 worker/processo, COM isolamento por arquivo para evitar
+    // conflitos de estado do PGlite entre arquivos de teste.
     fileParallelism: false,
     maxWorkers: 1,
-    isolate: false,
+    isolate: true,
     sequence: { concurrent: false },
-    pool: "forks",
+    pool: "threads",
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },

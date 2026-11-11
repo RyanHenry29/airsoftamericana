@@ -12,6 +12,7 @@ const NAV = [
   { href: "/assistente", label: "Assistente IA" },
   { href: "/inventory", label: "Estoque" },
   { href: "/banners", label: "Banners (Hero)" },
+  { href: "/homepage-sections", label: "Seções da Home" },
   { href: "/orders", label: "Pedidos" },
   { href: "/customers", label: "Clientes" },
   { href: "/categories", label: "Categorias" },

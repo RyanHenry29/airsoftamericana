@@ -257,6 +257,7 @@
   border: 1px solid var(--line);
   background: var(--panel);
 }
+.newsletter-band__sub { margin: 0.5rem 0 0; color: var(--dim); font-size: 0.95rem; line-height: 1.6; }
 @media (max-width: 860px) { .newsletter-band { grid-template-columns: 1fr; } }
 
 /* ————— Grade de produtos ————— */
