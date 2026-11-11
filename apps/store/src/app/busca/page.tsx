@@ -20,11 +20,14 @@ export const dynamic = "force-dynamic";
 
 // Resultados de busca não entram no índice (mesmo conteúdo sob N queries) —
 // mas seguem followable: o Googlebot precisa ler o noindex desta página.
+// Canonical explícito em /busca: sem ele, a página herda o "/" do layout raiz
+// (merge raso do Next) e todas as variantes ?q= apontariam para a home.
 export const metadata: Metadata = {
   title: "Busca de produtos",
   description:
     "Busque réplicas, pistolas, coletes, BBs e acessórios no catálogo da Airsoft Americana — filtros por marca, categoria, condição, disponibilidade, preço e especificações técnicas.",
   keywords: ["busca airsoft", "procurar réplica", "pistola de airsoft", "colete tático", "BBs"],
+  alternates: { canonical: "/busca" },
   robots: { index: false, follow: true },
 };
 
