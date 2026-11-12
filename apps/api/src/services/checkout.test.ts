@@ -43,6 +43,21 @@ async function clearTables() {
   await db.execute(`DELETE FROM "products"`).catch(() => {});
 }
 
+/**
+ * Seed do gateway de teste (NODE_ENV=test — sandbox é permitido FORA de
+ * produção; AUD-01). Testes que precisam de "nenhum gateway" removem a linha.
+ */
+async function seedSandboxGateway() {
+  await db.insert(schema.gatewayConfigs).values({
+    id: crypto.randomUUID(),
+    provider: "sandbox",
+    enabled: true,
+    isDefault: true,
+    methods: ["pix", "cartao", "boleto"],
+    pixDiscountPercent: 5,
+  }).onConflictDoNothing();
+}
+
 beforeAll(async () => {
   db = await getDb();
   await migrate(db);
@@ -138,9 +153,10 @@ describe("checkout service", () => {
     await clearTables();
   });
 
-  it("cria pedido, reserva estoque e gera pagamento PIX pendente", async () => {
+  it("cria pedido, reserva estoque e gera pagamento PIX pendente — PIX NUNCA aprova (AUD-15)", async () => {
     const customerId = await getCustomerId();
     const variant = await getPublishedVariantId();
+    await seedSandboxGateway();
 
     const result = await handleCheckout(
       db,
@@ -156,20 +172,98 @@ describe("checkout service", () => {
 
     expect(result.orderId).toBeDefined();
     expect(result.orderNumber).toMatch(/^AA-\d{6}-\d{6}$/);
-    expect(result.status).toBe("pagamento_aprovado");
+    // AUD-15: cobrança PIX criada ≠ pagamento aprovado. O pedido permanece
+    // aguardando_pagamento até o resultado financeiro real (webhook).
+    expect(result.status).toBe("aguardando_pagamento");
     expect(result.payment.method).toBe("pix");
     expect(result.payment.provider).toBe("sandbox");
     expect(result.payment.status).toBe("pendente");
     expect(result.payment.providerTransactionId).toMatch(/^sbx_/);
     expect(result.payment.expiresAt).toBeDefined();
 
+    const [orderRow] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(orderRow!.status).toBe("aguardando_pagamento");
+
     const inv = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
     expect(inv[0]!.reserved).toBe(2);
+  });
+
+  it("503 quando NENHUM gateway habilitado — sem pedido, sem reserva (AUD-01)", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getPublishedVariantId();
+
+    await expect(
+      handleCheckout(
+        db,
+        {
+          items: [{ variantId: variant.id, quantity: 1 }],
+          address: addr("100"),
+          paymentMethod: "pix",
+          acceptedTerms: true,
+          ageConfirmed: true,
+        } as any,
+        { customerId, ip: "127.0.0.1", correlationId: "test-nogw" },
+      ),
+    ).rejects.toMatchObject({ code: "no_payment_gateway_enabled", status: 503 });
+
+    // Nenhuma escrita: pedido e estoque intocados.
+    const orders = await db.select().from(schema.orders);
+    expect(orders.length).toBe(0);
+    const inv = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(inv[0]!.reserved).toBe(0);
+  });
+
+  it("idempotência: checkout repetido devolve o MESMO pedido", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getPublishedVariantId();
+    await seedSandboxGateway();
+
+    const payload = {
+      items: [{ variantId: variant.id, quantity: 1 }],
+      address: addr("100"),
+      paymentMethod: "pix",
+      acceptedTerms: true,
+      ageConfirmed: true,
+    } as any;
+    const ctx = { customerId, ip: "127.0.0.1", correlationId: "test-idem" };
+
+    const first = await handleCheckout(db, payload, ctx);
+    const second = await handleCheckout(db, payload, ctx);
+
+    expect(second.orderId).toBe(first.orderId);
+    const orders = await db.select().from(schema.orders);
+    expect(orders.length).toBe(1);
+  });
+
+  it("idempotência CONCORRENTE: 5 checkouts idênticos em paralelo = 1 pedido", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getPublishedVariantId();
+    await seedSandboxGateway();
+
+    const payload = {
+      items: [{ variantId: variant.id, quantity: 1 }],
+      address: addr("100"),
+      paymentMethod: "pix",
+      acceptedTerms: true,
+      ageConfirmed: true,
+    } as any;
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, (_, i) =>
+        handleCheckout(db, payload, { customerId, ip: "127.0.0.1", correlationId: `test-idem-par-${i}` }),
+      ),
+    );
+    const fulfilled = results.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ orderId: string }>[];
+    expect(fulfilled.length).toBe(5);
+    expect(new Set(fulfilled.map((r) => r.value.orderId)).size).toBe(1);
+    const orders = await db.select().from(schema.orders);
+    expect(orders.length).toBe(1);
   });
 
   it("rejeita estoque insuficiente com 409", async () => {
     const customerId = await getCustomerId();
     const variant = await getPublishedVariantId();
+    await seedSandboxGateway();
 
     const inv = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
     const available = inv[0]!.physical - inv[0]!.reserved;
@@ -270,6 +364,7 @@ describe("checkout service", () => {
   it("cupom invalido lança 400", async () => {
     const customerId = await getCustomerId();
     const variant = await getPublishedVariantId();
+    await seedSandboxGateway();
 
     await db.insert(schema.coupons).values({
       id: crypto.randomUUID(),
@@ -348,6 +443,7 @@ describe("concorrencia de estoque", () => {
   it("20 compras simultaneas do ultimo item: 1 vende, 19 rejeitam, estoque nunca negativo", async () => {
     await clearTables();
     const customerId = await getCustomerId();
+    await seedSandboxGateway();
 
     let [cat] = await db.select().from(schema.categories).limit(1);
     if (!cat) {
@@ -407,12 +503,14 @@ describe("concorrencia de estoque", () => {
     );
 
     const results = await Promise.allSettled(checkoutCalls);
-    const approved = results.filter(
-      (r) => r.status === "fulfilled" && (r as PromiseFulfilledResult<{ status: string }>).value.status === "pagamento_aprovado",
+    // AUD-15: PIX pendente não aprova — sucesso aqui é pedido criado em
+    // aguardando_pagamento; a aprovação financeira vem do webhook.
+    const created = results.filter(
+      (r) => r.status === "fulfilled" && (r as PromiseFulfilledResult<{ status: string }>).value.status === "aguardando_pagamento",
     ).length;
     const rejected = results.filter((r) => r.status === "rejected").length;
 
-    expect(approved).toBe(1);
+    expect(created).toBe(1);
     expect(rejected).toBe(19);
 
     const inv = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));

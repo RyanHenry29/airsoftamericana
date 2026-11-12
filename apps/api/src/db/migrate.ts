@@ -628,12 +628,22 @@ export async function migrate(db: Db) {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "payment_events" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "payment_id" uuid NOT NULL REFERENCES "payments"("id") ON DELETE CASCADE,
+      "payment_id" uuid REFERENCES "payments"("id") ON DELETE CASCADE,
       "type" varchar(40) NOT NULL,
       "payload" jsonb NOT NULL,
-      "processed_at" timestamptz NOT NULL DEFAULT now()
+      "processed_at" timestamptz
     );
   `);
+  // AUD-15: payment_id é NULLABLE — evento de webhook que chega na corrida
+  // checkout×webhook (cobrança criada, INSERT local ainda não commitado)
+  // fica estacionado sem paymentId e é aplicado depois pelo checkout
+  // (applyPendingEventsForPayment). processed_at também fica NULL até aplicar.
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ALTER COLUMN "payment_id" DROP NOT NULL;
+  `).catch(() => {});
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP NOT NULL;
+  `).catch(() => {});
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "payment_events_payment_idx" ON "payment_events" ("payment_id");
   `);

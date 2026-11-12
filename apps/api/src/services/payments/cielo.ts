@@ -8,19 +8,29 @@ import type {
   RefundResult,
 } from "./types.js";
 
-const API = "https://apisandbox.cieloecommerce.cielo.com.br";
+const API_SANDBOX = "https://apisandbox.cieloecommerce.cielo.com.br";
+const API_PRODUCTION = "https://api.cieloecommerce.cielo.com.br";
 
 export class CieloAdapter implements PaymentAdapter {
   readonly provider = "cielo";
   readonly signatureHeader = "x-signature";
-  constructor(private readonly merchantId: string, private readonly merchantKey: string) {}
+  private readonly api: string;
+
+  constructor(
+    private readonly merchantId: string,
+    private readonly merchantKey: string,
+    /** AUD-02: endpoint é decisão de configuração, nunca hardcoded. */
+    env: "sandbox" | "production" = "sandbox",
+  ) {
+    this.api = env === "production" ? API_PRODUCTION : API_SANDBOX;
+  }
 
   isConfigured(): boolean {
     return Boolean(this.merchantId && this.merchantKey);
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${API}${path}`, {
+    const res = await fetch(`${this.api}${path}`, {
       method,
       headers: {
         MerchantId: this.merchantId,

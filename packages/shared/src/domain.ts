@@ -23,7 +23,18 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 /** Transições válidas — qualquer outra combinação é 409. */
 export const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
-  aguardando_pagamento: ["pagamento_em_processamento", "cancelado"],
+  // AUD-15: o webhook pode confirmar o pagamento enquanto o pedido ainda
+  // aguarda (checkout criou a cobrança e o webhook chegou primeiro), pode
+  // reclassificar risco (antifraude/revisão) e pode aprovar direto do
+  // aguardando_pagamento — a aprovação vem do RESULTADO do pagamento, nunca
+  // da posição do fluxo.
+  aguardando_pagamento: [
+    "pagamento_em_processamento",
+    "em_analise_antifraude",
+    "aguardando_revisao_manual",
+    "pagamento_aprovado",
+    "cancelado",
+  ],
   pagamento_em_processamento: [
     "em_analise_antifraude",
     "aguardando_revisao_manual",
@@ -56,6 +67,17 @@ export const RESERVED_STATUSES: readonly OrderStatus[] = [
   "pagamento_aprovado",
   "separacao",
   "preparando_envio",
+];
+
+/**
+ * Status de um pedido cujo pagamento ainda NÃO decidiu — é neles que o
+ * resultado financeiro (webhook/reconciliação) pode aprovar o pedido.
+ * Antifraude e revisão manual são deliberadamente fora: a aprovação por
+ * webhook não atropela decisão humana.
+ */
+export const PAYMENT_PENDING_STATUSES: readonly OrderStatus[] = [
+  "aguardando_pagamento",
+  "pagamento_em_processamento",
 ];
 
 export function isTerminal(status: OrderStatus): boolean {

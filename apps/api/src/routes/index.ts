@@ -389,6 +389,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         customerId: customer.id,
         ip: request.ip,
         correlationId: request.id,
+        idempotencyKey: (request.headers["idempotency-key"] as string | undefined)?.slice(0, 160),
       });
       reply.status(201);
       reply.send(result);

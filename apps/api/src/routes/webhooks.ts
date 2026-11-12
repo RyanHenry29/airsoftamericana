@@ -5,37 +5,13 @@ import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
 import { initAdapters } from "../services/payments/index.js";
 import { getAdapter, listAdapters } from "../services/payments/types.js";
+import { applyPaymentEvent } from "../services/payments/webhook-events.js";
 import { transitionOrder } from "../services/orders.js";
 import { canTransition, type OrderStatus } from "@airsoft/shared";
 
-function targetOrderStatus(type: string): OrderStatus | null {
-  switch (type) {
-    case "payment.approved":
-      return "pagamento_aprovado";
-    case "payment.recused":
-    case "payment.expired":
-      return "cancelado";
-    case "payment.refunded":
-      return "reembolsado";
-    default:
-      return null;
-  }
-}
-
-function targetPaymentStatus(type: string): "aprovado" | "recusado" | "expirado" | "estornado" | null {
-  switch (type) {
-    case "payment.approved":
-      return "aprovado";
-    case "payment.recused":
-      return "recusado";
-    case "payment.expired":
-      return "expirado";
-    case "payment.refunded":
-      return "estornado";
-    default:
-      return null;
-  }
-}
+// Aplicação de eventos vive em services/payments/webhook-events.ts — única
+// fonte que transforma resultado financeiro em estado (AUD-15). A rota só
+// valida assinatura, persiste o evento bruto e delega.
 
 async function upsertChargeback(
   db: Db,
@@ -136,8 +112,14 @@ export async function registerWebhookRoutes(app: FastifyInstance, db: Db) {
         processedAt: null,
       });
     } catch (e) {
-      const msg = String((e as Error)?.message ?? e);
-      if (/unique|duplicate/i.test(msg)) {
+      // drizzle embrulha: "Failed query: ..." com a causa original em .cause
+      const chain: string[] = [];
+      let cur: unknown = e;
+      while (cur instanceof Error) {
+        chain.push(cur.message);
+        cur = (cur as { cause?: unknown }).cause;
+      }
+      if (chain.some((m) => /unique|duplicate/i.test(m))) {
         return reply.send({ ok: true, duplicate: true });
       }
       throw e;
@@ -199,43 +181,32 @@ export async function registerWebhookRoutes(app: FastifyInstance, db: Db) {
     }
 
     if (!payment) {
-      // Evento sem pagamento localizado — registra e confirma recebimento (não falha o webhook).
+      // Evento sem pagamento localizado — FICA EM payment_events sem
+      // processedAt: se for corrida checkout×webhook (cobrança criada, INSERT
+      // local ainda não commitou), o checkout recupera e aplica o evento ao
+      // inserir o pagamento (applyPendingEventsForPayment). Registra e
+      // confirma recebimento (não falha o webhook).
+      request.log.info({ provider, eventId: event.eventId }, "webhook event without local payment — parked");
       return reply.send({ ok: true, processed: false, reason: "payment_not_found" });
     }
 
-    const payStatus = targetPaymentStatus(event.type);
-    if (payStatus) {
-      const patch: Record<string, unknown> = { status: payStatus };
-      if (payStatus === "aprovado") patch.capturedAt = new Date();
-      await db.update(schema.payments).set(patch).where(eq(schema.payments.id, payment.id));
-    }
+    // Estado do pagamento e do pedido derivados do resultado financeiro —
+    // mesmo caminho da reconciliação e da recuperação de corrida (AUD-15).
+    const outcome = await applyPaymentEvent(db, {
+      provider,
+      event,
+      payment,
+      actorLabel: `webhook:${provider}`,
+    });
 
-    const orderTarget = targetOrderStatus(event.type);
-    if (orderTarget) {
-      try {
-        const orderRows = await db.select().from(schema.orders).where(eq(schema.orders.id, payment.orderId)).limit(1);
-        const order = orderRows[0];
-        if (order) {
-          const from = order.status as OrderStatus;
-          if (canTransition(from, orderTarget)) {
-            await transitionOrder(db, {
-              orderId: payment.orderId,
-              to: orderTarget,
-              reason: `Webhook ${provider}: ${event.type}`,
-              actorLabel: `webhook:${provider}`,
-            });
-          } else if (event.type === "payment.approved" && (from === "aguardando_revisao_manual" || from === "em_analise_antifraude")) {
-            // Pagamento confirmado mas pedido em revisão/fraude — não força transição;
-            // mantém pagamento aprovado e deixa revisão humana decidir.
-            request.log.info({ orderId: payment.orderId, from }, "payment approved but order under review");
-          }
-        }
-      } catch (err) {
-        request.log.warn({ err, orderId: payment.orderId }, "order transition from webhook failed");
-      }
-    }
-
-    return reply.send({ ok: true, processed: true, eventId: event.eventId, type: event.type });
+    return reply.send({
+      ok: true,
+      processed: outcome.applied,
+      eventId: event.eventId,
+      type: event.type,
+      ...(outcome.reason ? { reason: outcome.reason } : {}),
+      ...(outcome.latePayment ? { latePayment: true, decision: "refund_required" } : {}),
+    });
   });
 
   // Health/probe for webhook endpoint
