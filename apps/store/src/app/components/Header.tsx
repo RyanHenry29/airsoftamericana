@@ -7,7 +7,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, Search, ShoppingCart, User, X } from "lucide-react";
-import { API_URL, fetchWithTimeout, type StoreSuggestion } from "../lib/store";
+import { API_URL, fetchWithTimeout, type StoreCategoryNode, type StoreSuggestion } from "../lib/store";
+import { DeptStrip } from "./DeptStrip";
 
 export function Header() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export function Header() {
   const [count, setCount] = useState(0);
   const [customer, setCustomer] = useState<{ name: string; email: string } | null>(null);
   const [place, setPlace] = useState<string | null>(null);
+  const [categories, setCategories] = useState<StoreCategoryNode[]>([]);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -90,6 +92,20 @@ export function Header() {
         if (alive && address?.city) {
           setPlace(`Loja física · ${address.city}${address.state ? `/${address.state}` : ""}`);
         }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Árvore de categorias da barra: dados reais de /api/store/categories.
+  useEffect(() => {
+    let alive = true;
+    fetchWithTimeout(`${API_URL}/api/store/categories`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (alive && Array.isArray(json) && json.length > 0) setCategories(json as StoreCategoryNode[]);
       })
       .catch(() => {});
     return () => {
@@ -279,8 +295,20 @@ export function Header() {
         </button>
       </div>
 
+      <DeptStrip categories={categories} />
+
       {menuOpen && (
         <nav className="header-mobile" aria-label="Menu principal">
+          {categories.length > 0 && (
+            <div className="header-mobile__group">
+              <span className="header-mobile__label">Categorias</span>
+              {categories.map((c) => (
+                <Link key={c.id} href={`/catalogo?categoria=${c.slug}`} onClick={() => setMenuOpen(false)}>
+                  {c.name}
+                </Link>
+              ))}
+            </div>
+          )}
           <div className="header-mobile__group">
             <span className="header-mobile__label">A loja</span>
             <Link href="/catalogo" onClick={() => setMenuOpen(false)}>

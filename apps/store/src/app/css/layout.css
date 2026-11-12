@@ -312,6 +312,121 @@
   .header-mobile { display: flex; }
 }
 
+/* ——————— Mega menu: complementos ——————— */
+.mega-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem 2rem; align-items: start; }
+.mega-col { min-width: 0; }
+.mega-group-title {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  color: var(--primary);
+  text-decoration: none;
+  padding-bottom: 0.3rem;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--line);
+}
+.mega-group-title:hover { color: #ffffff; }
+.mega-highlight__media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.mega-highlight__img { object-fit: cover; }
+.mega-highlight__body { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* ——————— Barra horizontal de categorias ——————— */
+/* Linha única com os itens centralizados no meio da barra (sem bloco de
+   rótulo). Apertou o desktop, a tipografia encolhe nos cortes abaixo — a
+   barra nunca quebra em duas fileiras. */
+.dept-strip {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  flex-wrap: wrap; /* só como rede: os cortes abaixo evitam a segunda fileira */
+  border-top: 1px solid var(--line);
+  background: #050605;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dept-strip::-webkit-scrollbar { display: none; }
+.dept-strip__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.9rem;
+  color: #f4f5f2;
+  text-decoration: none;
+  white-space: nowrap;
+  border-right: 1px solid var(--line);
+  flex: 0 1 auto;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.dept-strip__item:last-child { border-right: 0; }
+.dept-strip__item:hover,
+.dept-strip__item.is-open { color: var(--primary); background: #0a0c0a; }
+/* Slot da categoria: âncora de hover; o painel fica fora do scroll da barra. */
+.dept-strip__slot { display: flex; flex: 0 1 auto; min-width: 0; }
+/* Chevron pequeno no lugar da seta grande — gira quando o painel abre. */
+.dept-strip__chev {
+  flex: none;
+  color: var(--dim);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+.dept-strip__item:hover .dept-strip__chev,
+.dept-strip__item.is-open .dept-strip__chev { color: var(--primary); }
+.dept-strip__item.is-open .dept-strip__chev { transform: rotate(180deg); }
+.dept-strip__item--content { color: #d4d8d4; }
+.dept-strip__item--all {
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+.dept-strip__item--all:hover { color: var(--primary-dark); }
+/* Ladeira estreita: a barra encolhe em tipografia/padding para caber em uma
+   linha só desde 861px — nunca joga item para uma segunda fileira. */
+@media (max-width: 1320px) {
+  .dept-strip__item { padding: 0.8rem 0.8rem; font-size: 0.84rem; letter-spacing: 0.06em; }
+}
+@media (max-width: 1120px) {
+  .dept-strip__item { padding: 0.78rem 0.62rem; font-size: 0.78rem; letter-spacing: 0.05em; gap: 0.4rem; }
+  .dept-strip__chev { width: 11px; height: 11px; }
+}
+@media (max-width: 940px) {
+  .dept-strip__item { padding: 0.72rem 0.5rem; font-size: 0.72rem; }
+}
+/* Mobile (≤860 = mesmo corte do hambúrguer): a barra de categorias some e
+   a navegação inteira passa para o menu do hambúrguer — design próprio do
+   mobile, sem barra espremida. Deve vir depois das regras base da barra. */
+@media (max-width: 860px) {
+  .dept-strip { display: none; }
+}
+
+/* Mega menu: descida animada sob a barra (o painel é irmão da nav, ancorado
+   no header sticky — não é cortado pelo overflow-x da barra). */
+.mega-panel { animation: megaDrop 0.18s ease-out; }
+@keyframes megaDrop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mega-panel { animation: none; }
+}
+/* Em telas estreitas a barra vira rolagem e o painel não abre: o toque
+   navega direto para a categoria. */
+@media (max-width: 900px) {
+  .mega-panel { display: none; }
+}
+
 /* Acessibilidade: texto apenas para leitores de tela */
 .sr-only {
   position: absolute;

@@ -180,7 +180,43 @@ body {
 /* Hero antigo (compatibilidade com banners ainda no modelo antigo) */
 .hero-full { display: none; }
 
-/* â€”â€”â€”â€”â€” Newsletter â€”â€”â€”â€”â€” */
+/* ——————— Header: mega menu (barra usa .dept-strip* no layout.css) ——————— */
+/* Mega menu: colunas densas de links puros — lista de texto corrido, sem
+   caixa por link, sem seta, espaçamento de menu de verdade (referência). */
+.mega-panel {
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 45;
+  background: var(--base); border: 1px solid var(--border-strong); border-top: 0;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.28); padding: 1.1rem 1.5rem 1.25rem;
+}
+.mega-grid { display: grid; grid-template-columns: 3fr 1fr; gap: 1.75rem; }
+.mega-title { font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.16em; color: var(--primary); margin-bottom: 0.5rem; }
+.mega-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 0 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mega-links li { min-width: 0; }
+.mega-links a {
+  display: block; padding: 0.28rem 0;
+  color: #d9ddd9; text-decoration: none;
+  font-size: 0.84rem; font-weight: 500; line-height: 1.45;
+  border-bottom: 1px solid transparent;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color 0.15s ease;
+}
+.mega-links a:hover { color: var(--primary); }
+.age18 { display: inline-block; margin-left: 0.4rem; padding: 0 0.3rem; font-family: var(--font-mono); font-size: 0.58rem; color: var(--primary); border: 1px solid rgb(122 154 90 / 0.4); vertical-align: 1px; }
+.mega-all { display: inline-block; margin-top: 0.7rem; font-family: var(--font-mono); font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--primary); text-decoration: none; }
+.mega-all:hover { text-decoration: underline; }
+.mega-highlight { border-left: 1px solid var(--border); padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.mega-highlight h4 { font-family: var(--font-display); text-transform: uppercase; font-weight: 700; font-size: 1.15rem; line-height: 1.1; color: #f4f5f2; margin: 0; }
+.mega-highlight p { color: #a3a3a3; font-size: 0.8rem; line-height: 1.5; margin: 0; }
+@media (max-width: 900px) { .mega-highlight { display: none; } .mega-grid { grid-template-columns: 1fr; } }
+
+/* ——————— Newsletter ——————— */
 .newsletter { display: flex; gap: 0.5rem; max-width: 480px; }
 .newsletter .input { background:#fff; color:#111; }
 @media (max-width: 640px) { .newsletter { flex-direction: column; } }
