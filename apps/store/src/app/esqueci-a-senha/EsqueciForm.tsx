@@ -6,7 +6,7 @@
 // querendo o e-mail cadastrado ou não.
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, ArrowRight, Loader2, Mail, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, Loader2, Mail } from "lucide-react";
 import { validateAuthField } from "../lib/authValidation";
 
 const API_URL =
@@ -114,14 +114,6 @@ export function EsqueciForm() {
         <p className="auth-switch">
           Lembrou a senha? <Link href="/entrar">Voltar pra entrada</Link>
         </p>
-
-        <div className="auth-seals">
-          <span>
-            <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
-            Link válido por 60 min
-          </span>
-          <span>Dados protegidos (LGPD)</span>
-        </div>
       </div>
     );
   }
@@ -193,15 +185,6 @@ export function EsqueciForm() {
       <p className="auth-switch">
         Não tem conta? <Link href="/cadastro">Criar conta grátis</Link>
       </p>
-
-      <div className="auth-seals">
-        <span>
-          <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
-          Compra protegida
-        </span>
-        <span>18+</span>
-        <span>Dados protegidos (LGPD)</span>
-      </div>
     </form>
   );
 }

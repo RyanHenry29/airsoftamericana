@@ -251,15 +251,6 @@ export function RedefinirForm({ token }: { token: string }) {
       <p className="auth-switch">
         <Link href="/esqueci-a-senha">Pedir outro link</Link>
       </p>
-
-      <div className="auth-seals">
-        <span>
-          <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
-          Link de uso único
-        </span>
-        <span>18+</span>
-        <span>Dados protegidos (LGPD)</span>
-      </div>
     </form>
   );
 }

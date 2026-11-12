@@ -11,7 +11,6 @@ import {
   Loader2,
   Lock,
   Mail,
-  ShieldCheck,
 } from "lucide-react";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { validateAuthField } from "../lib/authValidation";
@@ -273,15 +272,6 @@ export function EntrarForm() {
       <p className="auth-switch">
         Não tem conta? <Link href="/cadastro">Criar conta grátis</Link>
       </p>
-
-      <div className="auth-seals">
-        <span>
-          <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
-          Compra protegida
-        </span>
-        <span>18+</span>
-        <span>Dados protegidos (LGPD)</span>
-      </div>
     </form>
   );
 }

@@ -1,7 +1,7 @@
 // language: TSX, file: apps/store/src/app/components/AuthShell.tsx, target: Next.js App Router
-// Shell das telas de acesso: manifesto industrial à esquerda, ficha de formulário à direita.
-// O CSS das telas de acesso vem junto (tokens escopados em .auth-shell) — não
-// depende do pipeline de estilos da home.
+// Shell das telas de acesso: manifesto da marca à esquerda, ficha de formulário à direita.
+// O CSS das telas de acesso vem junto (classes escopadas em .auth-shell) e usa
+// os mesmos tokens da loja — identidade única, sem tema paralelo.
 import "../css/auth.css";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -21,16 +21,11 @@ export function AuthShell({
       <section className="auth-panel">
         <div className="auth-panel__inner">
           <div className="auth-panel__top">
-            <span className="auth-index">
-              {variant === "entrar" ? "FORM / 01 — ACESSO" : "FORM / 02 — CADASTRO"}
-            </span>
-            <Link href="/" className="auth-back inline-flex items-center gap-1.5">
+            <Link href="/" className="auth-back">
               <ArrowLeft size={13} strokeWidth={2.4} aria-hidden="true" />
               Voltar pra loja
             </Link>
           </div>
-
-          <span className="auth-ruler" aria-hidden="true" />
 
           {children}
 
