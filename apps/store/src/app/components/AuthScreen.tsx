@@ -1,10 +1,8 @@
 // language: TSX, file: apps/store/src/app/components/AuthScreen.tsx, target: Next.js App Router
 // Tela única de acesso da loja: abas Entrar / Criar conta com indicador
-// deslizante, manifesto da marca à esquerda, formulários validados no blur
-// com check verde e lista de requisitos de senha. Condições comerciais,
-// horário e cidade vêm do settings (fonte única) — sem número digitado aqui;
-// sem settings, a linha some. Movimento respeita prefers-reduced-motion
-// (MotionConfig + as regras globais do globals.css).
+// deslizante, formulários validados no blur com check verde e lista de
+// requisitos de senha. Layout centralizado, sem painel lateral de marca.
+// Movimento respeita prefers-reduced-motion (MotionConfig + globals.css).
 "use client";
 
 import { useId, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -22,23 +20,18 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  BadgePercent,
   Check,
-  CreditCard,
   Eye,
   EyeOff,
   FileText,
   Loader2,
   Lock,
   Mail,
-  Package,
   Phone,
   ShieldCheck,
-  Store,
-  Truck,
   User,
 } from "lucide-react";
-import { API_URL, type CommercialSettings } from "../lib/store";
+import { API_URL } from "../lib/store";
 import { AUTH_MESSAGES, maskCpf, maskPhone } from "../lib/authValidation";
 import { safeNext, useAuthActions, type AuthResult } from "./useAuthActions";
 
@@ -53,9 +46,6 @@ type Props = {
 
 /* ───────── utilidades ───────── */
 const emailOk = (v: string) => /^\S+@\S+\.\S+$/.test(v.trim());
-
-const fmt = (cents: number) =>
-  (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 function useTouched() {
   const [t, setT] = useState<Record<string, boolean>>({});
@@ -88,60 +78,6 @@ function useSubmit() {
     }
   };
   return { status, formError, controls, run };
-}
-
-/* ───────── settings (fonte única das regras comerciais) ───────── */
-type SettingsState = { status: "loading" | "ready" | "error"; data: CommercialSettings | null };
-
-function useSettings(): SettingsState {
-  const [state, setState] = useState<SettingsState>({ status: "loading", data: null });
-  useEffect(() => {
-    let alive = true;
-    fetch(`${API_URL}/api/store/settings`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((j) => {
-        if (alive) setState({ status: "ready", data: j as CommercialSettings });
-      })
-      .catch(() => {
-        // Sem settings a lista e o rodapé somem — nada inventado no lugar.
-        if (alive) setState({ status: "error", data: null });
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return state;
-}
-
-type Benefit = { icon: typeof BadgePercent; t: string; d: string };
-
-function benefitsFrom(s: CommercialSettings): Benefit[] {
-  const items: Benefit[] = [];
-  if (s.pix_discount_percent > 0)
-    items.push({
-      icon: BadgePercent,
-      t: `PIX com ${s.pix_discount_percent}% de desconto`,
-      d: "No pagamento à vista",
-    });
-  if (s.installments > 1)
-    items.push({
-      icon: CreditCard,
-      t: `${s.installments}x${s.installment_interest_free ? " sem juros" : ""}`,
-      d: "No cartão de crédito",
-    });
-  if (s.free_shipping_from_cents > 0)
-    items.push({
-      icon: Truck,
-      t: "Frete grátis",
-      d: `Acima de ${fmt(s.free_shipping_from_cents)}`,
-    });
-  if (s.shipping_carriers.length > 0)
-    items.push({
-      icon: Package,
-      t: "Envio para todo o Brasil",
-      d: s.shipping_carriers.join(" e "),
-    });
-  return items;
 }
 
 /* ───────── campo ───────── */
@@ -284,7 +220,6 @@ function RegisterForm({ onRegister }: { onRegister: NonNullable<Props["onRegiste
   const err = {
     name: f.name.trim().split(/\s+/).length < 2 ? "Digite nome e sobrenome." : undefined,
     email: emailOk(f.email) ? undefined : "Digite um e-mail válido.",
-    // O servidor recusa CPF com dígitos diferentes de 11 — valida aqui antes.
     cpf: cpfDigits.length > 0 && cpfDigits.length !== 11 ? AUTH_MESSAGES.cpfInvalid : undefined,
     password: has.len && has.mix ? undefined : "A senha precisa cumprir os requisitos abaixo.",
     confirm: f.confirm === f.password && f.confirm ? undefined : "As senhas não são iguais.",
@@ -341,108 +276,7 @@ function RegisterForm({ onRegister }: { onRegister: NonNullable<Props["onRegiste
   );
 }
 
-/* ───────── painel da marca ───────── */
-const COPY = {
-  login: { title: "Bem-vindo de volta.", text: "Acompanhe seus pedidos, rastreie entregas e finalize compras com seus dados já preenchidos." },
-  register: { title: "Crie sua conta em um minuto.", text: "Cadastre uma vez e as próximas compras ficam mais rápidas. Sem taxa de adesão e sem assinatura." },
-};
-const stagger = { show: { transition: { staggerChildren: 0.06, delayChildren: 0.1 } } };
-const rise = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } } };
-
-function Brand() {
-  return (
-    <Link href="/" className="flex w-fit items-center gap-3">
-      <Image src="/emblema.png" alt="" width={44} height={44} />
-      <span className="leading-tight">
-        <span className="block text-base font-bold tracking-wide text-foreground">AIRSOFT AMERICANA</span>
-        <span className="block text-xs text-muted-foreground">Equipamentos e acessórios</span>
-      </span>
-    </Link>
-  );
-}
-
-function SkelLine({ className }: { className: string }) {
-  return <span aria-hidden="true" className={`block animate-pulse rounded-[var(--radius)] bg-muted ${className}`} />;
-}
-
-function BrandPanel({ mode }: { mode: Mode }) {
-  const { status, data: settings } = useSettings();
-  const c = COPY[mode];
-  const benefits = settings ? benefitsFrom(settings) : [];
-  const city = settings ? [settings.address.city, settings.address.state].filter(Boolean).join(", ") : "";
-  const hours = settings?.service_hours.trim() ?? "";
-  const instagram = settings?.social.instagram.trim() ?? "";
-
-  return (
-    <aside className="hidden flex-col justify-between p-12 xl:p-16 lg:flex">
-      <motion.div variants={stagger} initial="hidden" animate="show">
-        <motion.div variants={rise}><Brand /></motion.div>
-
-        <div className="mt-20 max-w-xl">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div key={mode} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.22 }}>
-              {/* O h1 da página é o título do formulário — aqui é texto de vitrine */}
-              <p className="font-[family-name:var(--font-display)] text-5xl font-extrabold leading-[1.05] tracking-tight text-foreground xl:text-6xl">{c.title}</p>
-              <p className="mt-5 max-w-md text-[17px] leading-relaxed text-muted-foreground">{c.text}</p>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {status === "loading" ? (
-          <ul className="mt-12 grid max-w-xl gap-x-8 gap-y-6 sm:grid-cols-2" aria-hidden="true">
-            {[0, 1, 2, 3].map((i) => (
-              <li key={i} className="flex gap-3.5">
-                <SkelLine className="h-10 w-10 shrink-0" />
-                <span className="flex-1 space-y-2">
-                  <SkelLine className="h-4 w-36" />
-                  <SkelLine className="h-3 w-24" />
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : benefits.length > 0 ? (
-          <ul className="mt-12 grid max-w-xl gap-x-8 gap-y-6 sm:grid-cols-2">
-            {benefits.map(({ icon: Icon, t, d }) => (
-              <motion.li key={t} variants={rise} className="flex gap-3.5">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius)] border border-border bg-secondary text-primary"><Icon size={19} /></span>
-                <span><span className="block text-[15px] font-semibold text-foreground">{t}</span><span className="block text-sm text-muted-foreground">{d}</span></span>
-              </motion.li>
-            ))}
-          </ul>
-        ) : null}
-      </motion.div>
-
-      <motion.footer variants={rise} initial="hidden" animate="show" transition={{ delay: 0.5 }} className="mt-12 flex items-end justify-between gap-6 border-t border-border pt-6 text-[13px] text-muted-foreground">
-        {status === "loading" ? (
-          <SkelLine className="h-3 w-56" />
-        ) : (
-          <div className="flex gap-3">
-            <Store size={17} className="mt-0.5 shrink-0 text-primary" />
-            <div className="leading-relaxed">
-              {city && <p>Loja física em {city}</p>}
-              {hours && <p>{hours}</p>}
-              {instagram && (
-                <a
-                  href={`https://instagram.com/${instagram.replace(/^@/, "")}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hover:text-foreground hover:underline"
-                >
-                  @{instagram.replace(/^@/, "")}
-                </a>
-              )}
-            </div>
-          </div>
-        )}
-        <span className="shrink-0 rounded-[var(--radius)] border border-[var(--border-strong)] px-2 py-1 font-semibold text-foreground/80">18+</span>
-      </motion.footer>
-    </aside>
-  );
-}
-
-/* ───────── tela ───────── */
-const TABS: { id: Mode; label: string }[] = [{ id: "login", label: "Entrar" }, { id: "register", label: "Criar conta" }];
-
+/* ───────── ícone Google ───────── */
 function GoogleIcon() {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
@@ -454,6 +288,42 @@ function GoogleIcon() {
   );
 }
 
+/* ───────── marca compacta no topo ───────── */
+function BrandCompact() {
+  return (
+    <Link href="/" className="flex w-fit items-center gap-2.5" aria-label="Airsoft Americana - Início">
+      <Image src="/emblema.png" alt="" width={44} height={44} className="h-8 w-8 object-contain" />
+      {/* sem classe `block`: a casa usa .block como seção (padding de seção colava aqui) */}
+      <span className="flex flex-col leading-tight">
+        <span className="text-sm font-bold tracking-wide text-foreground">AIRSOFT AMERICANA</span>
+        <span className="text-[11px] text-muted-foreground">Equipamentos e acessórios</span>
+      </span>
+    </Link>
+  );
+}
+
+/* ───────── tela ───────── */
+const TABS: { id: Mode; label: string }[] = [{ id: "login", label: "Entrar" }, { id: "register", label: "Criar conta" }];
+
+/* stagger container para campos do formulário */
+const formContainerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05, delayChildren: 0.1 },
+  },
+  exit: {
+    opacity: 0,
+    transition: { staggerChildren: 0.03, staggerDirection: -1 },
+  },
+};
+
+const fieldVariants = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] as const } },
+  exit: { opacity: 0, y: -8, transition: { duration: 0.2 } },
+};
+
 export function AuthScreen({ initialMode = "login", onLogin, onRegister, onGoogle }: Props) {
   const router = useRouter();
   const actions = useAuthActions();
@@ -461,10 +331,22 @@ export function AuthScreen({ initialMode = "login", onLogin, onRegister, onGoogl
   const register = onRegister ?? actions.register;
   const google = onGoogle ?? actions.google;
   const [mode, setMode] = useState<Mode>(initialMode);
+  const [prevMode, setPrevMode] = useState<Mode>(initialMode);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string>();
 
-  // Já tem sessão? Vai direto pra conta — só na rota de entrar, como antes.
+  // track direction for slide animation
+  const direction = useMemo(() => {
+    const order: Mode[] = ["login", "register"];
+    return order.indexOf(mode) - order.indexOf(prevMode);
+  }, [mode, prevMode]);
+
+  const handleModeChange = (next: Mode) => {
+    setPrevMode(mode);
+    setMode(next);
+  };
+
+  // Já tem sessão? Vai direto pra conta — só na rota de entrar.
   useEffect(() => {
     if (initialMode !== "login") return;
     let alive = true;
@@ -483,36 +365,57 @@ export function AuthScreen({ initialMode = "login", onLogin, onRegister, onGoogl
 
   return (
     <MotionConfig reducedMotion="user">
-      <main className="grid min-h-screen bg-background text-foreground lg:grid-cols-[1.1fr_1fr]">
-        <BrandPanel mode={mode} />
+      <main className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+        <div className="w-full max-w-[440px]">
+          {/* Brand compacta + voltar pra loja */}
+          <div className="mb-8 flex items-center justify-between">
+            <BrandCompact />
+            <Link href="/" className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+              <ArrowLeft size={15} /> Voltar para a loja
+            </Link>
+          </div>
 
-        <section className="flex justify-center border-border bg-card px-5 py-8 sm:px-8 lg:items-center lg:border-l">
-          <div className="w-full max-w-[440px]">
-            <div className="mb-8 flex items-center justify-between lg:justify-end">
-              <div className="lg:hidden"><Brand /></div>
-              <Link href="/" className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
-                <ArrowLeft size={15} /> Voltar para a loja
-              </Link>
+          {/* Abas de modo */}
+          <LayoutGroup>
+            <div role="tablist" aria-label="Acesso à conta" className="relative mb-8 grid grid-cols-2 rounded-[var(--radius)] border border-border bg-base p-1">
+              {TABS.map((t) => (
+                <button key={t.id} type="button" role="tab" aria-selected={mode === t.id} onClick={() => handleModeChange(t.id)}
+                  className={`relative h-10 rounded-[var(--radius)] text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary ${mode === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                  {mode === t.id && <motion.span layoutId="tab-pill" transition={{ type: "spring", stiffness: 500, damping: 38 }} className="absolute inset-0 rounded-[var(--radius)] bg-secondary ring-1 ring-border" />}
+                  <span className="relative">{t.label}</span>
+                </button>
+              ))}
             </div>
+          </LayoutGroup>
 
-            <LayoutGroup>
-              <div role="tablist" aria-label="Acesso à conta" className="relative mb-8 grid grid-cols-2 rounded-[var(--radius)] border border-border bg-base p-1">
-                {TABS.map((t) => (
-                  <button key={t.id} type="button" role="tab" aria-selected={mode === t.id} onClick={() => setMode(t.id)}
-                    className={`relative h-10 rounded-[var(--radius)] text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary ${mode === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                    {mode === t.id && <motion.span layoutId="tab-pill" transition={{ type: "spring", stiffness: 500, damping: 38 }} className="absolute inset-0 rounded-[var(--radius)] bg-secondary ring-1 ring-border" />}
-                    <span className="relative">{t.label}</span>
-                  </button>
-                ))}
-              </div>
-            </LayoutGroup>
+          {/* Painel do formulário */}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={mode}
+              role="tabpanel"
+              initial={{ opacity: 0, x: -direction * 40 }}
+              animate={{ opacity: 1, x: 0, transition: { duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] as const } }}
+              exit={{ opacity: 0, x: direction * 40, transition: { duration: 0.25, ease: [0.55, 0.06, 0.68, 0.19] as const } }}
+              className="space-y-5"
+            >
+              <motion.div variants={formContainerVariants} initial="hidden" animate="show" exit="exit">
+                <motion.h1
+                  className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight"
+                  variants={fieldVariants}
+                >
+                  {mode === "login" ? "Entrar na sua conta" : "Criar sua conta"}
+                </motion.h1>
+                <motion.p
+                  className="mb-6 mt-1.5 text-[15px] text-muted-foreground"
+                  variants={fieldVariants}
+                >
+                  {mode === "login" ? "Use seu e-mail e senha." : "Preencha seus dados para começar."}
+                </motion.p>
 
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div key={mode} role="tabpanel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-                <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight">{mode === "login" ? "Entrar na sua conta" : "Criar sua conta"}</h1>
-                <p className="mb-6 mt-1.5 text-[15px] text-muted-foreground">{mode === "login" ? "Use seu e-mail e senha." : "Preencha seus dados para começar."}</p>
-
-                <button type="button" disabled={googleLoading}
+                {/* Botão Google */}
+                <motion.button
+                  type="button"
+                  disabled={googleLoading}
                   onClick={async () => {
                     setGoogleLoading(true);
                     setGoogleError(undefined);
@@ -524,24 +427,37 @@ export function AuthScreen({ initialMode = "login", onLogin, onRegister, onGoogl
                       setGoogleLoading(false);
                     }
                   }}
-                  className="flex h-12 w-full items-center justify-center gap-3 rounded-[var(--radius)] border border-border bg-secondary text-sm font-semibold transition-colors hover:border-[var(--border-strong)] hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-70">
+                  className="flex h-12 w-full items-center justify-center gap-3 rounded-[var(--radius)] border border-border bg-secondary text-sm font-semibold transition-colors hover:border-[var(--border-strong)] hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-70"
+                  variants={fieldVariants}
+                  whileTap={{ scale: 0.99 }}
+                >
                   {googleLoading ? <Loader2 size={18} className="animate-spin" /> : <GoogleIcon />} Continuar com Google
-                </button>
+                </motion.button>
                 <Banner>{googleError}</Banner>
 
-                <div className="my-6 flex items-center gap-4 text-xs text-muted-foreground/70">
+                {/* Divider */}
+                <motion.div
+                  className="my-6 flex items-center gap-4 text-xs text-muted-foreground/70"
+                  variants={fieldVariants}
+                >
                   <span className="h-px flex-1 bg-border" />ou use seu e-mail<span className="h-px flex-1 bg-border" />
-                </div>
+                </motion.div>
 
-                {mode === "login" ? <LoginForm onLogin={login} /> : <RegisterForm onRegister={register} />}
+                {/* Formulários */}
+                {mode === "login" ? (
+                  <motion.div variants={fieldVariants}><LoginForm onLogin={login} /></motion.div>
+                ) : (
+                  <motion.div variants={fieldVariants}><RegisterForm onRegister={register} /></motion.div>
+                )}
               </motion.div>
-            </AnimatePresence>
+            </motion.div>
+          </AnimatePresence>
 
-            <p className="mt-8 flex items-center justify-center gap-1.5 border-t border-border pt-6 text-xs text-muted-foreground/70">
-              <ShieldCheck size={14} /> Dados protegidos conforme a LGPD
-            </p>
-          </div>
-        </section>
+          {/* Rodapé LGPD */}
+          <p className="mt-8 flex items-center justify-center gap-1.5 border-t border-border pt-6 text-xs text-muted-foreground/70">
+            <ShieldCheck size={14} /> Dados protegidos conforme a LGPD
+          </p>
+        </div>
       </main>
     </MotionConfig>
   );
