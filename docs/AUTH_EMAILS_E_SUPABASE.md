@@ -5,7 +5,7 @@ Este documento cobre o que **não** fica 100% no código da aplicação: configu
 ## 1. Google login (app + Supabase + Google Cloud)
 
 ### No app (código)
-- Botão Google: `apps/store/src/app/components/GoogleSignInButton.tsx` → inicia OAuth no Supabase (`/auth/v1/authorize?provider=google`).
+- Botão Google: `apps/store/src/app/lib/googleAuth.ts` (`redirectToGoogle`) → inicia OAuth no Supabase (`/auth/v1/authorize?provider=google`); o botão em si é do `components/AuthScreen.tsx`.
 - Callback: `apps/store/src/app/auth/callback/*` → lê `access_token` do fragmento, chama `POST /api/auth/google`.
 - API: `apps/api/index.ts` (handler Vercel) e `apps/api/src/routes/index.ts` (Fastify/local) → valida o token em `SUPABASE_URL/auth/v1/user` com `SUPABASE_PUBLISHABLE_KEY`, exige e-mail confirmado, cria/localiza cliente e emite cookie `aa_customer`.
 

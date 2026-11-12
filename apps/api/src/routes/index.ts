@@ -437,13 +437,18 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
   });
 
   // ---------------------------------------------------------- Auth cliente
-  /** Sessão do cliente: cookie httpOnly, 7 dias, sem token no corpo da resposta. */
-  const customerCookie = (maxAgeSeconds: number) => ({
+  /**
+   * Sessão do cliente: cookie httpOnly, sem token no corpo da resposta.
+   * Com maxAge (7 dias) o cookie persiste entre sessões do navegador;
+   * sem maxAge ele é cookie de sessão — some quando o navegador fecha
+   * (remember=false no login).
+   */
+  const customerCookie = (maxAgeSeconds?: number) => ({
     path: "/",
     httpOnly: true,
     sameSite: config.COOKIE_SAMESITE,
     secure: config.NODE_ENV === "production" || config.COOKIE_SAMESITE === "none",
-    maxAge: maxAgeSeconds,
+    ...(maxAgeSeconds !== undefined ? { maxAge: maxAgeSeconds } : {}),
   });
 
   app.post(
@@ -625,7 +630,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         reply.send({ error: { code: "invalid_input", message: "Dados inválidos", details: parsed.error.flatten() } });
         return;
       }
-      const { email, password } = parsed.data;
+      const { email, password, remember } = parsed.data;
       const found = await db.select().from(customers).where(eq(customers.email, email)).limit(1);
       const customer = found[0];
       const { ok } = customer?.passwordHash
@@ -643,7 +648,12 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
       }
 
       const token = await signJwt({ sub: customer.id, role: "customer", type: "customer" });
-      reply.setCookie("aa_customer", token, customerCookie(60 * 60 * 24 * 7));
+      // remember=false → cookie de sessão (sem Max-Age); default mantém 7 dias.
+      reply.setCookie(
+        "aa_customer",
+        token,
+        customerCookie(remember === false ? undefined : 60 * 60 * 24 * 7),
+      );
       await writeAudit(db, request, {
         action: "auth.login",
         entity: "customer",

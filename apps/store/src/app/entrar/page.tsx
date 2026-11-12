@@ -1,8 +1,7 @@
 // language: TSX, file: apps/store/src/app/entrar/page.tsx, target: Next.js App Router
 import type { Metadata } from "next";
-import { AuthShell } from "../components/AuthShell";
+import { AuthScreen } from "../components/AuthScreen";
 import { OG_IMAGE } from "../lib/seo";
-import { EntrarForm } from "./EntrarForm";
 
 export const metadata: Metadata = {
   title: "Entrar",
@@ -20,9 +19,5 @@ export const metadata: Metadata = {
 };
 
 export default function EntrarPage() {
-  return (
-    <AuthShell variant="entrar">
-      <EntrarForm />
-    </AuthShell>
-  );
+  return <AuthScreen initialMode="login" />;
 }

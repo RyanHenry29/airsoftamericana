@@ -23,6 +23,8 @@ export const passwordSchema = z
 export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, "Digite a senha"),
+  /** "Manter conectado": false vira cookie de sessão (some ao fechar o navegador). */
+  remember: z.boolean().optional(),
 });
 
 export const registerSchema = z.object({
