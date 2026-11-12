@@ -61,7 +61,7 @@ export default async function BlogIndexPage({
 
   return (
     <main className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <section className="inst-hero" style={{ paddingBottom: "1.5rem" }}>
         <span className="sec-kicker">Conteúdo</span>

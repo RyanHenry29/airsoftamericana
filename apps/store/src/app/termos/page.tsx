@@ -73,7 +73,7 @@ export default async function TermosPage() {
 
   return (
     <main id="conteudo" className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
       <div className="mx-auto max-w-3xl px-4 md:px-8 py-16 md:py-20">
         <span className="sec-kicker">CDC · LEI 8.078/1990</span>
         <h1 className="sec-title mb-10">TERMOS DE USO E COMPRA</h1>

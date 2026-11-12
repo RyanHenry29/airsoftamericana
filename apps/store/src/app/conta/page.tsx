@@ -22,7 +22,7 @@ export default async function ContaPage() {
 
   return (
     <main id="conteudo" className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <div className="conta-page">
         <nav className="conta-crumbs" aria-label="Trilha de navegação">

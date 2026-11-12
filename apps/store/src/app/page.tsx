@@ -24,11 +24,10 @@ type SectionRow = StoreHome["sections"][number];
 /** Seções de fallback quando a API não responde (espelha o seed do CMS). */
 const DEFAULT_SECTIONS: SectionRow[] = [
   { id: "fb-hero", kind: "hero", title: "Campanha principal", subtitle: "", position: 0, config: {} },
-  { id: "fb-departments", kind: "departments", title: "Departamentos", subtitle: "", position: 1, config: {} },
-  { id: "fb-featured", kind: "featured", title: "Destaques", subtitle: "", position: 2, config: {} },
-  { id: "fb-news", kind: "news", title: "Novidades", subtitle: "", position: 3, config: {} },
-  { id: "fb-bestsellers", kind: "bestsellers", title: "Mais vendidos", subtitle: "", position: 4, config: {} },
-  { id: "fb-sale", kind: "sale", title: "Promoções", subtitle: "", position: 5, config: {} },
+  { id: "fb-featured", kind: "featured", title: "Destaques", subtitle: "", position: 1, config: {} },
+  { id: "fb-news", kind: "news", title: "Novidades", subtitle: "", position: 2, config: {} },
+  { id: "fb-bestsellers", kind: "bestsellers", title: "Mais vendidos", subtitle: "", position: 3, config: {} },
+  { id: "fb-sale", kind: "sale", title: "Promoções", subtitle: "", position: 4, config: {} },
 ];
 
 const PRODUCT_KINDS = new Set(["featured", "news", "bestsellers", "sale", "promo"]);
@@ -195,58 +194,6 @@ export default async function HomePage() {
           </section>,
         ];
 
-      case "departments":
-        if (home.departments.length === 0) return [];
-        return [
-          <section key={key} className="block" aria-labelledby="departamentos-title">
-            <SectionHead
-              id="departamentos-title"
-              kicker="Escolha pelo sistema"
-              title={section.title?.trim() || "Departamentos"}
-              href="/catalogo"
-              label="Catálogo completo"
-            />
-            <ul className="dept-cards">
-              {home.departments.slice(0, limitOf(section)).map((dept) => {
-                const subs = dept.children.slice(0, 3);
-                return (
-                  <li key={dept.id}>
-                    <Link href={`/departamento/${dept.slug}`} className="dept-card">
-                      {dept.imageUrl ? (
-                        <span className="dept-card__media">
-                          <Image
-                            src={dept.imageUrl}
-                            alt=""
-                            fill
-                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                            className="dept-card__img"
-                          />
-                        </span>
-                      ) : (
-                        <span className="dept-card__media dept-card__media--type" aria-hidden="true">
-                          <span className="dept-card__mono">{dept.name.charAt(0).toUpperCase()}</span>
-                        </span>
-                      )}
-                      <span className="dept-card__body">
-                        <strong>{dept.name}</strong>
-                        {dept.productCount > 0 && <em>{dept.productCount} produtos</em>}
-                        {subs.length > 0 && (
-                          <span className="dept-card__subs">
-                            {subs.map((s) => (
-                              <span key={s.id}>{s.name}</span>
-                            ))}
-                            {dept.children.length > 3 && <span>+{dept.children.length - 3}</span>}
-                          </span>
-                        )}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>,
-        ];
-
       case "brands":
         if (home.brands.length === 0) return [];
         return [
@@ -282,8 +229,8 @@ export default async function HomePage() {
   }
 
   // Vitrines que o CMS não declarou (ex.: seed só traz "featured") continuam
-  // visíveis: entram logo após a última seção de produtos (ou após os
-  // departamentos/hero, se nenhuma vitrine estiver declarada).
+  // visíveis: entram logo após a última seção de produtos (ou após o hero,
+  // se nenhuma vitrine estiver declarada).
   const declared = new Set(sections.map((s) => s.kind));
   const extras: React.ReactNode[] = [];
   for (const kind of EXTRA_VITRINES) {
@@ -298,8 +245,7 @@ export default async function HomePage() {
     if (PRODUCT_KINDS.has(s.kind)) injectAt = i;
   });
   if (injectAt < 0) {
-    const depIdx = sections.findIndex((s) => s.kind === "departments");
-    injectAt = depIdx >= 0 ? depIdx : sections.findIndex((s) => s.kind === "hero");
+    injectAt = sections.findIndex((s) => s.kind === "hero");
   }
 
   const rendered: React.ReactNode[] = [];
@@ -311,7 +257,7 @@ export default async function HomePage() {
 
   return (
     <main id="conteudo" className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
       {rendered}
       <SiteFooter settings={settings} />
     </main>

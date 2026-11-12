@@ -56,7 +56,7 @@ export default async function InstitucionalPage() {
 
   return (
     <main className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <section className="inst-hero">
         <span className="sec-kicker">A loja</span>
@@ -87,7 +87,7 @@ export default async function InstitucionalPage() {
           <ol className="steps-list">
             <li>
               <strong>Escolha no catálogo</strong>
-              <span>Filtre por departamento, sistema de tiro, marca e faixa de preço.</span>
+              <span>Filtre por categoria, sistema de tiro, marca e faixa de preço.</span>
             </li>
             <li>
               <strong>Pague como preferir</strong>

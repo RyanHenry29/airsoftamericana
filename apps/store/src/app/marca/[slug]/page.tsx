@@ -90,7 +90,7 @@ export default async function BrandPage({ params }: { params: Promise<{ slug: st
 
   return (
     <main className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <nav className="crumbs" aria-label="Trilha de navegação">
         <Link href="/">Início</Link>

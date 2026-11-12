@@ -164,7 +164,7 @@ export default async function BuscaPage({
 
   return (
     <main id="conteudo">
-      <Header departments={home.departments} />
+      <Header />
 
       <div className="container catalog-page">
         <nav className="breadcrumbs" aria-label="Navegação">
@@ -212,7 +212,7 @@ export default async function BuscaPage({
 
             {facets.categories.length > 0 && (
               <section className="filters__group">
-                <h2 className="filters__title">Departamento</h2>
+                <h2 className="filters__title">Categoria</h2>
                 <ul className="filters__list">
                   <li>
                     <Link href={buildHref({ categoria: "", page: "1" })} className={"filters__item " + (!categoria ? "is-active" : "")}>
@@ -377,7 +377,7 @@ export default async function BuscaPage({
                 <h2>{q || hasFilters ? "Nenhum produto encontrado" : "Busque no catálogo"}</h2>
                 <p>
                   {q || hasFilters
-                    ? "Tente outro termo, ajuste os filtros ou navegue por um departamento."
+                    ? "Tente outro termo, ajuste os filtros ou navegue por uma categoria."
                     : "Digite um termo na busca para encontrar produtos por nome ou categoria."}
                 </p>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>

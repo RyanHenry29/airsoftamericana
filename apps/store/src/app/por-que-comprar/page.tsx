@@ -84,7 +84,7 @@ export default async function PorQueComprarPage() {
 
   return (
     <main id="conteudo" className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <section className="inst-hero">
         <span className="sec-kicker">Por que comprar aqui</span>

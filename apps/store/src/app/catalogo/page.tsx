@@ -18,9 +18,9 @@ import { PRICE_BANDS } from "../lib/filters";
 
 export const dynamic = "force-dynamic";
 
-// Canonical fixo em /catalogo: as variantes com ?categoria/?brand/?q duplicam o
-// conteúdo de /departamento/[slug] e /busca — consolidar na raiz evita
-// canibalização entre três URLs para a mesma grade.
+// Canonical fixo em /catalogo: as variantes com ?categoria/?brand/?q vivem todas
+// nesta raiz (o redirect de /departamento/* aponta para cá) — nenhuma outra URL
+// disputa a mesma grade.
 export const metadata: Metadata = {
   title: "Catálogo de airsoft, réplicas e equipamentos táticos",
   description:
@@ -158,7 +158,7 @@ export default async function CatalogPage({
 
   return (
     <main className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <nav className="crumbs" aria-label="Trilha de navegação">
         <Link href="/">Início</Link>
@@ -341,7 +341,7 @@ export default async function CatalogPage({
             <div className="catalog__empty">
               <p className="catalog__empty-num">0</p>
               <h2>Nenhum produto com esses filtros</h2>
-              <p>Tente limpar a busca ou navegar por um departamento.</p>
+              <p>Tente limpar a busca ou navegar por uma categoria.</p>
               <Link href="/catalogo" className="btn-primary">
                 Limpar filtros
               </Link>

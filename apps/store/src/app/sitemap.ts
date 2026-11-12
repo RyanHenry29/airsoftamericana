@@ -1,16 +1,15 @@
 // language: TS, file: apps/store/src/app/sitemap.ts, target: Next.js App Router (sitemap.xml)
-// Sitemap completo: páginas estáticas + produtos paginados + árvore de
-// departamentos + marcas com produto + posts publicados. O contrato da API
-// clampa o limit (produtos em 60, posts em 50) — o antigo `limit=1000`
-// silenciosamente só pegava a primeira leva de produtos. Fonte fora do ar
-// não derruba o XML: cada fonte cai para lista vazia e os estáticos seguem.
+// Sitemap completo: páginas estáticas + produtos paginados + marcas com produto
+// + posts publicados. O contrato da API clampa o limit (produtos em 60, posts
+// em 50) — o antigo `limit=1000` silenciosamente só pegava a primeira leva de
+// produtos. Fonte fora do ar não derruba o XML: cada fonte cai para lista vazia
+// e os estáticos seguem.
 import type { MetadataRoute } from "next";
 import { API_SERVER } from "./lib/store";
 import {
   STATIC_ROUTES,
   buildSitemapEntries,
   type BrandSource,
-  type DeptNode,
   type PostSource,
   type ProductSource,
 } from "./lib/sitemap-entries";
@@ -71,9 +70,8 @@ async function fetchAllPosts(): Promise<PostSource[]> {
 const asArray = <T>(v: T[] | null): T[] => (Array.isArray(v) ? v : []);
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [products, categories, brands, posts] = await Promise.all([
+  const [products, brands, posts] = await Promise.all([
     fetchAllProducts(),
-    fetchJson<DeptNode[]>("/api/store/categories"),
     fetchJson<BrandSource[]>("/api/store/brands"),
     fetchAllPosts(),
   ]);
@@ -82,7 +80,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     base: BASE,
     statics: STATIC_ROUTES,
     products,
-    departments: asArray(categories),
     brands: asArray(brands),
     posts,
   });

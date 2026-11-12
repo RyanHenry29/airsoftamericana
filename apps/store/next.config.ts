@@ -27,6 +27,17 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: securityHeaders },
     ];
   },
+  async redirects() {
+    return [
+      // A seção de departamentos saiu do site: o slug antigo é slug de
+      // categoria (mesma árvore) — 308 direto para o catálogo filtrado.
+      {
+        source: "/departamento/:slug",
+        destination: "/catalogo?categoria=:slug",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

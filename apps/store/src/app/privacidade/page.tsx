@@ -68,7 +68,7 @@ export default async function PrivacidadePage() {
 
   return (
     <main id="conteudo" className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
       <div className="mx-auto max-w-3xl px-4 md:px-8 py-16 md:py-20">
         <span className="sec-kicker">LGPD · LEI 13.709/2018</span>
         <h1 className="sec-title mb-10">POLÍTICA DE PRIVACIDADE</h1>

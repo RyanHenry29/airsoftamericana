@@ -28,8 +28,6 @@ export type PostSource = { slug: string; publishedAt?: string | null; createdAt?
 
 export type BrandSource = { slug: string; productCount?: number };
 
-export type DeptNode = { slug?: string | null; children?: DeptNode[] | null };
-
 /** Páginas fixas da loja. Só rota que existe em apps/store/src/app — nada de URL deduzida. */
 export const STATIC_ROUTES: StaticRoute[] = [
   { path: "/", changeFrequency: "daily", priority: 1 },
@@ -67,7 +65,6 @@ export function buildSitemapEntries(input: {
   base: string;
   statics?: StaticRoute[];
   products?: ProductSource[];
-  departments?: DeptNode[];
   brands?: BrandSource[];
   posts?: PostSource[];
 }): SitemapEntry[] {
@@ -104,23 +101,6 @@ export function buildSitemapEntries(input: {
       priority: 0.7,
     });
   }
-
-  // A rota /departamento/[slug] resolve qualquer nível da árvore (raiz, categoria,
-  // subcategoria) — percorre tudo, com guarda de profundidade contra dado maluco.
-  const walkDepts = (nodes: DeptNode[] | null | undefined, depth: number): void => {
-    if (depth >= 5) return; // a árvore real tem 3 níveis; teto contra ciclo/corrupção
-    for (const node of nodes ?? []) {
-      const slug = (node.slug ?? "").trim().replace(/^\/+/, "");
-      if (slug) {
-        add(`/departamento/${slug}`, {
-          changeFrequency: "weekly",
-          priority: depth === 0 ? 0.8 : 0.6,
-        });
-      }
-      walkDepts(node.children, depth + 1);
-    }
-  };
-  walkDepts(input.departments, 0);
 
   for (const b of input.brands ?? []) {
     // productCount === 0: página vazia fora do índice. indefinido: fonte não informou — entra.

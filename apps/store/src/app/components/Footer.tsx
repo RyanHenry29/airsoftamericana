@@ -10,15 +10,6 @@ import type { Company } from "../lib/store";
 import { PaymentMarks } from "./PaymentMarks";
 import { COOKIE_PREFS_EVENT } from "./CookieConsent";
 
-const departments = [
-  { label: "Airsoft", href: "/departamento/airsoft" },
-  { label: "Tiro Esportivo", href: "/departamento/tiro-esportivo" },
-  { label: "Upgrades", href: "/departamento/upgrades" },
-  { label: "Loadout", href: "/departamento/loadout" },
-  { label: "Life Style", href: "/departamento/life-style" },
-  { label: "Aventura", href: "/departamento/aventura" },
-];
-
 const infoLinks = [
   { label: "Por que comprar aqui", href: "/por-que-comprar" },
   { label: "Atendimento ao cliente", href: "/atendimento" },
@@ -121,15 +112,6 @@ export function Footer({
             </div>
           ) : null}
         </div>
-
-        <nav className="footer__col" aria-label="Departamentos">
-          <span className="footer__title">Departamentos</span>
-          {departments.map((d) => (
-            <Link key={d.href} href={d.href} className="footer__link">
-              {d.label}
-            </Link>
-          ))}
-        </nav>
 
         <nav className="footer__col" aria-label="Informações">
           <span className="footer__title">Informações</span>

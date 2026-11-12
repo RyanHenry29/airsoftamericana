@@ -47,7 +47,7 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <main className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <article className="blog-article">
         <nav className="blog-article__crumbs" aria-label="Navegação estrutural">

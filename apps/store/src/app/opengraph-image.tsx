@@ -123,7 +123,7 @@ export default function OpengraphImage() {
           </div>
         </div>
 
-        {/* Rodapé: departamentos reais da loja */}
+        {/* Rodapé: linhas de produto da loja */}
         <div
           style={{
             display: "flex",

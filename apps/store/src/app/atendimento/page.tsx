@@ -104,7 +104,7 @@ export default async function AtendimentoPage() {
 
   return (
     <main className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <section className="inst-hero">
         <span className="sec-kicker">Atendimento</span>

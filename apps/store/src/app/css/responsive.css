@@ -1,4 +1,4 @@
-/* language: CSS, file: apps/store/src/app/css/responsive.css, target: Next.js App Router
+﻿/* language: CSS, file: apps/store/src/app/css/responsive.css, target: Next.js App Router
  * RESPONSIVO UNIVERSAL — Airsoft Americana (código-base do Kai, adaptado às
  * classes reais da casa). Importado POR ÚLTIMO no layout.tsx: globals.css
  * entra primeiro e layout.css/home.css sobrescreveriam regras de mesmo seletor.
@@ -6,8 +6,6 @@
  * Adaptações ao markup real:
  *   .site-header__inner → .header-main · .site-header__search → .header-search
  *   .header-label → .header-action__label · .site-header__brand-sub → .brand__tag
- *   .nav → .dept-strip · .mega → .mega-panel (renderizado condicionalmente,
- *   sem atributo hidden — a abertura é JS/React, não CSS :hover)
  * Tokens da casa preservados: --radius: 2px, --container: 1280px.
  * h1/h2 vivem em @layer base para não pisar no text-xl das páginas legais
  * (utilitário Tailwind > camada base; classe da casa > tudo).
@@ -143,71 +141,8 @@ h1, h2, h3, h4, p, a, li, span {
   }
 }
 
-/* ---------- 5. NAV (barra de departamentos) ------------------------------ */
-.dept-strip {
-  flex-wrap: nowrap; /* nunca empilha: rola (os cortes do layout.css já encolhem) */
-  justify-content: safe center; /* centraliza se couber, rola se não couber */
-  scroll-snap-type: x proximity;
-}
-.dept-strip > * {
-  flex: 0 0 auto;
-  scroll-snap-align: start;
-}
-
-/* ---------- 6. MEGA MENU (o que estava bugado) ---------------------------- */
-/*
-   Problemas corrigidos:
-   - altura maior que a tela  → max-height + scroll interno
-   - largura fixa             → fluida, limitada pela viewport
-   - colunas fixas            → container query (o aside cai para baixo)
-   - mobile/touch             → vira painel de tela cheia
-   O painel passa a ser fixo sob o header (altura medida pelo AutoLayout).
-   background/border/padding/z-index continuam do globals.css.
-*/
-.mega-panel {
-  position: fixed;
-  top: var(--header-h);
-  left: var(--gutter);
-  right: var(--gutter);
-  max-width: 1280px;
-  margin-inline: auto;
-
-  max-height: calc(100dvh - var(--header-h) - var(--gutter));
-  overflow-y: auto;
-  overscroll-behavior: contain; /* scroll do menu não rola a página atrás */
-  scrollbar-gutter: stable;
-
-  container: mega / inline-size;
-  border-radius: 0 0 var(--radius) var(--radius);
-}
-
-/* Painel estreito → o destaque lateral vai pra baixo */
-@container mega (max-width: 640px) {
-  .mega-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* Mobile / touch / tablet: painel de tela cheia. O display: block vence o
-   corte ≤900 do layout.css (861–900px tinha barra visível e painel morto);
-   ≤860 a barra some e o hambúrguer é a navegação. */
-@media (max-width: 1023px), (hover: none) {
-  .mega-panel {
-    display: block;
-    left: 0;
-    right: 0;
-    max-width: none;
-    height: calc(100dvh - var(--header-h));
-    max-height: none;
-    border-radius: 0;
-    padding-bottom: calc(var(--space) + env(safe-area-inset-bottom));
-  }
-}
-
 /* ---------- 7. TOQUE E ACESSIBILIDADE ------------------------------------ */
 @media (pointer: coarse) {
-  .dept-strip a,
-  .mega-panel a,
   button,
   [role="button"] {
     min-height: var(--touch);

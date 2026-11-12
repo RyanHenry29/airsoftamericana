@@ -110,7 +110,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!product) {
     return (
       <main className="page-shell">
-        <Header departments={home.departments} />
+        <Header />
         <div className="notfound">
           <p className="notfound__num">404</p>
           <h1>Produto não encontrado</h1>
@@ -159,7 +159,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   return (
     <main className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}

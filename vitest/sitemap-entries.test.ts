@@ -1,6 +1,6 @@
 // language: TS, file: vitest/sitemap-entries.test.ts, target: vitest (suite da raiz)
 // Montador puro do sitemap da loja: dedupe, normalização de base, lastmod real,
-// slug vazio, árvore de departamento, marca sem produto. Nada de rede aqui —
+// slug vazio, marca sem produto. Nada de rede aqui —
 // a integração com a API (paginação/clamps) é exercitada no smoke do /sitemap.xml.
 import { describe, it, expect } from "vitest";
 import { STATIC_ROUTES, buildSitemapEntries } from "../apps/store/src/app/lib/sitemap-entries";
@@ -63,34 +63,6 @@ describe("buildSitemapEntries", () => {
     expect("lastModified" in out[0]!).toBe(false);
   });
 
-  it("árvore de departamentos inteira vira /departamento/<slug> com prioridade por nível", () => {
-    const out = buildSitemapEntries({
-      base,
-      departments: [
-        {
-          slug: "armas",
-          children: [{ slug: "pistolas", children: [{ slug: "gbb" }] }],
-        },
-      ],
-    });
-    const urls = out.map((e) => e.url);
-    expect(urls).toContain(`${base}/departamento/armas`);
-    expect(urls).toContain(`${base}/departamento/pistolas`);
-    expect(urls).toContain(`${base}/departamento/gbb`);
-    expect(out.find((e) => e.url === `${base}/departamento/armas`)?.priority).toBe(0.8);
-    expect(out.find((e) => e.url === `${base}/departamento/pistolas`)?.priority).toBe(0.6);
-  });
-
-  it("profundidade malufa (>5) para de descer em vez de estourar", () => {
-    let deep: { slug: string; children?: unknown[] } = { slug: "n6" };
-    for (let i = 5; i >= 1; i--) deep = { slug: `n${i}`, children: [deep] };
-    const out = buildSitemapEntries({ base, departments: [deep as never] });
-    const deptos = out.filter((e) => e.url.includes("/departamento/"));
-    // n1..n5 entram (profundidade 0..4); n6 estouraria o teto → fica de fora.
-    expect(deptos.map((e) => e.url)).not.toContain(`${base}/departamento/n6`);
-    expect(deptos).toHaveLength(5);
-  });
-
   it("marca com zero produto fica fora; sem informação de contagem entra", () => {
     const out = buildSitemapEntries({
       base,
@@ -120,14 +92,12 @@ describe("buildSitemapEntries", () => {
     const out = buildSitemapEntries({
       base,
       products: [{ slug: "aeg-x" }, { slug: "aeg-x" }],
-      departments: [{ slug: "armas", children: [{ slug: "armas" }] }],
       brands: [{ slug: "ak", productCount: 1 }],
       posts: [{ slug: "p1", createdAt: "2026-01-01T00:00:00Z" }],
     });
     const urls = out.map((e) => e.url);
     expect(new Set(urls).size).toBe(urls.length);
-    // 14 estáticos + 1 produto (dup deduplica) + 1 departamento (filho == raiz,
-    // deduplica) + 1 marca + 1 post
-    expect(urls).toHaveLength(14 + 1 + 1 + 1 + 1);
+    // 14 estáticos + 1 produto (dup deduplica) + 1 marca + 1 post
+    expect(urls).toHaveLength(14 + 1 + 1 + 1);
   });
 });

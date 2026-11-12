@@ -1,5 +1,5 @@
 // language: TSX, file: apps/store/src/app/components/Header.tsx, target: Next.js App Router
-// Cabeçalho comercial: barra de condições, busca com sugestão, ícones e menu de departamentos.
+// Cabeçalho comercial: barra de condições, busca com sugestão e ícones de conta/carrinho.
 "use client";
 
 import Image from "next/image";
@@ -7,15 +7,9 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, Search, ShoppingCart, User, X } from "lucide-react";
-import {
-  API_URL,
-  fetchWithTimeout,
-  type StoreDepartment,
-  type StoreSuggestion,
-} from "../lib/store";
-import { DeptStrip } from "./DeptStrip";
+import { API_URL, fetchWithTimeout, type StoreSuggestion } from "../lib/store";
 
-export function Header({ departments = [] }: { departments?: StoreDepartment[] }) {
+export function Header() {
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
   const [topbarVisible, setTopbarVisible] = useState(true);
@@ -25,7 +19,6 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
   const [count, setCount] = useState(0);
   const [customer, setCustomer] = useState<{ name: string; email: string } | null>(null);
   const [place, setPlace] = useState<string | null>(null);
-  const [fallbackDepts, setFallbackDepts] = useState<StoreDepartment[]>([]);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -37,7 +30,7 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
 
   // Topbar: some ao rolar para fora do hero; volta só quando o hero reaparece.
   useEffect(() => {
-    const hero = document.querySelector<HTMLElement>(".hero, .dept-hero, .inst-hero, .auth-hero");
+    const hero = document.querySelector<HTMLElement>(".hero, .inst-hero, .auth-hero");
     if (!hero) {
       const onTop = () => setTopbarVisible(window.scrollY < 60);
       onTop();
@@ -88,8 +81,6 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
   }, []);
 
   // Loja física da topbar: cidade/UF vêm das configurações do backend.
-  // Páginas sem departamentos no SSR (carrinho, checkout, conta, institucionais)
-  // buscam a árvore aqui — a barra nunca fica sem as entradas.
   useEffect(() => {
     let alive = true;
     fetchWithTimeout(`${API_URL}/api/store/settings`)
@@ -101,15 +92,6 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
         }
       })
       .catch(() => {});
-    if (departments.length === 0) {
-      fetchWithTimeout(`${API_URL}/api/store/home`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((json) => {
-          const depts = (json as { departments?: StoreDepartment[] } | null)?.departments;
-          if (alive && depts && depts.length > 0) setFallbackDepts(depts);
-        })
-        .catch(() => {});
-    }
     return () => {
       alive = false;
     };
@@ -297,20 +279,8 @@ export function Header({ departments = [] }: { departments?: StoreDepartment[] }
         </button>
       </div>
 
-      <DeptStrip departments={departments.length > 0 ? departments : fallbackDepts} />
-
       {menuOpen && (
         <nav className="header-mobile" aria-label="Menu principal">
-          {(departments.length > 0 ? departments : fallbackDepts).length > 0 && (
-            <div className="header-mobile__group">
-              <span className="header-mobile__label">Departamentos</span>
-              {(departments.length > 0 ? departments : fallbackDepts).map((d) => (
-                <Link key={d.id} href={`/departamento/${d.slug}`} onClick={() => setMenuOpen(false)}>
-                  {d.name}
-                </Link>
-              ))}
-            </div>
-          )}
           <div className="header-mobile__group">
             <span className="header-mobile__label">A loja</span>
             <Link href="/catalogo" onClick={() => setMenuOpen(false)}>

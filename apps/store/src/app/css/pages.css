@@ -1,5 +1,5 @@
-/* Airsoft Americana — páginas institucionais e utilitários (parte 5)
- * Capa de conteúdo, fatos, FAQ, chamado, rastreamento, marca, departamento.
+﻿/* Airsoft Americana — páginas institucionais e utilitários (parte 5)
+ * Capa de conteúdo, fatos, FAQ, chamado, rastreamento, marca.
  */
 
 /* ————— Capa de conteúdo institucional ————— */
@@ -345,61 +345,6 @@
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--dim);
-}
-
-/* ————— Capa de departamento ————— */
-.dept-hero {
-  position: relative;
-  isolation: isolate;
-  min-height: clamp(280px, 42vh, 420px);
-  display: flex;
-  align-items: flex-end;
-  overflow: hidden;
-  background: var(--base);
-  border-bottom: 1px solid var(--line);
-}
-.dept-hero__img { object-fit: cover; z-index: -2; }
-.dept-hero__scrim {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(90deg, rgb(0 0 0 / 0.9) 0%, rgb(0 0 0 / 0.55) 55%, rgb(0 0 0 / 0.15) 100%),
-    linear-gradient(0deg, rgb(0 0 0 / 0.85) 0%, rgb(0 0 0 / 0) 60%);
-}
-.dept-hero__body {
-  width: 100%;
-  max-width: var(--shell);
-  margin-inline: auto;
-  padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2.5rem);
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.dept-hero__title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 800;
-  text-transform: uppercase;
-  line-height: 0.95;
-  font-size: clamp(2rem, 5.5vw, 3.75rem);
-  color: #ffffff;
-}
-.dept-hero__count {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--primary);
-}
-.dept-hero__desc {
-  margin: 0;
-  max-width: 58ch;
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: rgba(244 245 242 / 0.8);
 }
 
 /* ————— Chips de categoria ————— */

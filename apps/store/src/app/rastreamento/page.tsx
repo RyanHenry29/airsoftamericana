@@ -47,7 +47,7 @@ export default async function RastreamentoPage() {
 
   return (
     <main className="page-shell">
-      <Header departments={home.departments} />
+      <Header />
 
       <section className="track">
         <span className="sec-kicker">Acompanhar pedido</span>
