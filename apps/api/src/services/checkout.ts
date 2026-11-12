@@ -9,7 +9,7 @@ import { assessRisk, saveAssessment } from "./fraud.js";
 import { validateCoupon, incrementCouponUsage } from "./coupons.js";
 import { calculateShipping, getCheapestOption, type ShippingOption } from "./shipping.js";
 import { getFreeShippingFromCents } from "./settings.js";
-import { resolveActiveAdapter, loadGatewayConfig, isSandboxProvider } from "./payments/types.js";
+import { resolveActiveAdapter, loadGatewayConfig, isSandboxProvider, type QueryPaymentResult } from "./payments/types.js";
 import { initAdapters } from "./payments/index.js";
 import { applyPendingEventsForPayment } from "./payments/webhook-events.js";
 import { sha256, CredentialDecryptionError } from "../lib/crypto.js";
@@ -82,24 +82,48 @@ export async function handleCheckout(
     idempotencyKey?: string;
   },
 ): Promise<CheckoutResult> {
-  const fingerprint = sha256(
-    JSON.stringify({ c: context.customerId, i: input.items, t: input.paymentMethod, a: input.address }) +
-      Math.floor(Date.now() / (5 * 60 * 1000)),
+  // ---- Hash semântico do payload: TUDO que muda o significado financeiro
+  // do pedido (ponto 3 da revisão): itens, método, endereço, cupom, serviço
+  // de frete, parcelamento, notas. Sem componente temporal — é o payloadHash
+  // comparado em toda reutilização de Idempotency-Key.
+  const semanticHash = sha256(
+    JSON.stringify({
+      c: context.customerId,
+      i: input.items,
+      t: input.paymentMethod,
+      a: input.address,
+      cp: input.couponCode ?? null,
+      sh: input.shippingService ?? null,
+      ins: input.installments ?? null,
+      n: input.customerNotes ?? null,
+    }),
   );
+  // Chave automática (sem header): fingerprint + janela de 5 min — retry
+  // imediato deduplica; compra legítima do mesmo carrinho depois é NOVA.
+  const fingerprint = sha256(semanticHash + Math.floor(Date.now() / (5 * 60 * 1000)));
 
   // ---- Idempotência do POST de checkout (AUD-15 / regra dura nº 4):
-  // chave = header Idempotency-Key ou fingerprint (cliente+itens+método+
-  // endereço, janela de 5 min). Persistida em idempotency_keys com unique —
-  // dois checkouts idênticos concorrentes resolvem para UM pedido, mesmo em
-  // múltiplas instâncias (o cache em memória continua como fast-path só).
+  // chave = header Idempotency-Key ou fingerprint. Persistida em
+  // idempotency_keys com unique — dois checkouts idênticos concorrentes
+  // resolvem para UM pedido, mesmo em múltiplas instâncias e após
+  // reinicialização (o estado vive no banco, não em memória).
   const idemKey = `checkout:${context.customerId}:${context.idempotencyKey ?? fingerprint}`;
   const [existingIdem] = await db
     .select()
     .from(schema.idempotencyKeys)
     .where(eq(schema.idempotencyKeys.key, idemKey))
     .limit(1);
-  if (existingIdem?.result && typeof (existingIdem.result as { orderId?: string })?.orderId === "string") {
-    return replayCheckout(db, (existingIdem.result as { orderId: string }).orderId, input);
+  if (existingIdem) {
+    // Hash-compare em TODA reutilização: mesma chave + payload diferente = 409.
+    if (existingIdem.payloadHash && existingIdem.payloadHash !== semanticHash) {
+      throw conflict(
+        "idempotency_key_reuse",
+        "Idempotency-Key já utilizada com outro carrinho/payload.",
+      );
+    }
+    if (existingIdem.result && typeof (existingIdem.result as { orderId?: string })?.orderId === "string") {
+      return replayCheckout(db, (existingIdem.result as { orderId: string }).orderId, input);
+    }
   }
   const cached = checkoutCache.get(fingerprint);
   if (cached && cached.expiresAt > Date.now()) {
@@ -260,7 +284,7 @@ export async function handleCheckout(
           id: crypto.randomUUID(),
           key: idemKey,
           action: "checkout",
-          payloadHash: fingerprint,
+          payloadHash: semanticHash,
           result: { orderId },
         });
       } catch (e) {
@@ -335,12 +359,21 @@ export async function handleCheckout(
     });
   } catch (e) {
     if (e instanceof CheckoutReplay) {
-      // Vencedor já commitou chave (com orderId) + pedido — reproduz a resposta dele.
+      // Vencedor já commitou chave (com orderId) + pedido. Mesmo payload →
+      // reproduz a resposta dele; payload DIFERENTE na mesma chave → 409
+      // (ponto 3: reutilização de chave com payload diverso nunca herda
+      // o pedido alheio, nem na corrida).
       const [winner] = await db
         .select()
         .from(schema.idempotencyKeys)
         .where(eq(schema.idempotencyKeys.key, idemKey))
         .limit(1);
+      if (winner?.payloadHash && winner.payloadHash !== semanticHash) {
+        throw conflict(
+          "idempotency_key_reuse",
+          "Idempotency-Key já utilizada com outro carrinho/payload.",
+        );
+      }
       const winnerOrderId = (winner?.result as { orderId?: string } | null)?.orderId;
       if (winnerOrderId) return replayCheckout(db, winnerOrderId, input);
       // Chave existente sem orderId: forma antiga — trata como duplicata.
@@ -449,18 +482,126 @@ export async function handleCheckout(
         installments: input.installments,
       });
     } catch (error) {
-      // Falha de comunicação com o provedor: o pedido não pode ficar preso
-      // aguardando com estoque reservado. Cancela (libera estoque) e 503.
-      await transitionOrder(db, {
+      // ---- Timeout/falha ambígua (ponto 5 da revisão): a comunicação
+      // falhou, mas a cobrança PODE ter sido criada no provedor. NUNCA
+      // cancela sem verificar — cancelar com cobrança viva = pedido morto
+      // com dinheiro em trânsito.
+      let remote: QueryPaymentResult | null | undefined;
+      try {
+        remote = adapter.queryPaymentByOrder ? await adapter.queryPaymentByOrder(orderId) : undefined;
+      } catch {
+        remote = undefined; // consulta também falhou → desconhecido
+      }
+
+      if (remote) {
+        // A cobrança EXISTE: adota o estado real informado pelo provedor.
+        const payId = crypto.randomUUID();
+        const remoteStatus = remote.status;
+        if (remoteStatus === "aprovado" || remoteStatus === "autorizado") {
+          await db.insert(schema.payments).values({
+            id: payId,
+            orderId,
+            provider: adapter.provider,
+            method: input.paymentMethod,
+            status: remoteStatus,
+            amountCents,
+            authorizedCents: remoteStatus === "autorizado" ? amountCents : null,
+            payload: remote.raw ? JSON.stringify(remote.raw) : null,
+            createdAt: new Date(),
+          });
+          const to = remoteStatus === "aprovado" ? "pagamento_aprovado" : "pagamento_em_processamento";
+          await transitionOrder(db, { orderId, to, reason: "Cobrança confirmada por consulta ao gateway após falha de comunicação", actorLabel: "checkout" });
+          finalStatus = to;
+          paymentResult = {
+            method: input.paymentMethod,
+            provider: adapter.provider,
+            status: remoteStatus,
+            providerTransactionId: "",
+          };
+          throw serviceUnavailable(
+            "gateway_timeout_resolved",
+            "O gateway registrou a cobrança durante a instabilidade. O pedido segue conforme o estado registrado — aguarde a confirmação ou verifique em seus pedidos.",
+          );
+        }
+        if (remoteStatus === "pendente") {
+          // Cobrança criada e aguardando confirmação financeira: NADA é
+          // cancelado. Pedido permanece aguardando_pagamento com estoque
+          // reservado; o webhook/reconciliação resolve o resultado real.
+          await db.insert(schema.payments).values({
+            id: payId,
+            orderId,
+            provider: adapter.provider,
+            method: input.paymentMethod,
+            status: "pendente",
+            amountCents,
+            payload: remote.raw ? JSON.stringify(remote.raw) : null,
+            createdAt: new Date(),
+          });
+          await audit(db, {
+            action: "checkout.gateway_unknown_result",
+            entity: "order",
+            entityId: orderId,
+            actorLabel: "checkout",
+            after: { provider: adapter.provider, remoteStatus, recovered: true },
+          });
+          throw serviceUnavailable(
+            "gateway_unknown_result",
+            "A cobrança foi criada no gateway, mas o resultado ainda não foi confirmado. O pedido permanece reservado — aguarde a confirmação financeira.",
+          );
+        }
+        // recusado/expirado/estornado no provedor = falha definitiva.
+        await transitionOrder(db, {
+          orderId,
+          to: "cancelado",
+          reason: `Falha do gateway ${adapter.provider} (cobrança recusada/expirada no provedor): ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
+          actorLabel: "checkout",
+        });
+        finalStatus = "cancelado";
+        throw serviceUnavailable(
+          "gateway_unavailable",
+          "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
+        );
+      }
+
+      if (remote === null) {
+        // Provedor CONFIRMA que não há cobrança: falha definitiva, cancela
+        // com segurança (estoque liberado).
+        await transitionOrder(db, {
+          orderId,
+          to: "cancelado",
+          reason: `Falha do gateway ${adapter.provider} (sem cobrança no provedor): ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
+          actorLabel: "checkout",
+        });
+        finalStatus = "cancelado";
+        throw serviceUnavailable(
+          "gateway_unavailable",
+          "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
+        );
+      }
+
+      // Desconhecido (sem queryPaymentByOrder ou consulta falhou): NÃO
+      // cancela, NÃO libera estoque. Pedido permanece aguardando_pagamento
+      // com reserva; pagamento fica pendente sem referência; a
+      // reconciliação resolve quando o provedor responder.
+      await db.insert(schema.payments).values({
+        id: crypto.randomUUID(),
         orderId,
-        to: "cancelado",
-        reason: `Falha do gateway ${adapter.provider}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
-        actorLabel: "checkout",
+        provider: adapter.provider,
+        method: input.paymentMethod,
+        status: "pendente",
+        amountCents,
+        createdAt: new Date(),
       });
-      finalStatus = "cancelado";
+      await audit(db, {
+        action: "checkout.gateway_unknown_result",
+        entity: "order",
+        entityId: orderId,
+        actorLabel: "checkout",
+        after: { provider: adapter.provider, error: error instanceof Error ? error.message : String(error) },
+      });
       throw serviceUnavailable(
-        "gateway_unavailable",
-        "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
+        "gateway_unknown_result",
+        "Não foi possível confirmar a cobrança no gateway — o pedido permanece reservado e será conciliado automaticamente. Tente novamente em instantes ou aguarde a confirmação.",
       );
     }
 
@@ -470,16 +611,49 @@ export async function handleCheckout(
       try {
         captured = await adapter.capture(created.providerTransactionId, amountCents);
       } catch (error) {
+        // ---- Captura com timeout: a AUTORIZAÇÃO existe (dinheiro reservado
+        // no emissor) — cancelar é proibido. Pagamento fica `autorizado`,
+        // pedido vai para pagamento_em_processamento (estado coerente:
+        // autorização aguardando captura), 503. Reconciliação/conciliação
+        // resolve a captura depois.
+        await db.insert(schema.payments).values({
+          id: crypto.randomUUID(),
+          orderId,
+          provider: adapter.provider,
+          method: input.paymentMethod,
+          status: "autorizado",
+          amountCents,
+          authorizedCents: amountCents,
+          providerTransactionId: created.providerTransactionId,
+          payload: created.payload ?? null,
+          expiresAt: created.expiresAt ?? null,
+          createdAt: new Date(),
+        });
         await transitionOrder(db, {
           orderId,
-          to: "cancelado",
-          reason: `Falha de captura no gateway ${adapter.provider}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
+          to: "pagamento_em_processamento",
+          reason: `Captura com resultado desconhecido no gateway ${adapter.provider}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 200),
           actorLabel: "checkout",
         });
-        finalStatus = "cancelado";
+        finalStatus = "pagamento_em_processamento";
+        await audit(db, {
+          action: "checkout.capture_unknown_result",
+          entity: "order",
+          entityId: orderId,
+          actorLabel: "checkout",
+          after: { providerTransactionId: created.providerTransactionId, error: error instanceof Error ? error.message : String(error) },
+        });
+        paymentResult = {
+          method: input.paymentMethod,
+          provider: adapter.provider,
+          status: "autorizado",
+          payload: created.payload,
+          expiresAt: created.expiresAt,
+          providerTransactionId: created.providerTransactionId,
+        };
         throw serviceUnavailable(
-          "gateway_unavailable",
-          "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
+          "capture_unknown_result",
+          "A cobrança foi autorizada, mas a confirmação da captura está pendente no gateway. O pedido permanece reservado — aguarde a confirmação.",
         );
       }
       finalPaymentStatus = captured.status;

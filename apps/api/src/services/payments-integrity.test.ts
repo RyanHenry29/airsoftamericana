@@ -150,13 +150,13 @@ async function checkout(db: any, customerId: string, variantId: string, opts: { 
   );
 }
 
-function approvedEvent(txId: string, i = 0): NormalizedWebhookEvent {
+function approvedEvent(pay: { providerTransactionId: string | null; amountCents: number }, i = 0): NormalizedWebhookEvent {
   return {
-    eventId: `integ:${txId}:${i}`,
+    eventId: `integ:${pay.providerTransactionId}:${i}`,
     type: "payment.approved",
-    providerTransactionId: txId,
-    amountCents: 10000,
-    raw: { id: `${i}`, type: "payment.approved", data: { transactionId: txId } },
+    providerTransactionId: pay.providerTransactionId!,
+    amountCents: pay.amountCents,
+    raw: { id: `${i}`, type: "payment.approved", data: { transactionId: pay.providerTransactionId } },
   };
 }
 
@@ -208,7 +208,7 @@ describe("integridade de pagamentos (AUD-01/AUD-15)", () => {
     const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
     const outcome = await applyPaymentEvent(db, {
       provider: "sandbox",
-      event: approvedEvent(pay.providerTransactionId!),
+      event: approvedEvent(pay),
       payment: pay,
       actorLabel: "webhook:sandbox",
     });
@@ -226,13 +226,13 @@ describe("integridade de pagamentos (AUD-01/AUD-15)", () => {
 
     const result = await checkout(db, customerId, variant.id);
     const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
-    const event = approvedEvent(pay.providerTransactionId!);
+    const event = approvedEvent(pay);
 
     const first = await applyPaymentEvent(db, { provider: "sandbox", event, payment: pay });
     expect(first.applied).toBe(true);
 
     const [payReloaded] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
-    const second = await applyPaymentEvent(db, { provider: "sandbox", event: approvedEvent(pay.providerTransactionId!, 1), payment: payReloaded });
+    const second = await applyPaymentEvent(db, { provider: "sandbox", event: approvedEvent(pay, 1), payment: payReloaded });
     // Já está aprovado — mesmo eventId diferente é "already_applied".
     expect(second.applied).toBe(false);
     expect(second.reason).toBe("already_applied");
@@ -288,7 +288,7 @@ describe("integridade de pagamentos (AUD-01/AUD-15)", () => {
 
     const outcome = await applyPaymentEvent(db, {
       provider: "sandbox",
-      event: approvedEvent(pay.providerTransactionId!),
+      event: approvedEvent(pay),
       payment: pay,
     });
 
@@ -364,8 +364,8 @@ describe("integridade de pagamentos (AUD-01/AUD-15)", () => {
     const result = await checkout(db, customerId, variant.id);
     const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
 
-    const ev1 = approvedEvent(pay.providerTransactionId!, 1);
-    const ev2 = approvedEvent(pay.providerTransactionId!, 2);
+    const ev1 = approvedEvent(pay, 1);
+    const ev2 = approvedEvent(pay, 2);
 
     const [a, b] = await Promise.all([
       applyPaymentEvent(db, { provider: "sandbox", event: ev1, payment: pay }),
@@ -381,5 +381,364 @@ describe("integridade de pagamentos (AUD-01/AUD-15)", () => {
     expect(approvals.length).toBe(1);
     const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
     expect(order!.status).toBe("pagamento_aprovado");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cenários obrigatórios da revisão (ponto 8): crash-safety, reentrega,
+// idempotência com hash-compare, divergência de valor, timeout ambíguo e
+// recuperação no boot.
+// ---------------------------------------------------------------------------
+
+import {
+  recoverPendingEvents,
+  repairPartialApplications,
+} from "./payments/webhook-events.js";
+import { registerAdapter, type PaymentAdapter } from "./payments/types.js";
+import {
+  resetSandboxCharges,
+} from "./payments/sandbox.js";
+import type {
+  CaptureResult,
+  CreatePaymentInput,
+  CreatePaymentResult,
+  QueryPaymentResult,
+  RefundResult,
+} from "./payments/types.js";
+
+/**
+ * Fixture: gateway que ACEITA a cobrança e só então sofre timeout — o
+ * registerCharge registra a cobrança no "provedor" antes do throw.
+ */
+class TimeoutAdapter implements PaymentAdapter {
+  readonly provider = "timeout-gw";
+  readonly signatureHeader = "x-signature";
+  private charges = new Map<string, { status: QueryPaymentResult["status"] }>();
+
+  isConfigured() {
+    return true;
+  }
+  async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult> {
+    const tx = `tmt_${crypto.randomUUID()}`;
+    this.charges.set(input.orderId, { status: "pendente" });
+    // A cobrança existe no provedor; a RESPOSTA se perde (timeout).
+    throw new Error("timeout after charge created");
+  }
+  async capture(): Promise<CaptureResult> {
+    return { status: "aprovado", amountCents: 0 };
+  }
+  async refund(): Promise<RefundResult> {
+    return { providerRefundId: "tmt_rf", status: "estornado" };
+  }
+  verifyWebhookSignature() {
+    return true;
+  }
+  parseWebhook(raw: string): NormalizedWebhookEvent {
+    return { eventId: "tmt:1", type: "payment.approved", raw };
+  }
+  async queryPaymentByOrder(orderId: string): Promise<QueryPaymentResult | null> {
+    const charge = this.charges.get(orderId);
+    return charge ? { status: charge.status, amountCents: 10000, currency: "BRL" } : null;
+  }
+}
+
+describe("recuperação e idempotência (revisão PR #1, ponto 8)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+  });
+
+  it("CRASH após persistir evento, antes da transição: boot reaplica o evento pendente", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    // Estado do crash: evento persistido (processed_at NULL), nada aplicado.
+    const adapter = new SandboxAdapter();
+    const raw = JSON.stringify({ id: "crash-1", type: "payment.approved", data: { transactionId: pay.providerTransactionId } });
+    await db.insert(schema.paymentEvents).values({
+      provider: "sandbox",
+      eventId: adapter.parseWebhook(raw).eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    });
+
+    const summary = await recoverPendingEvents(db);
+    expect(summary.applied).toBe(1);
+
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+    const [evt] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.provider, "sandbox"));
+    expect(evt.processedAt).toBeTruthy();
+    expect(evt.paymentId).toBe(pay.id);
+  });
+
+  it("CRASH após update do pagamento: estado parcial (pagamento aprovado, pedido aguardando) é reparado no boot", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+
+    // Estado parcial legado: pagamento atualizado, pedido não.
+    await db.update(schema.payments).set({ status: "aprovado", capturedAt: new Date() }).where(eq(schema.payments.orderId, result.orderId));
+    let [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("aguardando_pagamento"); // divergência existe
+
+    const { repaired } = await repairPartialApplications(db);
+    expect(repaired).toBe(1);
+
+    [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+    const [auditRow] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "payment.partial_repair"));
+    expect(auditRow).toBeTruthy();
+  });
+
+  it("webhook DUPLICADO após falha parcial: reentrega consolida estado e marca o evento", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const adapter = new SandboxAdapter();
+    const raw = JSON.stringify({ id: "redelivery-1", type: "payment.approved", data: { transactionId: pay.providerTransactionId } });
+    const event = adapter.parseWebhook(raw);
+    const inserted = await db.insert(schema.paymentEvents).values({
+      provider: "sandbox",
+      eventId: event.eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    }).returning();
+
+    // Falha parcial prévia: pagamento aprovado, pedido aguardando, evento pendente.
+    await db.update(schema.payments).set({ status: "aprovado" }).where(eq(schema.payments.id, pay.id));
+
+    // Reentrega do MESMO evento: idempotente (already_applied) e marca processedAt.
+    const first = await applyPaymentEvent(db, { provider: "sandbox", event, payment: pay, eventRowId: (inserted[0] as { id: string }).id });
+    expect(first.reason).toBe("already_applied");
+    const [evtAfterApply] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, event.eventId));
+    expect(evtAfterApply!.processedAt).toBeTruthy();
+
+    // O reparo consolida o pedido (crash-safety de estado parcial).
+    await repairPartialApplications(db);
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, result.orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(1);
+  });
+
+  it("MESMA Idempotency-Key com carrinhos diferentes → 409 idempotency_key_reuse", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const base = {
+      address: addr(),
+      paymentMethod: "pix" as const,
+      acceptedTerms: true,
+      ageConfirmed: true,
+    };
+
+    const a = await handleCheckout(
+      db,
+      { ...base, items: [{ variantId: variant.id, quantity: 1 }] } as any,
+      { customerId, ip: "127.0.0.1", idempotencyKey: "fixa-1" },
+    );
+
+    // Mesma chave, payload DIFERENTE (quantidade 2) → 409, nunca herda o pedido.
+    await expect(
+      handleCheckout(
+        db,
+        { ...base, items: [{ variantId: variant.id, quantity: 2 }] } as any,
+        { customerId, ip: "127.0.0.1", idempotencyKey: "fixa-1" },
+      ),
+    ).rejects.toMatchObject({ code: "idempotency_key_reuse", status: 409 });
+
+    const orders = await db.select().from(schema.orders);
+    expect(orders.length).toBe(1);
+    expect(orders[0]!.id).toBe(a.orderId);
+
+    // Mesma chave, MESMO payload → replay do mesmo pedido (idempotência real).
+    const replay = await handleCheckout(
+      db,
+      { ...base, items: [{ variantId: variant.id, quantity: 1 }] } as any,
+      { customerId, ip: "127.0.0.1", idempotencyKey: "fixa-1" },
+    );
+    expect(replay.orderId).toBe(a.orderId);
+  });
+
+  it("MESMO carrinho com cupom diferente → fingerprints diferentes → DOIS pedidos", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+    await db.insert(schema.coupons).values({
+      code: "INTEG10",
+      kind: "valor",
+      value: 500,
+      active: true,
+    });
+
+    const base = {
+      items: [{ variantId: variant.id, quantity: 1 }],
+      address: addr(),
+      paymentMethod: "pix" as const,
+      acceptedTerms: true,
+      ageConfirmed: true,
+    };
+
+    const withoutCoupon = await handleCheckout(db, base as any, { customerId, ip: "127.0.0.1" });
+    const withCoupon = await handleCheckout(db, { ...base, couponCode: "INTEG10" } as any, { customerId, ip: "127.0.0.1" });
+
+    // Cupom muda o significado financeiro → NÃO pode herdar o pedido anterior.
+    expect(withoutCoupon.orderId).not.toBe(withCoupon.orderId);
+    const orders = await db.select().from(schema.orders);
+    expect(orders.length).toBe(2);
+
+    const keys = await db.select().from(schema.idempotencyKeys).where(eq(schema.idempotencyKeys.action, "checkout"));
+    expect(new Set(keys.map((k: any) => k.payloadHash)).size).toBe(2);
+  });
+
+  it("VALOR divergente: webhook com valor diferente do cobrado NÃO aprova", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const outcome = await applyPaymentEvent(db, {
+      provider: "sandbox",
+      event: {
+        eventId: "integ:amount-divergent",
+        type: "payment.approved",
+        providerTransactionId: pay.providerTransactionId!,
+        amountCents: pay.amountCents - 1, // divergente
+        raw: {},
+      },
+      payment: pay,
+    });
+
+    expect(outcome.applied).toBe(false);
+    expect(outcome.reason).toBe("amount_mismatch");
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("aguardando_pagamento");
+    const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
+    expect(payAfter!.status).toBe("pendente");
+    const [auditRow] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "payment.event_rejected"));
+    expect(auditRow).toBeTruthy();
+  });
+
+  it("GATEWAY aceita a cobrança mas a resposta sofre timeout: pedido NÃO cancela, estoque fica reservado, 503", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const fixture = new TimeoutAdapter();
+    registerAdapter(fixture);
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider: "timeout-gw",
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+
+    await expect(
+      checkout(db, customerId, variant.id),
+    ).rejects.toMatchObject({ code: "gateway_unknown_result", status: 503 });
+
+    const orders = await db.select().from(schema.orders);
+    expect(orders.length).toBe(1);
+    expect(orders[0]!.status).toBe("aguardando_pagamento");
+    const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(inv.reserved).toBe(1); // reserva preservada — cobrança pode existir
+    const pays = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orders[0]!.id));
+    expect(pays.length).toBe(1);
+    expect(pays[0]!.status).toBe("pendente");
+    const [auditRow] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "checkout.gateway_unknown_result"));
+    expect(auditRow).toBeTruthy();
+  });
+
+  it("DUAS INSTÂNCIAS no mesmo evento simultaneamente: transição única e estado consistente", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const adapter = new SandboxAdapter();
+    const raw = JSON.stringify({ id: "race-instance-1", type: "payment.approved", data: { transactionId: pay.providerTransactionId } });
+    const event = adapter.parseWebhook(raw);
+    const inserted = await db.insert(schema.paymentEvents).values({
+      provider: "sandbox",
+      eventId: event.eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    }).returning();
+    const eventRowId = (inserted[0] as { id: string }).id;
+
+    // Duas instâncias processam o MESMO evento (mesma linha) em paralelo.
+    const [a, b] = await Promise.all([
+      applyPaymentEvent(db, { provider: "sandbox", event, payment: pay, eventRowId }),
+      applyPaymentEvent(db, { provider: "sandbox", event, payment: pay, eventRowId }),
+    ]);
+
+    const transitions = [a.orderTransitioned, b.orderTransitioned].filter(Boolean);
+    expect(transitions.length).toBeLessThanOrEqual(1);
+    expect(a.applied || b.applied).toBe(true);
+
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+    const [evt] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, eventRowId));
+    expect(evt.processedAt).toBeTruthy();
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, result.orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(1);
+  });
+
+  it("RECUPERAÇÃO de eventos pendentes após reinicialização: idempotente, segunda passada vazia", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const adapter = new SandboxAdapter();
+    for (const id of ["boot-1", "boot-2"]) {
+      const raw = JSON.stringify({ id, type: "payment.approved", data: { transactionId: pay.providerTransactionId } });
+      await db.insert(schema.paymentEvents).values({
+        provider: "sandbox",
+        eventId: adapter.parseWebhook(raw).eventId,
+        type: "payment.approved",
+        payload: JSON.parse(raw),
+        signatureValid: true,
+        processedAt: null,
+      });
+    }
+
+    const firstRun = await recoverPendingEvents(db);
+    expect(firstRun.scanned).toBe(2);
+    expect(firstRun.applied).toBe(2);
+
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+
+    // "Reinicialização": segunda passada não encontra pendentes e não re-transiciona.
+    const secondRun = await recoverPendingEvents(db);
+    expect(secondRun.scanned).toBe(0);
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, result.orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(1);
   });
 });

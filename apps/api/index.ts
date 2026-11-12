@@ -117,6 +117,20 @@ async function getFastifyApp() {
       await registerRoutes(app, config as any, db);
       try { registerMfaRoutes(app, db); } catch {}
       try { await registerWebhookRoutes(app, db); } catch {}
+
+      // Recuperação no boot (AUD-15/ponto 1 e 8 da revisão): eventos
+      // persistidos mas não aplicados (crash, corrida checkout×webhook) e
+      // estados parciais legados (pagamento atualizado, pedido não). Não
+      // fatal — falha de recuperação não impede a API de subir.
+      try {
+        const { recoverPendingEvents, repairPartialApplications } = await import("./src/services/payments/webhook-events.js");
+        const recovery = await recoverPendingEvents(db);
+        const repair = await repairPartialApplications(db);
+        app.log.info({ recovery, repair }, "payment event recovery at boot");
+      } catch (err) {
+        app.log.warn({ err }, "payment event recovery skipped");
+      }
+
       await app.ready();
       return app;
     })().catch((e) => {
