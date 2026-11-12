@@ -519,6 +519,12 @@ export const paymentEvents = pgTable(
     payload: jsonb("payload").notNull(),
     signatureValid: boolean("signature_valid"),
     processedAt: timestamp("processed_at", { withTimezone: true }),
+    // Fila de recuperação (revisão v3, ponto A): tentativas, backoff e
+    // dead-letter — evento permanentemente inválido NUNCA bloqueia a fila.
+    attempts: integer("attempts").notNull().default(0),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    deadLetter: boolean("dead_letter").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [
