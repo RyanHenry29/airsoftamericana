@@ -6,12 +6,25 @@ import { schema } from "../db/index.js";
 import { initAdapters } from "../services/payments/index.js";
 import { getAdapter, listAdapters } from "../services/payments/types.js";
 import { applyPaymentEvent } from "../services/payments/webhook-events.js";
-import { transitionOrder } from "../services/orders.js";
+import { transitionOrderInTx } from "../services/orders.js";
 import { canTransition, type OrderStatus } from "@airsoft/shared";
 
 // Aplicação de eventos vive em services/payments/webhook-events.ts — única
 // fonte que transforma resultado financeiro em estado (AUD-15). A rota só
-// valida assinatura, persiste o evento bruto e delega.
+// valida assinatura, persiste o evento bruto (processed_at NULL) e delega a
+// aplicação; o evento é marcado como processado DENTRO da transação de
+// aplicação — nunca antes. Reentrega duplicada reaplica pendentes.
+
+/** Detecta unique/duplicate percorrendo a cadeia de `cause` do drizzle. */
+function isUniqueViolation(e: unknown): boolean {
+  const chain: string[] = [];
+  let cur: unknown = e;
+  while (cur instanceof Error) {
+    chain.push(cur.message);
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return chain.some((m) => /unique|duplicate/i.test(m));
+}
 
 async function upsertChargeback(
   db: Db,
@@ -85,7 +98,6 @@ export async function registerWebhookRoutes(app: FastifyInstance, db: Db) {
     const signature = (request.headers[sigHeader.toLowerCase()] as string | undefined) ?? undefined;
     const signatureValid = adapter.verifyWebhookSignature(rawBody, signature);
 
-    // Em produção, recuse assinatura inválida. Sandbox aceita sem segredo configurado? Adapter decide.
     if (!signatureValid) {
       request.log.warn({ provider }, "webhook signature invalid");
       reply.status(401);
@@ -101,31 +113,41 @@ export async function registerWebhookRoutes(app: FastifyInstance, db: Db) {
       return reply.send({ error: { code: "invalid_payload", message: "Payload inválido" } });
     }
 
-    // Idempotência: payment_events tem unique(provider,eventId). Inserção duplicada = já processado.
+    // ---- Persistência do evento bruto: processed_at NULL até a aplicação
+    // efetiva marcar (dentro da transação). Crash após o insert = evento
+    // pendente; reentrega ou boot reaplicam.
+    let eventRowId: string;
     try {
-      await db.insert(schema.paymentEvents).values({
-        provider,
-        eventId: event.eventId,
-        type: event.type,
-        payload: event.raw as never,
-        signatureValid: true,
-        processedAt: null,
-      });
+      const inserted = await db
+        .insert(schema.paymentEvents)
+        .values({
+          provider,
+          eventId: event.eventId,
+          type: event.type,
+          payload: event.raw as never,
+          signatureValid: true,
+          processedAt: null,
+        })
+        .returning();
+      eventRowId = (inserted[0] as { id: string } | undefined)!.id;
     } catch (e) {
-      // drizzle embrulha: "Failed query: ..." com a causa original em .cause
-      const chain: string[] = [];
-      let cur: unknown = e;
-      while (cur instanceof Error) {
-        chain.push(cur.message);
-        cur = (cur as { cause?: unknown }).cause;
+      if (!isUniqueViolation(e)) throw e;
+      // ---- Reentrega duplicada: se o registro anterior ficou pendente
+      // (falha parcial / duas instâncias), reaplica; se processado, no-op.
+      const [existing] = await db
+        .select()
+        .from(schema.paymentEvents)
+        .where(and(eq(schema.paymentEvents.provider, provider), eq(schema.paymentEvents.eventId, event.eventId)))
+        .limit(1);
+      if (!existing) return reply.send({ ok: true, duplicate: true });
+      if (existing.processedAt) {
+        return reply.send({ ok: true, duplicate: true, processedAt: existing.processedAt.toISOString() });
       }
-      if (chain.some((m) => /unique|duplicate/i.test(m))) {
-        return reply.send({ ok: true, duplicate: true });
-      }
-      throw e;
+      eventRowId = existing.id;
+      request.log.info({ provider, eventId: event.eventId }, "webhook redelivery of unprocessed event — reapplying");
     }
 
-    // Localiza pagamento pelo providerTransactionId
+    // Localiza pagamento pelo providerTransactionId.
     let payment: typeof schema.payments.$inferSelect | undefined;
     if (event.providerTransactionId) {
       const rows = await db
@@ -141,62 +163,63 @@ export async function registerWebhookRoutes(app: FastifyInstance, db: Db) {
       payment = rows[0];
     }
 
-    if (payment) {
-      await db
-        .update(schema.paymentEvents)
-        .set({ paymentId: payment.id, processedAt: new Date() })
-        .where(and(eq(schema.paymentEvents.provider, provider), eq(schema.paymentEvents.eventId, event.eventId)));
-    }
-
-    if (event.type === "chargeback.received" || event.type === "chargeback.resolved") {
-      const cbStatus = event.type === "chargeback.resolved" ? "encerrado" : "notificado";
-      await upsertChargeback(db, {
-        orderId: payment?.orderId ?? null,
-        paymentId: payment?.id ?? null,
-        provider,
-        providerDisputeId: event.disputeId ?? event.eventId,
-        amountCents: event.amountCents ?? payment?.amountCents ?? 0,
-        reason: event.disputeReason ?? null,
-        respondBy: event.respondBy ?? null,
-        status: cbStatus,
-      });
-      if (payment) {
-        await db.update(schema.payments).set({ status: "chargeback" }).where(eq(schema.payments.id, payment.id));
-        try {
-          const orderRows = await db.select().from(schema.orders).where(eq(schema.orders.id, payment.orderId)).limit(1);
-          const order = orderRows[0];
-          if (order && canTransition(order.status as OrderStatus, "em_disputa")) {
-            await transitionOrder(db, {
-              orderId: payment.orderId,
-              to: "em_disputa",
-              reason: `Chargeback ${event.disputeId ?? event.eventId}`,
-              actorLabel: `webhook:${provider}`,
-            });
-          }
-        } catch (err) {
-          request.log.warn({ err }, "chargeback order transition skipped");
-        }
-      }
-      return reply.send({ ok: true, processed: "chargeback" });
-    }
-
     if (!payment) {
-      // Evento sem pagamento localizado — FICA EM payment_events sem
-      // processedAt: se for corrida checkout×webhook (cobrança criada, INSERT
-      // local ainda não commitou), o checkout recupera e aplica o evento ao
-      // inserir o pagamento (applyPendingEventsForPayment). Registra e
-      // confirma recebimento (não falha o webhook).
+      // Evento sem pagamento localizado — FICA pendente em payment_events:
+      // se for corrida checkout×webhook (cobrança criada, INSERT local ainda
+      // não commitou), o checkout recupera via applyPendingEventsForPayment;
+      // senão, o boot recupera (recoverPendingEvents). Confirma recebimento.
       request.log.info({ provider, eventId: event.eventId }, "webhook event without local payment — parked");
       return reply.send({ ok: true, processed: false, reason: "payment_not_found" });
     }
 
-    // Estado do pagamento e do pedido derivados do resultado financeiro —
-    // mesmo caminho da reconciliação e da recuperação de corrida (AUD-15).
+    // Chargeback: upsert + status do pagamento + transição do pedido +
+    // marcação do evento em UMA transação.
+    if (event.type === "chargeback.received" || event.type === "chargeback.resolved") {
+      const cbStatus = event.type === "chargeback.resolved" ? "encerrado" : "notificado";
+      let disputeApplied = false;
+      await db.transaction(async (tx) => {
+        await upsertChargeback(tx as unknown as Db, {
+          orderId: payment!.orderId,
+          paymentId: payment!.id,
+          provider,
+          providerDisputeId: event.disputeId ?? event.eventId,
+          amountCents: event.amountCents ?? payment!.amountCents,
+          reason: event.disputeReason ?? null,
+          respondBy: event.respondBy ?? null,
+          status: cbStatus,
+        });
+        await tx.update(schema.payments).set({ status: "chargeback" }).where(eq(schema.payments.id, payment!.id));
+        const orderRows = await tx
+          .select()
+          .from(schema.orders)
+          .where(eq(schema.orders.id, payment!.orderId))
+          .for("update");
+        const order = orderRows[0];
+        if (order && canTransition(order.status as OrderStatus, "em_disputa")) {
+          await transitionOrderInTx(tx, {
+            orderId: payment!.orderId,
+            to: "em_disputa",
+            reason: `Chargeback ${event.disputeId ?? event.eventId}`,
+            actorLabel: `webhook:${provider}`,
+          });
+          disputeApplied = true;
+        }
+        await tx
+          .update(schema.paymentEvents)
+          .set({ paymentId: payment!.id, processedAt: new Date() })
+          .where(eq(schema.paymentEvents.id, eventRowId));
+      });
+      return reply.send({ ok: true, processed: disputeApplied ? "chargeback" : "chargeback_recorded" });
+    }
+
+    // Resultado financeiro → estado local. Atomicidade (pagamento + pedido +
+    // histórico + estoque + processed_at) vive em applyPaymentEvent.
     const outcome = await applyPaymentEvent(db, {
       provider,
       event,
       payment,
       actorLabel: `webhook:${provider}`,
+      eventRowId,
     });
 
     return reply.send({

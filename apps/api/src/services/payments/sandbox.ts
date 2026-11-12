@@ -5,10 +5,25 @@ import type {
   CreatePaymentResult,
   NormalizedWebhookEvent,
   PaymentAdapter,
+  QueryPaymentResult,
   RefundResult,
 } from "./types.js";
 
 const SIGNATURE_HEADER_PREFIX = "sha256=";
+
+interface SandboxCharge {
+  providerTransactionId: string;
+  orderId: string;
+  amountCents: number;
+  status: "pendente" | "autorizado" | "aprovado" | "recusado" | "expirado" | "estornado";
+}
+
+/** Registro em memória — dá a queryPayment/queryPaymentByOrder para testes. */
+const charges = new Map<string, SandboxCharge>();
+
+export function resetSandboxCharges(): void {
+  charges.clear();
+}
 
 export class SandboxAdapter implements PaymentAdapter {
   readonly provider = "sandbox";
@@ -27,6 +42,12 @@ export class SandboxAdapter implements PaymentAdapter {
     const providerTransactionId = `sbx_${crypto.randomUUID()}`;
 
     if (input.method === "pix") {
+      charges.set(input.orderId, {
+        providerTransactionId,
+        orderId: input.orderId,
+        amountCents: input.amountCents,
+        status: "pendente",
+      });
       return {
         providerTransactionId,
         status: "pendente",
@@ -35,6 +56,12 @@ export class SandboxAdapter implements PaymentAdapter {
       };
     }
     if (input.method === "boleto") {
+      charges.set(input.orderId, {
+        providerTransactionId,
+        orderId: input.orderId,
+        amountCents: input.amountCents,
+        status: "pendente",
+      });
       return {
         providerTransactionId,
         status: "pendente",
@@ -43,8 +70,20 @@ export class SandboxAdapter implements PaymentAdapter {
       };
     }
     if (input.cardToken === "sandbox-decline") {
+      charges.set(input.orderId, {
+        providerTransactionId,
+        orderId: input.orderId,
+        amountCents: input.amountCents,
+        status: "recusado",
+      });
       return { providerTransactionId, status: "recusado" };
     }
+    charges.set(input.orderId, {
+      providerTransactionId,
+      orderId: input.orderId,
+      amountCents: input.amountCents,
+      status: "autorizado",
+    });
     return { providerTransactionId, status: "autorizado" };
   }
 
@@ -54,6 +93,18 @@ export class SandboxAdapter implements PaymentAdapter {
 
   async refund(_tx: string, amountCents: number): Promise<RefundResult> {
     return { providerRefundId: `sbx_rf_${crypto.randomUUID()}`, status: "estornado" };
+  }
+
+  async queryPayment(providerTransactionId: string): Promise<QueryPaymentResult> {
+    const charge = [...charges.values()].find((c) => c.providerTransactionId === providerTransactionId);
+    if (!charge) throw new Error(`Sandbox: cobrança ${providerTransactionId} não encontrada`);
+    return { status: charge.status, amountCents: charge.amountCents, currency: "BRL" };
+  }
+
+  async queryPaymentByOrder(orderId: string): Promise<QueryPaymentResult | null> {
+    const charge = charges.get(orderId);
+    if (!charge) return null;
+    return { status: charge.status, amountCents: charge.amountCents, currency: "BRL" };
   }
 
   verifyWebhookSignature(rawBody: string, signature: string | undefined): boolean {
@@ -73,6 +124,9 @@ export class SandboxAdapter implements PaymentAdapter {
       data?: {
         transactionId?: string;
         amountCents?: number;
+        currency?: string;
+        externalReference?: string;
+        accountId?: string;
         disputeId?: string;
         reason?: string;
         respondBy?: string;
@@ -93,6 +147,9 @@ export class SandboxAdapter implements PaymentAdapter {
       type,
       providerTransactionId: body.data?.transactionId,
       amountCents: body.data?.amountCents,
+      currency: body.data?.currency,
+      externalReference: body.data?.externalReference,
+      accountId: body.data?.accountId,
       disputeId: body.data?.disputeId,
       disputeReason: body.data?.reason,
       respondBy: body.data?.respondBy ? new Date(body.data.respondBy) : undefined,

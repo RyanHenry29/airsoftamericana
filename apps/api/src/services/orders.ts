@@ -95,83 +95,91 @@ export async function getOrderDetailForCustomer(
   };
 }
 
-export async function transitionOrder(
-  db: Db,
-  input: {
-    orderId: string;
-    to: OrderStatus;
-    reason?: string;
-    actorUserId?: string;
-    actorLabel?: string;
-    ip?: string;
-  },
-): Promise<boolean> {
-  // AUD-15: a leitura do status e a validação da transição acontecem DENTRO
-  // da transação, com SELECT FOR UPDATE — dois concorrentes (webhook duplo,
-  // admin + webhook, checkout + webhook) ficam serializados no lock da linha
-  // e o segundo reavalia `canTransition` contra o estado já atualizado.
-  // Sem o lock, leitura fora da transição permitia corrida clássica
-  // check-then-act: ambos liam `aguardando_pagamento` e ambos transicionavam.
-  // Retorna true = transição aplicada; false = pedido já estava no status alvo.
-  let transitioned = false;
-  let fromForAudit: OrderStatus | undefined;
-  await db.transaction(async (tx) => {
-    const rows = await tx
-      .select()
-      .from(schema.orders)
-      .where(eq(schema.orders.id, input.orderId))
-      .for("update");
-    const order = rows[0];
-    if (!order) throw notFound("Pedido não encontrado");
+export interface TransitionInput {
+  orderId: string;
+  to: OrderStatus;
+  reason?: string;
+  actorUserId?: string;
+  actorLabel?: string;
+  ip?: string;
+}
 
-    const from = order.status as OrderStatus;
-    if (from === input.to) return;
-    if (!canTransition(from, input.to as OrderStatus)) {
-      throw conflict(
-        "invalid_transition",
-        `Transição inválida: ${from} → ${input.to}`,
-        { from, to: input.to },
-      );
-    }
-    transitioned = true;
-    fromForAudit = from;
+/**
+ * Núcleo da transição — roda DENTRO de uma transação do chamador. A leitura
+ * do status e a validação acontecem com SELECT FOR UPDATE: dois concorrentes
+ * (webhook duplo, admin + webhook, checkout + webhook) ficam serializados no
+ * lock da linha e o segundo reavalia `canTransition` contra o estado já
+ * atualizado. Auditoria de order.transition NÃO é gravada aqui — o chamador
+ * decide (dentro ou fora da própria transação).
+ */
+export async function transitionOrderInTx(
+  tx: Db,
+  input: TransitionInput,
+): Promise<{ transitioned: boolean; from: OrderStatus }> {
+  const rows = await tx
+    .select()
+    .from(schema.orders)
+    .where(eq(schema.orders.id, input.orderId))
+    .for("update");
+  const order = rows[0];
+  if (!order) throw notFound("Pedido não encontrado");
 
-    await tx
-      .update(schema.orders)
-      .set({ status: input.to, updatedAt: new Date() })
-      .where(eq(schema.orders.id, input.orderId));
-    await tx.insert(schema.orderStatusHistory).values({
-      id: crypto.randomUUID(),
-      orderId: input.orderId,
-      fromStatus: from,
-      toStatus: input.to,
-      reason: input.reason ?? null,
-      actorUserId: input.actorUserId ?? null,
-      actorType: input.actorUserId ? "user" : "system",
-      actorSystem: !input.actorUserId,
-      createdAt: new Date(),
-    });
+  const from = order.status as OrderStatus;
+  if (from === input.to) return { transitioned: false, from };
+  if (!canTransition(from, input.to as OrderStatus)) {
+    throw conflict(
+      "invalid_transition",
+      `Transição inválida: ${from} → ${input.to}`,
+      { from, to: input.to },
+    );
+  }
 
-    if (
-      (input.to === "cancelado" || input.to === "reembolsado") &&
-      (RESERVED_STATUSES as readonly string[]).includes(from)
-    ) {
-      const items = await tx
-        .select()
-        .from(schema.orderItems)
-        .where(eq(schema.orderItems.orderId, input.orderId));
-      for (const item of items) {
-        await releaseStock(tx as unknown as Db, {
-          variantId: item.variantId,
-          quantity: item.quantity,
-          orderId: input.orderId,
-          reason: `Pedido ${input.to}`,
-        });
-      }
-    }
+  await tx
+    .update(schema.orders)
+    .set({ status: input.to, updatedAt: new Date() })
+    .where(eq(schema.orders.id, input.orderId));
+  await tx.insert(schema.orderStatusHistory).values({
+    id: crypto.randomUUID(),
+    orderId: input.orderId,
+    fromStatus: from,
+    toStatus: input.to,
+    reason: input.reason ?? null,
+    actorUserId: input.actorUserId ?? null,
+    actorType: input.actorUserId ? "user" : "system",
+    actorSystem: !input.actorUserId,
+    createdAt: new Date(),
   });
 
-  if (!fromForAudit) return false; // idempotente: pedido já estava no status alvo
+  if (
+    (input.to === "cancelado" || input.to === "reembolsado") &&
+    (RESERVED_STATUSES as readonly string[]).includes(from)
+  ) {
+    const items = await tx
+      .select()
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.orderId, input.orderId));
+    for (const item of items) {
+      await releaseStock(tx as unknown as Db, {
+        variantId: item.variantId,
+        quantity: item.quantity,
+        orderId: input.orderId,
+        reason: `Pedido ${input.to}`,
+      });
+    }
+  }
+
+  return { transitioned: true, from };
+}
+
+export async function transitionOrder(db: Db, input: TransitionInput): Promise<boolean> {
+  // Transição standalone: abre a própria transação (mesma semântica do núcleo
+  // acima) e grava a auditoria FORA dela — audit_logs não participa do lock.
+  let outcome: { transitioned: boolean; from: OrderStatus } | undefined;
+  await db.transaction(async (tx) => {
+    outcome = await transitionOrderInTx(tx, input);
+  });
+
+  if (!outcome!.transitioned) return false; // idempotente: pedido já estava no status alvo
 
   await audit(db, {
     actorUserId: input.actorUserId,
@@ -179,12 +187,12 @@ export async function transitionOrder(
     action: "order.transition",
     entity: "order",
     entityId: input.orderId,
-    before: { status: fromForAudit },
+    before: { status: outcome!.from },
     after: { status: input.to, reason: input.reason },
     ip: input.ip,
   });
 
-  return transitioned;
+  return true;
 }
 
 export interface VolumeUsage {

@@ -35,6 +35,12 @@ export interface NormalizedWebhookEvent {
   type: "payment.approved" | "payment.recused" | "payment.expired" | "payment.refunded" | "chargeback.received" | "chargeback.resolved";
   providerTransactionId?: string;
   amountCents?: number;
+  /** Moeda informada pelo provedor (ex.: "BRL") — validada contra a cobrança. */
+  currency?: string;
+  /** Referência externa do pedido no provedor (ex.: nosso orderId enviado). */
+  externalReference?: string;
+  /** Conta/loja do estabelecimento informada pelo provedor (ex.: merchant/user_id). */
+  accountId?: string;
   disputeId?: string;
   disputeReason?: string;
   respondBy?: Date;
@@ -45,6 +51,7 @@ export interface NormalizedWebhookEvent {
 export interface QueryPaymentResult {
   status: "pendente" | "autorizado" | "aprovado" | "recusado" | "expirado" | "estornado";
   amountCents?: number;
+  currency?: string;
   raw?: unknown;
 }
 
@@ -58,8 +65,14 @@ export interface PaymentAdapter {
   refund(providerTransactionId: string, amountCents: number): Promise<RefundResult>;
   verifyWebhookSignature(rawBody: string, signature: string | undefined): boolean;
   parseWebhook(rawBody: string): NormalizedWebhookEvent;
-  /** Consulta o estado no provedor — base da reconciliação de pagamentos. */
+  /** Consulta o estado no provedor — base da reconciliação e da validação de webhook. */
   queryPayment?(providerTransactionId: string): Promise<QueryPaymentResult>;
+  /**
+   * Consulta pelo NOSSO orderId — resolve timeout ambíguo: se a cobrança
+   * existe no provedor, o pedido não é cancelado e o estoque fica reservado
+   * até a reconciliação; se não existe, a falha foi definitiva.
+   */
+  queryPaymentByOrder?(orderId: string): Promise<QueryPaymentResult | null>;
 }
 
 const registry = new Map<string, PaymentAdapter>();
