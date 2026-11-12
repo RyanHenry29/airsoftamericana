@@ -9,7 +9,7 @@ import { schema } from "../db/index.js";
 import { handleCheckout } from "./checkout.js";
 import { applyPaymentEvent, applyPendingEventsForPayment } from "./payments/webhook-events.js";
 import { SandboxAdapter } from "./payments/sandbox.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { NormalizedWebhookEvent } from "./payments/types.js";
 
 const customerEmail = "integridade@demo.com";
@@ -740,5 +740,487 @@ describe("recuperação e idempotência (revisão PR #1, ponto 8)", () => {
     expect(secondRun.scanned).toBe(0);
     const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, result.orderId));
     expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Revisão v3 (pontos A–D): fila multi-instância com dead-letter, reparo
+// idempotente, expiração segura de reservas e vinculação de conta.
+// ---------------------------------------------------------------------------
+
+import { expireStaleReservations } from "./payments/expiry.js";
+
+/** Cobrança VIVA no provedor: expiração NUNCA libera estoque dela. */
+class AliveChargeAdapter implements PaymentAdapter {
+  readonly provider: string = "exp-alive";
+  readonly signatureHeader = "x-signature";
+  isConfigured() { return true; }
+  async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult> {
+    return { providerTransactionId: `exp_${crypto.randomUUID()}`, status: "pendente" };
+  }
+  async capture(): Promise<CaptureResult> { return { status: "aprovado", amountCents: 0 }; }
+  async refund(): Promise<RefundResult> { return { providerRefundId: "rf", status: "estornado" }; }
+  verifyWebhookSignature() { return true; }
+  parseWebhook(raw: string): NormalizedWebhookEvent { return { eventId: "exp:1", type: "payment.approved", raw }; }
+  async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+    return { status: "pendente", amountCents: 10000, currency: "BRL" };
+  }
+}
+
+/** Provedor confirma AUSÊNCIA de cobrança: expiração definitiva. */
+class NoChargeAdapter extends AliveChargeAdapter {
+  readonly provider = "exp-none";
+  async queryPaymentByOrder(): Promise<QueryPaymentResult | null> { return null; }
+}
+
+/** Provedor confirma cobrança APROVADA durante a reserva. */
+class ApprovedChargeAdapter extends AliveChargeAdapter {
+  readonly provider = "exp-approved";
+  async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+    return { status: "aprovado", amountCents: 10000, currency: "BRL" };
+  }
+}
+
+describe("fila de recuperação multi-instância (revisão v3, ponto A)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+  });
+
+  it("DUAS INSTÂNCIAS rodando recoverPendingEvents em paralelo: sem dupla aplicação", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const adapter = new SandboxAdapter();
+    const raw = JSON.stringify({ id: "multi-1", type: "payment.approved", data: { transactionId: pay.providerTransactionId } });
+    await db.insert(schema.paymentEvents).values({
+      provider: "sandbox",
+      eventId: adapter.parseWebhook(raw).eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    });
+
+    const [r1, r2] = await Promise.all([
+      recoverPendingEvents(db, { minBackoffMs: 0 }),
+      recoverPendingEvents(db, { minBackoffMs: 0 }),
+    ]);
+
+    // Estado final consistente independentemente da interleaving:
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, result.orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(1);
+    const [evt] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.provider, "sandbox"));
+    expect(evt.processedAt).toBeTruthy();
+    expect(evt.deadLetter).toBe(false);
+    expect(r1.applied + r2.applied).toBeGreaterThanOrEqual(1);
+  });
+
+  it("payload PERMANENTEMENTE inválido → dead-letter imediato, fila não bloqueia", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+    await checkout(db, customerId, variant.id);
+
+    await db.insert(schema.paymentEvents).values({
+      provider: "sandbox",
+      eventId: "sandbox:invalid-1",
+      type: "payment.approved",
+      payload: { corpo: "que não parseia como evento sandbox" },
+      signatureValid: true,
+      processedAt: null,
+    });
+
+    const first = await recoverPendingEvents(db, { minBackoffMs: 0 });
+    expect(first.deadLettered).toBe(1);
+    expect(first.applied).toBe(0);
+
+    // Segunda passada: fila limpa.
+    const second = await recoverPendingEvents(db, { minBackoffMs: 0 });
+    expect(second.scanned).toBe(0);
+    // audit_logs persiste entre testes — escopa pela linha do evento.
+    const [insertedEvt] = await db
+      .select()
+      .from(schema.paymentEvents)
+      .where(eq(schema.paymentEvents.eventId, "sandbox:invalid-1"));
+    const [auditRow] = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "payment.event_dead_letter"), eq(schema.auditLogs.entityId, insertedEvt!.id)));
+    expect(auditRow).toBeTruthy();
+    const after = typeof auditRow!.afterJson === "string" ? JSON.parse(auditRow!.afterJson) : auditRow!.afterJson;
+    expect(after.reason).toBe("invalid_payload");
+  });
+
+  it("evento estacionado além do LIMITE DE TENTATIVAS → dead-letter (fila nunca bloqueia indefinidamente)", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+    await checkout(db, customerId, variant.id);
+
+    const adapter = new SandboxAdapter();
+    const raw = JSON.stringify({ id: "parked-limit", type: "payment.approved", data: { transactionId: "sbx_inexistente" } });
+    await db.insert(schema.paymentEvents).values({
+      provider: "sandbox",
+      eventId: adapter.parseWebhook(raw).eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    });
+
+    // maxAttempts: 1 → a primeira passada já esgota.
+    const summary = await recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1 });
+    expect(summary.parked).toBe(0);
+    expect(summary.deadLettered).toBe(1);
+
+    // audit_logs persiste entre testes — escopa pela linha do evento.
+    const [insertedEvt] = await db
+      .select()
+      .from(schema.paymentEvents)
+      .where(eq(schema.paymentEvents.eventId, "sandbox:parked-limit"));
+    const [auditRow] = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "payment.event_dead_letter"), eq(schema.auditLogs.entityId, insertedEvt!.id)));
+    const after = typeof auditRow!.afterJson === "string" ? JSON.parse(auditRow!.afterJson) : auditRow!.afterJson;
+    expect(after.reason).toBe("payment_never_arrived");
+  });
+
+  it("divergência financeira recorrente além do limite → dead-letter com motivo", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const adapter = new SandboxAdapter();
+    const raw = JSON.stringify({ id: "divergent-limit", type: "payment.approved", data: { transactionId: pay.providerTransactionId, amountCents: 999 } });
+    await db.insert(schema.paymentEvents).values({
+      provider: "sandbox",
+      eventId: adapter.parseWebhook(raw).eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    });
+
+    const summary = await recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1 });
+    expect(summary.rejected).toBe(1);
+    expect(summary.deadLettered).toBe(1);
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("aguardando_pagamento"); // divergência nunca aprova
+  });
+});
+
+describe("reparo idempotente no boot (revisão v3, ponto B)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+  });
+
+  it("REINICIALIZAÇÃO repetida: uma única transição, uma única auditoria, estoque liberado uma vez", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    // Estado parcial legado: pagamento recusado + pedido aguardando (libera estoque).
+    await db.update(schema.payments).set({ status: "recusado" }).where(eq(schema.payments.orderId, result.orderId));
+
+    const first = await repairPartialApplications(db);
+    expect(first.repaired).toBe(1);
+    const [invAfterFirst] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(invAfterFirst.reserved).toBe(0);
+
+    // Duas reinicializações seguintes: nada a fazer.
+    const second = await repairPartialApplications(db);
+    const third = await repairPartialApplications(db);
+    expect(second.repaired).toBe(0);
+    expect(third.repaired).toBe(0);
+
+    const [invAfterThird] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(invAfterThird.reserved).toBe(0); // estoque nunca liberado duas vezes
+
+    // audit_logs persiste entre testes — escopa pelo pedido deste teste.
+    const audits = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "payment.partial_repair"), eq(schema.auditLogs.entityId, result.orderId)));
+    expect(audits.length).toBe(1);
+    const after = typeof audits[0]!.afterJson === "string" ? JSON.parse(audits[0]!.afterJson) : audits[0]!.afterJson;
+    expect(after.automatic).toBe(true); // distingue correção automática de intervenção humana
+    expect(audits[0]!.actorLabel).toBe("recovery:boot");
+
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, result.orderId));
+    expect(history.filter((h: any) => h.toStatus === "cancelado").length).toBe(1);
+  });
+});
+
+describe("expiração segura de reservas (revisão v3, ponto C)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+  });
+
+  /** Pedido antigo com pagamento pendente — o alvo da expiração. */
+  async function staleOrder(provider: string, variantId: string, customerId: string) {
+    const created = await handleCheckout(
+      db,
+      {
+        items: [{ variantId, quantity: 1 }],
+        address: addr(),
+        paymentMethod: "pix",
+        acceptedTerms: true,
+        ageConfirmed: true,
+      } as any,
+      { customerId, ip: "127.0.0.1" },
+    );
+    // Antiguidade da reserva (cutoff de 60 min).
+    await db.update(schema.orders).set({ createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }).where(eq(schema.orders.id, created.orderId));
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, created.orderId));
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
+    return created.orderId;
+  }
+
+  it("cobrança PENDENTE no provedor → expiração NÃO libera estoque (cobrança pode ser confirmada depois)", async () => {
+    registerAdapter(new AliveChargeAdapter());
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider: "exp-alive",
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const orderId = await staleOrder("exp-alive", variant.id, customerId);
+
+    const summary = await expireStaleReservations(db, { olderThanMinutes: 60 });
+    expect(summary.skipped).toBe(1);
+    expect(summary.cancelled).toBe(0);
+
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("aguardando_pagamento");
+    const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(inv.reserved).toBe(1); // reserva preservada — cobrança viva
+    const [auditRow] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "expiry.skipped_charge_alive"));
+    expect(auditRow).toBeTruthy();
+  });
+
+  it("provedor confirma AUSÊNCIA de cobrança → cancelamento com estoque liberado", async () => {
+    registerAdapter(new NoChargeAdapter());
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider: "exp-none",
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const orderId = await staleOrder("exp-none", variant.id, customerId);
+
+    const summary = await expireStaleReservations(db, { olderThanMinutes: 60 });
+    expect(summary.cancelled).toBe(1);
+
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("cancelado");
+    const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(inv.reserved).toBe(0);
+  });
+
+  it("cobrança APROVADA no provedor durante a reserva → pedido aprovado, nunca cancelado", async () => {
+    registerAdapter(new ApprovedChargeAdapter());
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider: "exp-approved",
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const orderId = await staleOrder("exp-approved", variant.id, customerId);
+
+    const summary = await expireStaleReservations(db, { olderThanMinutes: 60 });
+    expect(summary.approved).toBe(1);
+    expect(summary.cancelled).toBe(0);
+
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+    const [auditRow] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "expiry.late_confirmation"));
+    expect(auditRow).toBeTruthy();
+  });
+
+  it("adapter SEM consulta → expiração NUNCA libera às cegas", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway(); // sandbox TEM queryPaymentByOrder — usa rota "sem consulta":
+    // Gateway row com provider sandbox mas adapter de teste sem consulta:
+    class BlindAdapter extends SandboxAdapter {
+      readonly provider = "sandbox";
+      async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+        throw new Error("consulta indisponível");
+      }
+    }
+    const sandbox = new BlindAdapter();
+    // Substitui o adapter sandbox no registry pela variante cega.
+    const { registerAdapter: re } = await import("./payments/types.js");
+    re(sandbox);
+
+    const orderId = await staleOrder("sandbox", variant.id, customerId);
+    const summary = await expireStaleReservations(db, { olderThanMinutes: 60 });
+    expect(summary.skipped).toBe(1);
+    expect(summary.cancelled).toBe(0);
+
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("aguardando_pagamento");
+    const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(inv.reserved).toBe(1);
+  });
+});
+
+describe("vinculação da conta do estabelecimento (revisão v3, ponto D)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+  });
+
+  it("evento COM accountId e credenciais SEM accountId → account_unverified, NUNCA aprovação silenciosa", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway(); // sandbox sem accountId nas credenciais
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const outcome = await applyPaymentEvent(db, {
+      provider: "sandbox",
+      event: {
+        eventId: "acct-claim-1",
+        type: "payment.approved",
+        providerTransactionId: pay.providerTransactionId!,
+        amountCents: pay.amountCents,
+        accountId: "acct-alegado-123", // claim sem referencial para verificar
+        raw: {},
+      },
+      payment: pay,
+    });
+
+    expect(outcome.applied).toBe(false);
+    expect(outcome.reason).toBe("account_unverified");
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("aguardando_pagamento");
+    // audit_logs persiste entre testes — escopa pelo pagamento deste teste.
+    const [auditRow] = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "payment.event_rejected"), eq(schema.auditLogs.entityId, pay.id)));
+    expect(auditRow).toBeTruthy();
+  });
+
+  it("credenciais COM accountId e evento aprovado SEM accountId → account_binding_missing", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider: "sandbox",
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+      // Credenciais CIFRADAS com accountId configurado:
+      credentialsEncrypted: (await import("../lib/crypto.js")).encryptSecret(
+        JSON.stringify({ accountId: "loja-oficial-1" }),
+      ),
+    });
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const outcome = await applyPaymentEvent(db, {
+      provider: "sandbox",
+      event: {
+        eventId: "acct-missing-1",
+        type: "payment.approved",
+        providerTransactionId: pay.providerTransactionId!,
+        amountCents: pay.amountCents,
+        raw: {},
+      },
+      payment: pay,
+    });
+
+    expect(outcome.applied).toBe(false);
+    expect(outcome.reason).toBe("account_binding_missing");
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("aguardando_pagamento");
+  });
+
+  it("nenhum dos lados informa conta → aprovação NÃO silenciosa (advertência auditada), demais validações decidem", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await seedSandboxGateway();
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const outcome = await applyPaymentEvent(db, {
+      provider: "sandbox",
+      event: approvedEvent(pay),
+      payment: pay,
+    });
+
+    // Aprova com advertência auditada — valor/transação/referência validados.
+    expect(outcome.applied).toBe(true);
+    const [auditRow] = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, "payment.account_binding_missing"));
+    expect(auditRow).toBeTruthy();
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, result.orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+  });
+
+  it("accountId DIVERGENTE do configurado → account_mismatch", async () => {
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider: "sandbox",
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+      credentialsEncrypted: (await import("../lib/crypto.js")).encryptSecret(
+        JSON.stringify({ accountId: "loja-oficial-1" }),
+      ),
+    });
+
+    const result = await checkout(db, customerId, variant.id);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+
+    const outcome = await applyPaymentEvent(db, {
+      provider: "sandbox",
+      event: {
+        eventId: "acct-mismatch-1",
+        type: "payment.approved",
+        providerTransactionId: pay.providerTransactionId!,
+        amountCents: pay.amountCents,
+        accountId: "outra-loja-9",
+        raw: {},
+      },
+      payment: pay,
+    });
+
+    expect(outcome.applied).toBe(false);
+    expect(outcome.reason).toBe("account_mismatch");
   });
 });

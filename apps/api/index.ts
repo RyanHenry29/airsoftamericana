@@ -124,9 +124,13 @@ async function getFastifyApp() {
       // fatal — falha de recuperação não impede a API de subir.
       try {
         const { recoverPendingEvents, repairPartialApplications } = await import("./src/services/payments/webhook-events.js");
+        const { expireStaleReservations } = await import("./src/services/payments/expiry.js");
         const recovery = await recoverPendingEvents(db);
         const repair = await repairPartialApplications(db);
-        app.log.info({ recovery, repair }, "payment event recovery at boot");
+        // Expiração SEGURA de reservas: só libera estoque após confirmar o
+        // estado da cobrança no provedor — cobrança viva nunca é cancelada.
+        const expiry = await expireStaleReservations(db, { olderThanMinutes: 60 });
+        app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
       } catch (err) {
         app.log.warn({ err }, "payment event recovery skipped");
       }

@@ -644,6 +644,20 @@ export async function migrate(db: Db) {
   await db.execute(sql`
     ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP NOT NULL;
   `).catch(() => {});
+  // Revisão v3 (ponto A): fila de recuperação com tentativas, backoff e
+  // dead-letter. ALTER idempotentes — produção só com autorização.
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0;
+  `).catch(() => {});
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "last_attempt_at" timestamptz;
+  `).catch(() => {});
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "last_error" text;
+  `).catch(() => {});
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "dead_letter" boolean NOT NULL DEFAULT false;
+  `).catch(() => {});
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "payment_events_payment_idx" ON "payment_events" ("payment_id");
   `);
