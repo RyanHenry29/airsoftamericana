@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Camera,
   IdCard,
@@ -16,9 +16,57 @@ import {
   Plus,
   ShieldCheck,
   Trash2,
+  CheckCircle2,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { API_URL, fetchWithTimeout } from "../lib/store";
 import { fetchViaCep, formatCep as maskCep, isCompleteCep, mergeCepLookup } from "../lib/viacep";
+
+/* ───────── hook de CEP com debounce + cache (reutilizável) ───────── */
+function useCepLookup() {
+  const [status, setStatus] = useState<"idle" | "busy" | "ok" | "miss">("idle");
+  const [foundAddress, setFoundAddress] = useState<{ street: string; neighborhood: string; city: string; state: string } | null>(null);
+  const doneRef = useRef<string>("");        // CEPs já consultados com sucesso
+  const missRef = useRef<string>("");        // CEPs que não existem na base
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const lookup = useCallback(async (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length !== 8) { setStatus("idle"); setFoundAddress(null); return; }
+    if (doneRef.current === digits) { setStatus("ok"); return; }
+    if (missRef.current === digits) { setStatus("miss"); setFoundAddress(null); return; }
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setStatus("busy");
+
+    timerRef.current = setTimeout(async () => {
+      try {
+        const found = await fetchViaCep(digits);
+        if (!found) {
+          missRef.current = digits;
+          setFoundAddress(null);
+          setStatus("miss");
+          return;
+        }
+        doneRef.current = digits;
+        setFoundAddress({ street: found.street, neighborhood: found.neighborhood, city: found.city, state: found.state });
+        setStatus("ok");
+      } catch {
+        setFoundAddress(null);
+        setStatus("miss");
+      }
+    }, 180); // debounce leve
+  }, []);
+
+  const reset = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setStatus("idle");
+    setFoundAddress(null);
+  }, []);
+
+  return { status, foundAddress, lookup, reset };
+}
 import { fileToAvatarDataUrl, isAvatarSource } from "../lib/avatar";
 import { AvatarFace, ContaShell } from "./ContaShell";
 import { initialsOf, logoutAccount, type Customer } from "./conta-menu";
@@ -188,10 +236,8 @@ export function ContaArea() {
   const [addrLoading, setAddrLoading] = useState(true);
   const [addrFormOpen, setAddrFormOpen] = useState(false);
   const [addrEditId, setAddrEditId] = useState<string | null>(null);
-  // Consulta ViaCEP: rua/bairro/cidade/uf vêm da base, número e complemento
-  // são do cliente. `afCepDone` evita repetir a mesma consulta no mesmo CEP.
-  const [afCepStatus, setAfCepStatus] = useState<"idle" | "busy" | "ok" | "miss">("idle");
-  const afCepDone = useRef("");
+  // Consulta ViaCEP: hook com debounce + cache + card de endereço
+  const { status: afCepStatus, foundAddress: afFoundAddress, lookup: lookupAfCep, reset: resetAfCep } = useCepLookup();
   const [af, setAf] = useState<AddressForm>({
     recipient: "",
     zip: "",
@@ -370,8 +416,7 @@ export function ContaArea() {
     setAfMsg(null);
     setAfErrors({});
     setAfTouched({});
-    afCepDone.current = "";
-    setAfCepStatus("idle");
+    resetAfCep();
     if (address) {
       setAddrEditId(address.id);
       setAf({
@@ -414,27 +459,18 @@ export function ContaArea() {
     if (afTouched[key]) setAfErrors(validateAddress(next));
   }
 
-  /** Preenche rua/bairro/cidade/uf no form. Falha (rede, CEP inexistente) = null silencioso. */
-  async function lookupAfCep(cepValue: string) {
-    const digits = cepValue.replace(/\D/g, "");
-    if (digits.length !== 8 || afCepDone.current === digits) return;
-    afCepDone.current = digits;
-    setAfCepStatus("busy");
-    const found = await fetchViaCep(digits);
-    if (!found) {
-      setAfCepStatus("miss");
-      return;
-    }
-    setAf((cur) => mergeCepLookup(cur, found));
-    setAfCepStatus("ok");
-  }
-
-  // O ViaCEP responde depois do blur: sem isso o "Informe o logradouro"
-  // levantado na validação anterior ficaria preso mesmo com o campo preenchido.
+  // Aplica o endereço encontrado nos campos vazios
   useEffect(() => {
-    if (Object.keys(afTouched).length > 0) setAfErrors(validateAddress(af));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [af]);
+    if (afCepStatus === "ok" && afFoundAddress) {
+      setAf((cur) => ({
+        ...cur,
+        street: cur.street || afFoundAddress.street,
+        neighborhood: cur.neighborhood || afFoundAddress.neighborhood,
+        city: cur.city || afFoundAddress.city,
+        state: cur.state || afFoundAddress.state,
+      }));
+    }
+  }, [afCepStatus, afFoundAddress]);
 
   async function saveAddress(e: React.FormEvent) {
     e.preventDefault();
@@ -761,32 +797,73 @@ export function ContaArea() {
               maxLength={120}
               full
             />
-            <FormField
-              id="af-zip"
-              label="CEP"
-              value={af.zip}
-              onChange={(v) => onAfChange("zip", v)}
-              onBlur={() => {
-                setAfTouched((t) => ({ ...t, zip: true }));
-                setAfErrors(validateAddress(af));
-                void lookupAfCep(af.zip);
-              }}
-              error={afErrors.zip}
-              touched={afTouched.zip}
-              hint={
-                afCepStatus === "busy"
-                  ? "Buscando CEP na ViaCEP…"
-                  : afCepStatus === "ok"
-                    ? "Logradouro preenchido — confira e digite o número."
-                    : afCepStatus === "miss"
-                      ? "CEP fora da base — preencha os campos na mão."
-                      : undefined
-              }
-              inputMode="numeric"
-              autoComplete="postal-code"
-              maxLength={9}
-              placeholder="00000-000"
-            />
+            {/* CEP com lookup automático e card de endereço */}
+            <div className="conta-form-field">
+              <label htmlFor="af-zip" className="conta-form-label">CEP</label>
+              <div className="relative">
+                <input
+                  id="af-zip"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  maxLength={9}
+                  placeholder="00000-000"
+                  value={af.zip}
+                  onChange={(e) => onAfChange("zip", e.target.value)}
+                  onBlur={() => {
+                    setAfTouched((t) => ({ ...t, zip: true }));
+                    setAfErrors(validateAddress(af));
+                  }}
+                  className={`conta-input pr-12 ${afErrors.zip && afTouched.zip ? "conta-input--error" : ""}`}
+                  aria-invalid={!!(afErrors.zip && afTouched.zip)}
+                  aria-describedby={afErrors.zip && afTouched.zip ? "af-zip-err" : undefined}
+                />
+                {afCepStatus === "busy" && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-primary" aria-hidden="true">
+                    <Loader2 size={18} className="animate-spin" />
+                  </span>
+                )}
+                {afCepStatus === "ok" && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--primary-dark)]" aria-hidden="true">
+                    <CheckCircle2 size={18} strokeWidth={3} />
+                  </span>
+                )}
+                {afCepStatus === "miss" && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#f87171]" aria-hidden="true">
+                    <AlertCircle size={18} strokeWidth={2.2} />
+                  </span>
+                )}
+              </div>
+              {(afErrors.zip && afTouched.zip) && (
+                <span className="conta-err" id="af-zip-err">{afErrors.zip}</span>
+              )}
+              {afCepStatus !== "idle" && !afErrors.zip && (
+                <p className="conta-hint" style={{
+                  color: afCepStatus === "busy" ? "var(--primary)" :
+                         afCepStatus === "ok" ? "var(--primary-dark)" : "#f87171"
+                }}>
+                  {afCepStatus === "busy" && "Buscando CEP na ViaCEP…"}
+                  {afCepStatus === "ok" && "Endereço encontrado — confira e complete o número."}
+                  {afCepStatus === "miss" && "CEP não encontrado na base — preencha os campos manualmente."}
+                </p>
+              )}
+            </div>
+
+            {/* Card de endereço preenchido automaticamente */}
+            {afCepStatus === "ok" && afFoundAddress && (
+              <div className="conta-form-field conta-form-field--full" style={{ gridColumn: "1 / -1" }}>
+                <div className="flex items-start gap-3 p-4 rounded-[var(--radius)] border border-border bg-base">
+                  <MapPin size={20} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground">{afFoundAddress.street}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {afFoundAddress.neighborhood}, {afFoundAddress.city} - {afFoundAddress.state}
+                    </p>
+                    <p className="mt-1.5 text-xs text-muted-foreground/70">Digite o <strong>número</strong> e, se houver, o <strong>complemento</strong>.</p>
+                  </div>
+                </div>
+              </div>
+            )}
             <FormField
               id="af-number"
               label="Número"

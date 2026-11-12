@@ -361,8 +361,21 @@ export const productImages = pgTable(
     alt: varchar("alt", { length: 200 }),
     kind: varchar("kind", { length: 20 }).notNull().default("image"),
     position: integer("position").notNull().default(0),
+    uploadId: uuid("upload_id").references(() => productImageUploads.id, { onDelete: "set null" }),
   },
   (t) => [index("product_images_product_idx").on(t.productId)],
+);
+
+export const productImageUploads = pgTable(
+  "product_image_uploads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    mime: varchar("mime", { length: 64 }).notNull(),
+    bytes: bytea("bytes").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [index("product_image_uploads_created_idx").on(t.createdAt)],
 );
 
 export const inventory = pgTable(

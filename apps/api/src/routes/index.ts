@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { asc, and, count, desc, eq, gte, lt, ne, sql } from "drizzle-orm";
+import { asc, and, count, desc, eq, gte, lt, ne, sql, sum } from "drizzle-orm";
 import { hashPassword, verifyPasswordDetailed } from "../lib/crypto.js";
 import { randomUUID } from "node:crypto";
 import type { Db } from "../db/index.js";
-import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customerAddresses, customerAvatars, customers, inventory, inventoryMovements, newsletterSubscribers, orders, paymentEvents, payments, productImages, products, productVariants, users } from "../db/schema.js";
+import { auditLogs, brands, cartItems, carts, categories, chargebacks, coupons, customerAddresses, customerAvatars, customers, inventory, inventoryMovements, newsletterSubscribers, orders, paymentEvents, payments, productImages, products, productVariants, supportTickets, users } from "../db/schema.js";
 import { authMiddleware, signJwt, verifyJwt } from "../middleware/auth.js";
 import { adminGuard, normalizeRole } from "../lib/rbac.js";
 import { createSession, adminSessionCookieOptions, ADMIN_SESSION_COOKIE, hashToken } from "../services/sessions.js";
@@ -433,8 +433,8 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     }
     // ESPIAR/COMPRAR: pedido + itens com slug do produto e variantes ativas.
     const detail = await getOrderDetailForCustomer(db, { orderId: order.id, customerId: customer.id });
-    // Pagamento do pedido: payload Ã© o PIX copia-e-cola (ou o link do gateway)
-    // â€” Ã© o que o cliente precisa para pagar depois de criar o pedido.
+    // Pagamento do pedido: payload é o PIX copia-e-cola (ou o link do gateway)
+    // — é o que o cliente precisa para pagar depois de criar o pedido.
     const payRows = await db.select().from(payments).where(eq(payments.orderId, order.id)).limit(1);
     const pay = payRows[0];
     reply.send({
@@ -1302,26 +1302,68 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     },
   );
 
-  // ---------------------------------------------------------- Admin métricas
+  // ---------------------------------------------------------- Admin métricas (com filtro de período)
   app.get(
     "/api/admin/metrics",
     { preHandler: [authMiddleware, adminGuard("dashboard", "read")] },
     async (request, reply) => {
-      const [oTotal, oApproved, pTotal, lowStock, cbTotal] = await Promise.all([
+      const q = request.query as Record<string, string | undefined>;
+      const from = q.from ? new Date(q.from) : undefined;
+      const to = q.to ? new Date(q.to) : undefined;
+      const prevFrom = q.prevFrom ? new Date(q.prevFrom) : undefined;
+      const prevTo = q.prevTo ? new Date(q.prevTo) : undefined;
+
+      // Período atual
+      const currentWhere = from && to
+        ? and(gte(orders.createdAt, from), lt(orders.createdAt, to))
+        : undefined;
+      const currentApprovedWhere = from && to
+        ? and(eq(orders.status, "pagamento_aprovado"), gte(orders.createdAt, from), lt(orders.createdAt, to))
+        : eq(orders.status, "pagamento_aprovado");
+
+      // Período anterior
+      const prevWhere = prevFrom && prevTo
+        ? and(gte(orders.createdAt, prevFrom), lt(orders.createdAt, prevTo))
+        : undefined;
+      const prevApprovedWhere = prevFrom && prevTo
+        ? and(eq(orders.status, "pagamento_aprovado"), gte(orders.createdAt, prevFrom), lt(orders.createdAt, prevTo))
+        : undefined;
+
+      const [
+        oTotal, oApproved, pTotal, lowStock, cbTotal,
+        currentOrders, currentRevenue, currentApproved,
+        prevOrders, prevRevenue, prevApproved,
+      ] = await Promise.all([
         db.select({ value: count() }).from(orders),
         db.select({ value: count() }).from(orders).where(eq(orders.status, "pagamento_aprovado")),
         db.select({ value: count() }).from(products).where(eq(products.published, true)),
         db.select().from(inventory).where(sql`${inventory.physical} - ${inventory.reserved} <= ${inventory.minQuantity}`),
         db.select({ value: count() }).from(payments).where(eq(payments.status, "chargeback")),
+        currentWhere ? db.select({ value: count() }).from(orders).where(currentWhere) : Promise.resolve([{ value: 0 }]),
+        currentApprovedWhere ? db.select({ total: orders.totalCents }).from(orders).where(currentApprovedWhere) : Promise.resolve([]),
+        currentApprovedWhere ? db.select({ value: count() }).from(orders).where(currentApprovedWhere) : Promise.resolve([{ value: 0 }]),
+        prevWhere ? db.select({ value: count() }).from(orders).where(prevWhere) : Promise.resolve([{ value: 0 }]),
+        prevApprovedWhere ? db.select({ total: orders.totalCents }).from(orders).where(prevApprovedWhere) : Promise.resolve([]),
+        prevApprovedWhere ? db.select({ value: count() }).from(orders).where(prevApprovedWhere) : Promise.resolve([{ value: 0 }]),
       ]);
-      const revenueRows = await db.select({ total: orders.totalCents }).from(orders).where(eq(orders.status, "pagamento_aprovado"));
-      const revenueCents = revenueRows.reduce((a, r) => a + r.total, 0);
-      // Valor contestado vem da disputa registrada (chargebacks), não de chute.
+
+      const revenueCents = currentRevenue.reduce((a, r) => a + r.total, 0);
+      const prevRevenueCents = prevRevenue.reduce((a, r) => a + r.total, 0);
+      const currentApprovedCount = Number(currentApproved[0]?.value ?? 0);
+      const prevApprovedCount = Number(prevApproved[0]?.value ?? 0);
+      const conversionRate = currentApprovedCount > 0 && Number(currentOrders[0]?.value ?? 0) > 0
+        ? (currentApprovedCount / Number(currentOrders[0]?.value ?? 0)) * 100
+        : 0;
+      const prevConversionRate = prevApprovedCount > 0 && Number(prevOrders[0]?.value ?? 0) > 0
+        ? (prevApprovedCount / Number(prevOrders[0]?.value ?? 0)) * 100
+        : 0;
+
       const cbAmountRows = await db
         .select({ amount: chargebacks.amountCents })
         .from(chargebacks);
       const chargebackAmountCents = cbAmountRows.reduce((a, r) => a + r.amount, 0);
-      // Comparação dia a dia — contagem real no banco, nada chutado no painel.
+
+      // Today vs yesterday (fallback)
       const startToday = new Date();
       startToday.setHours(0, 0, 0, 0);
       const startYesterday = new Date(startToday.getTime() - 24 * 60 * 60 * 1000);
@@ -1336,6 +1378,7 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
           .from(orders)
           .where(and(eq(orders.status, "pagamento_aprovado"), gte(orders.createdAt, startToday))),
       ]);
+
       reply.send({
         ordersTotal: Number(oTotal[0]?.value ?? 0),
         ordersApproved: Number(oApproved[0]?.value ?? 0),
@@ -1347,8 +1390,251 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
         chargebacks: Number(cbTotal[0]?.value ?? 0),
         chargebackAmountCents,
         revenueCents,
-        ticketCents: revenueRows.length ? Math.floor(revenueCents / revenueRows.length) : 0,
+        ticketCents: currentApprovedCount ? Math.floor(revenueCents / currentApprovedCount) : 0,
+        conversionRate: Math.round(conversionRate * 100) / 100,
+        prevOrders: Number(prevOrders[0]?.value ?? 0),
+        prevRevenue: prevRevenueCents,
+        prevTicket: prevApprovedCount ? Math.floor(prevRevenueCents / prevApprovedCount) : 0,
+        prevConversion: Math.round(prevConversionRate * 100) / 100,
       });
+    },
+  );
+
+  // ---------------------------------------------------------- Vendas diárias (gráfico)
+  app.get(
+    "/api/admin/sales/daily",
+    { preHandler: [authMiddleware, adminGuard("dashboard", "read")] },
+    async (request, reply) => {
+      const q = request.query as Record<string, string | undefined>;
+      const from = q.from ? new Date(q.from) : undefined;
+      const to = q.to ? new Date(q.to) : undefined;
+      const where = from && to ? and(gte(orders.createdAt, from), lt(orders.createdAt, to)) : undefined;
+
+      const rows = await db
+        .select({
+          day: sql<string>`DATE(${orders.createdAt})`.as("day"),
+          ordersCount: count(),
+          revenue: sum(orders.totalCents),
+        })
+        .from(orders)
+        .where(where ? and(where, eq(orders.status, "pagamento_aprovado")) : eq(orders.status, "pagamento_aprovado"))
+        .groupBy(sql`DATE(${orders.createdAt})`)
+        .orderBy(sql`DATE(${orders.createdAt})`);
+
+      reply.send(
+        rows.map(r => ({
+          day: r.day,
+          orders: Number(r.ordersCount ?? 0),
+          revenue: Number(r.revenue ?? 0),
+        }))
+      );
+    },
+  );
+
+  // ---------------------------------------------------------- Vendas por método de pagamento
+  app.get(
+    "/api/admin/sales/by-method",
+    { preHandler: [authMiddleware, adminGuard("dashboard", "read")] },
+    async (request, reply) => {
+      const q = request.query as Record<string, string | undefined>;
+      const from = q.from ? new Date(q.from) : undefined;
+      const to = q.to ? new Date(q.to) : undefined;
+      const where = from && to ? and(gte(orders.createdAt, from), lt(orders.createdAt, to)) : undefined;
+
+      const rows = await db
+        .select({
+          method: orders.paymentMethod,
+          count: count(),
+          amount: sum(orders.totalCents),
+        })
+        .from(orders)
+        .where(where ? and(where, eq(orders.status, "pagamento_aprovado")) : eq(orders.status, "pagamento_aprovado"))
+        .groupBy(orders.paymentMethod)
+        .orderBy(desc(count()));
+
+      reply.send(
+        rows.map(r => ({
+          method: r.method ?? "desconhecido",
+          count: Number(r.count ?? 0),
+          amount: Number(r.amount ?? 0),
+        }))
+      );
+    },
+  );
+
+  // ---------------------------------------------------------- Vendas por status
+  app.get(
+    "/api/admin/sales/by-status",
+    { preHandler: [authMiddleware, adminGuard("dashboard", "read")] },
+    async (request, reply) => {
+      const q = request.query as Record<string, string | undefined>;
+      const from = q.from ? new Date(q.from) : undefined;
+      const to = q.to ? new Date(q.to) : undefined;
+      const where = from && to ? and(gte(orders.createdAt, from), lt(orders.createdAt, to)) : undefined;
+
+      const rows = await db
+        .select({
+          status: orders.status,
+          count: count(),
+        })
+        .from(orders)
+        .where(where)
+        .groupBy(orders.status)
+        .orderBy(desc(count()));
+
+      reply.send(
+        rows.map(r => ({
+          status: r.status,
+          count: Number(r.count ?? 0),
+        }))
+      );
+    },
+  );
+
+  // ---------------------------------------------------------- Top produtos
+  app.get(
+    "/api/admin/products/top",
+    { preHandler: [authMiddleware, adminGuard("dashboard", "read")] },
+    async (request, reply) => {
+      const q = request.query as Record<string, string | undefined>;
+      const from = q.from ? new Date(q.from) : undefined;
+      const to = q.to ? new Date(q.to) : undefined;
+      const limit = Math.min(50, Math.max(1, Number(q.limit ?? 5)));
+      const where = from && to ? and(gte(orders.createdAt, from), lt(orders.createdAt, to)) : undefined;
+
+      const rows = await db.execute(sql`
+        SELECT pv.id, pv.name, pv.sku, SUM(oi.quantity)::int AS quantity, SUM(oi.total_cents)::int AS revenue
+        FROM order_items oi
+        JOIN product_variants pv ON pv.id = oi.variant_id
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.status = 'pagamento_aprovado'
+        ${where ? sql`AND ${where}` : sql``}
+        GROUP BY pv.id, pv.name, pv.sku
+        ORDER BY quantity DESC
+        LIMIT ${limit}
+      `);
+
+      reply.send(
+        (rows.rows as any[]).map(r => ({
+          id: r.id,
+          name: r.name,
+          sku: r.sku,
+          quantity: Number(r.quantity),
+          revenue: Number(r.revenue),
+        }))
+      );
+    },
+  );
+
+  // ---------------------------------------------------------- Pedidos recentes
+  app.get(
+    "/api/admin/orders/recent",
+    { preHandler: [authMiddleware, adminGuard("dashboard", "read")] },
+    async (request, reply) => {
+      const q = request.query as Record<string, string | undefined>;
+      const limit = Math.min(50, Math.max(1, Number(q.limit ?? 10)));
+
+      const rows = await db
+        .select({
+          id: orders.id,
+          number: orders.number,
+          customerName: customers.name,
+          customerEmail: customers.email,
+          totalCents: orders.totalCents,
+          status: orders.status,
+          paymentMethod: orders.paymentMethod,
+          createdAt: orders.createdAt,
+        })
+        .from(orders)
+        .leftJoin(customers, eq(orders.customerId, customers.id))
+        .orderBy(desc(orders.createdAt))
+        .limit(limit);
+
+      reply.send(rows);
+    },
+  );
+
+  // ---------------------------------------------------------- Ações pendentes (para bloco "Precisa de ação")
+  app.get(
+    "/api/admin/actions/pending",
+    { preHandler: [authMiddleware, adminGuard("dashboard", "read")] },
+    async (request, reply) => {
+      const [
+        awaitingReview,
+        paidToShip,
+        lowStockItems,
+        chargebacksDue,
+        openTickets,
+        productsNoImageNoStock,
+      ] = await Promise.all([
+        db.select({ value: count() }).from(orders).where(eq(orders.status, "aguardando_revisao_manual")),
+        db.select({ value: count() }).from(orders).where(eq(orders.status, "pagamento_aprovado")),
+        db.select({ value: count() }).from(inventory).where(sql`${inventory.physical} - ${inventory.reserved} <= ${inventory.minQuantity}`),
+        db.select({ value: count() }).from(chargebacks).where(
+          and(
+            eq(chargebacks.status, "notificado"),
+            lt(chargebacks.respondBy, new Date())
+          )
+        ),
+        db.select({ value: count() }).from(supportTickets).where(eq(supportTickets.status, "aberto")),
+        db.execute(sql`
+          SELECT COUNT(*)::int AS count FROM products p
+          WHERE p.published = true
+          AND (
+            NOT EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id)
+            OR NOT EXISTS (SELECT 1 FROM inventory i
+              JOIN product_variants pv ON pv.id = i.variant_id
+              WHERE pv.product_id = p.id AND (i.physical - i.reserved) > 0)
+          )
+        `),
+      ]);
+
+      const items = [
+        {
+          label: "Pedidos aguardando revisão manual",
+          href: "/orders?status=aguardando_revisao_manual",
+          count: Number(awaitingReview[0]?.value ?? 0),
+          icon: "AlertTriangle",
+          color: "#f59e0b",
+        },
+        {
+          label: "Pedidos pagos para separar/enviar",
+          href: "/orders?status=pagamento_aprovado",
+          count: Number(paidToShip[0]?.value ?? 0),
+          icon: "ShoppingCart",
+          color: "#3b82f6",
+        },
+        {
+          label: "Estoque abaixo do mínimo",
+          href: "/inventory?low=1",
+          count: Number(lowStockItems[0]?.value ?? 0),
+          icon: "Package",
+          color: "#dc2626",
+        },
+        {
+          label: "Chargebacks com prazo vencendo",
+          href: "/chargebacks?status=notificado",
+          count: Number(chargebacksDue[0]?.value ?? 0),
+          icon: "AlertCircle",
+          color: "#dc2626",
+        },
+        {
+          label: "Chamados sem resposta",
+          href: "/tickets?status=aberto",
+          count: Number(openTickets[0]?.value ?? 0),
+          icon: "AlertTriangle",
+          color: "#f59e0b",
+        },
+        {
+          label: "Produtos publicados sem foto ou sem estoque",
+          href: "/products?noimage=1&nostock=1",
+          count: Number(productsNoImageNoStock.rows[0]?.count ?? 0),
+          icon: "Package",
+          color: "#6b7280",
+        },
+      ].filter(i => i.count > 0);
+
+      reply.send(items);
     },
   );
 
@@ -1359,7 +1645,81 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     async (request, reply) => {
       const role = normalizeRole((request as any).user?.role);
       const showCost = canSeeCost(role);
-      const rows = await db.select().from(products).orderBy(desc(products.createdAt));
+      const q = request.query as Record<string, string | undefined>;
+
+      const page = Math.max(1, parseInt(q.page ?? "1", 10));
+      const limit = Math.min(100, Math.max(1, parseInt(q.limit ?? "20", 10)));
+      const search = (q.q ?? "").trim();
+      const status = (q.status ?? "").trim(); // publicado, rascunho, destaque, sem_foto, estoque_baixo, condicao_usado, condicao_seminovo
+      const category = (q.category ?? "").trim();
+      const brand = (q.brand ?? "").trim();
+      const condicao = (q.condicao ?? "").trim();
+
+      // Build where conditions as array
+      const whereConditions: any[] = [];
+
+      if (search) {
+        whereConditions.push(
+          sql`(${products.name} ILIKE ${`%${search}%`} OR ${products.slug} ILIKE ${`%${search}%`} OR ${productVariants.sku} ILIKE ${`%${search}%`})`
+        );
+      }
+
+      if (category) {
+        whereConditions.push(eq(products.categoryId, category));
+      }
+
+      if (brand) {
+        whereConditions.push(eq(products.brandId, brand));
+      }
+
+      if (condicao) {
+        whereConditions.push(eq(products.condicao, condicao));
+      }
+
+      if (status === "publicado") {
+        whereConditions.push(eq(products.published, true));
+      } else if (status === "rascunho") {
+        whereConditions.push(eq(products.published, false));
+      } else if (status === "destaque") {
+        whereConditions.push(eq(products.featured, true));
+      } else if (status === "condicao_usado") {
+        whereConditions.push(eq(products.condicao, "usado"));
+      } else if (status === "condicao_seminovo") {
+        whereConditions.push(eq(products.condicao, "seminovo"));
+      } else if (status === "sem_foto") {
+        whereConditions.push(
+          sql`NOT EXISTS (SELECT 1 FROM ${productImages} WHERE ${productImages.productId} = ${products.id})`
+        );
+      } else if (status === "estoque_baixo") {
+        whereConditions.push(
+          sql`EXISTS (
+            SELECT 1 FROM ${productVariants} pv
+            JOIN ${inventory} i ON i.variant_id = pv.id
+            WHERE pv.product_id = ${products.id}
+            AND (i.physical - i.reserved) <= i.min_quantity
+          )`
+        );
+      }
+
+      // Build base query with conditions
+      const baseQuery = db.select().from(products);
+      const finalQuery = whereConditions.length > 0
+        ? baseQuery.where(and(...whereConditions))
+        : baseQuery;
+
+      // Count total with same conditions
+      const countQuery = db.select({ count: count() }).from(products);
+      const finalCountQuery = whereConditions.length > 0
+        ? countQuery.where(and(...whereConditions))
+        : countQuery;
+
+      const [rows, totalRows] = await Promise.all([
+        finalQuery.orderBy(desc(products.createdAt)).limit(limit).offset((page - 1) * limit),
+        finalCountQuery,
+      ]);
+
+      const total = Number(totalRows[0]?.count ?? 0);
+
       const items = await Promise.all(
         rows.map(async (row) => {
           const variants = await db.select().from(productVariants).where(eq(productVariants.productId, row.id));
@@ -1368,7 +1728,8 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
           return p;
         }),
       );
-      reply.send({ items });
+
+      reply.send({ items, total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) });
     },
   );
 

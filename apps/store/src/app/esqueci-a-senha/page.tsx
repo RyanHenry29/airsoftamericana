@@ -1,8 +1,8 @@
 // language: TSX, file: apps/store/src/app/esqueci-a-senha/page.tsx, target: Next.js App Router
 import type { Metadata } from "next";
-import { AuthShell } from "../components/AuthShell";
 import { OG_IMAGE } from "../lib/seo";
 import { EsqueciForm } from "./EsqueciForm";
+import { AuthCentered } from "../components/AuthCentered";
 
 export const metadata: Metadata = {
   title: "Esqueci a senha",
@@ -21,8 +21,8 @@ export const metadata: Metadata = {
 
 export default function EsqueciSenhaPage() {
   return (
-    <AuthShell variant="entrar">
+    <AuthCentered>
       <EsqueciForm />
-    </AuthShell>
+    </AuthCentered>
   );
 }

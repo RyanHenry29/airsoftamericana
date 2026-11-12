@@ -772,6 +772,64 @@ await db.delete(schema.categories).where(eq(schema.categories.id, id));
     reply.send({ image: row });
   });
 
+  // ---------------------------------------------------------------- Product image upload (file → WebP → bytea)
+  app.post("/api/admin/products/upload", { bodyLimit: 4 * 1024 * 1024, preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
+    const body = request.body as { image: string };
+    if (!body?.image) {
+      reply.status(400);
+      reply.send({ error: { code: "invalid_input", message: "Campo 'image' (base64) é obrigatório" } });
+      return;
+    }
+    const b64 = body.image.startsWith("data:") ? body.image.slice(body.image.indexOf(",") + 1) : body.image;
+    if (!b64 || b64.length > Math.ceil((4 * 1024 * 1024 * 4) / 3) + 1024) {
+      reply.status(400);
+      reply.send({ error: { code: "image_too_large", message: "Imagem excede 4 MB." } });
+      return;
+    }
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(b64, "base64");
+    } catch {
+      reply.status(400);
+      reply.send({ error: { code: "image_invalid", message: "Imagem em base64 inválida." } });
+      return;
+    }
+    if (buf.length === 0 || buf.length > 4 * 1024 * 1024) {
+      reply.status(400);
+      reply.send({ error: { code: "image_too_large", message: "Imagem excede 4 MB." } });
+      return;
+    }
+    const mime = sniffImageMime(buf);
+    if (!mime) {
+      reply.status(400);
+      reply.send({ error: { code: "image_type", message: "Formato não suportado: envie JPEG, PNG ou WebP." } });
+      return;
+    }
+    const [row] = await db
+      .insert(schema.productImageUploads)
+      .values({ mime, bytes: buf, sizeBytes: buf.length })
+      .returning();
+    await audit(request, "product_image.uploaded", "product_image_uploads", row?.id);
+    const imageUrl = `/api/products/image/${row?.id}`;
+    reply.status(201);
+    reply.send({ uploadId: row?.id, mime: row?.mime, sizeBytes: row?.sizeBytes, url: imageUrl });
+  });
+
+  // Serve product image from bytea
+  app.get("/api/products/image/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const rows = await db.select().from(schema.productImageUploads).where(eq(schema.productImageUploads.id, id)).limit(1);
+    const row = rows[0];
+    if (!row) {
+      reply.status(404);
+      reply.send({ error: { code: "not_found", message: "Imagem não encontrada" } });
+      return;
+    }
+    reply.header("cache-control", "public, max-age=31536000, immutable");
+    reply.type(row.mime);
+    reply.send(row.bytes);
+  });
+
   app.delete("/api/admin/products/:id/images/:imageId", { preHandler: [A, adminGuard("products","update")] }, async (request, reply) => {
     const { id, imageId } = request.params as { id: string; imageId: string };
     await db.delete(schema.productImages).where(eq(schema.productImages.id, imageId));

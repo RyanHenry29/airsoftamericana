@@ -361,6 +361,19 @@ export async function migrate(db: Db) {
   await db.execute(sql`ALTER TABLE "product_images" ADD COLUMN IF NOT EXISTS "kind" varchar(20) NOT NULL DEFAULT 'image';`);
 
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "product_image_uploads" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "mime" varchar(64) NOT NULL,
+      "bytes" bytea NOT NULL,
+      "size_bytes" integer NOT NULL,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "product_image_uploads_created_idx" ON "product_image_uploads" ("created_at");
+  `);
+
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "product_specs" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,

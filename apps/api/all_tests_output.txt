@@ -1,0 +1,71 @@
+
+ RUN  v5.1.0 C:/Users/Henryxin7/Downloads/airsoftamericana/apps/api
+
+ ❯ src/routes/catalog-import.test.js (12 tests | 11 failed) 3843ms
+   ❯ FASE 3B — catalog import CSV (2 etapas, transacional) (12)
+     × CSV válido: preview não aplica; confirmação aplica (cria) 562ms
+     × cabeçalho ausente/inválido: preview reporta erro claro e não aplica 165ms
+     × coluna desconhecida é ignorada com aviso (não quebra) 152ms
+     × linha inválida / preço inválido / estoque inválido / condição inválida reportados por linha; confirmação não aplica parcial 150ms
+     × SKU duplicado no arquivo reportado; existente no banco => ação update (sem sobrescrita silenciosa) 155ms
+     × categoria inexistente / marca inexistente reportados 163ms
+     × permissão insuficiente negada (preview/apply); estoque autorizado 565ms
+     × rollback transacional: falha de aplicação não grava alterações parciais 158ms
+     × arquivo acima do limite / MIME inválido / extensão inválida rejeitados 185ms
+     × fórmula maliciosa (= + - @) neutralizada com aviso 145ms
+     × importação vazia rejeitada com erro claro 134ms
+ ❯ src/routes/catalog-import.test.ts (12 tests | 11 failed) 3728ms
+   ❯ FASE 3B — catalog import CSV (2 etapas, transacional) (12)
+     × CSV válido: preview não aplica; confirmação aplica (cria) 554ms
+     × cabeçalho ausente/inválido: preview reporta erro claro e não aplica 144ms
+     × coluna desconhecida é ignorada com aviso (não quebra) 143ms
+     × linha inválida / preço inválido / estoque inválido / condição inválida reportados por linha; confirmação não aplica parcial 142ms
+     × SKU duplicado no arquivo reportado; existente no banco => ação update (sem sobrescrita silenciosa) 147ms
+     × categoria inexistente / marca inexistente reportados 147ms
+     × permissão insuficiente negada (preview/apply); estoque autorizado 558ms
+     × rollback transacional: falha de aplicação não grava alterações parciais 139ms
+     × arquivo acima do limite / MIME inválido / extensão inválida rejeitados 158ms
+     × fórmula maliciosa (= + - @) neutralizada com aviso 154ms
+     × importação vazia rejeitada com erro claro 124ms
+ ❯ src/routes/admin-auth.test.ts (5 tests | 3 failed) 2712ms
+   ❯ FASE 2 — convites (API) (1)
+     × superadmin lista e revoga convites; não-superadmin é barrado 733ms
+   ❯ FASE 2 — sessões (API) (1)
+     × revoga todas as outras sessões com confirmação 187ms
+   ❯ FASE 2 — passkeys CRUD (API) (1)
+     × lista, renomeia e remove passkey própria (com sessão MFA recente) 184ms
+ ❯ src/services/checkout.test.js (9 tests | 5 failed) 2497ms
+   ❯ checkout service (5)
+     × cria pedido, reserva estoque e gera pagamento PIX pendente 251ms
+     × aplica desconto PIX de 5% via gateway config 89ms
+     × antifraude alto bloqueia pagamento com status recusado 92ms
+     × cupom invalido lança 400 62ms
+   ❯ concorrencia de estoque (1)
+     × 20 compras simultaneas do ultimo item: 1 vende, 19 rejeitam, estoque nunca negativo 647ms
+ ❯ src/routes/admin-auth.test.js (5 tests | 3 failed) 2725ms
+   ❯ FASE 2 — convites (API) (1)
+     × superadmin lista e revoga convites; não-superadmin é barrado 753ms
+   ❯ FASE 2 — sessões (API) (1)
+     × revoga todas as outras sessões com confirmação 178ms
+   ❯ FASE 2 — passkeys CRUD (API) (1)
+     × lista, renomeia e remove passkey própria (com sessão MFA recente) 173ms
+ ❯ src/services/checkout.test.ts (9 tests | 5 failed) 2611ms
+   ❯ checkout service (5)
+     × cria pedido, reserva estoque e gera pagamento PIX pendente 286ms
+     × aplica desconto PIX de 5% via gateway config 87ms
+     × antifraude alto bloqueia pagamento com status recusado 83ms
+     × cupom invalido lança 400 77ms
+   ❯ concorrencia de estoque (1)
+     × 20 compras simultaneas do ultimo item: 1 vende, 19 rejeitam, estoque nunca negativo 637ms
+ ❯ src/services/orders.test.js (4 tests | 1 failed) 1440ms
+   ❯ getOrderDetailForCustomer (4)
+     × item cujo produto saiu do catálogo fica com slug null e variantes vazias 46ms
+ ❯ src/services/orders.test.ts (4 tests | 1 failed) 1337ms
+   ❯ getOrderDetailForCustomer (4)
+     × item cujo produto saiu do catálogo fica com slug null e variantes vazias 60ms
+
+ Test Files  8 failed | 46 passed (54)
+      Tests  40 failed | 276 passed (316)
+   Start at  23:50:43
+   Duration  204.43s (tests 60%, import 39%, setup 1%)
+

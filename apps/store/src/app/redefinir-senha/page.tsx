@@ -1,9 +1,9 @@
 // language: TSX, file: apps/store/src/app/redefinir-senha/page.tsx, target: Next.js App Router
 // searchParams é Promise nesta versão do Next — a página é async e lê com await.
 import type { Metadata } from "next";
-import { AuthShell } from "../components/AuthShell";
 import { OG_IMAGE } from "../lib/seo";
 import { RedefinirForm } from "./RedefinirForm";
+import { AuthCentered } from "../components/AuthCentered";
 
 export const metadata: Metadata = {
   title: "Criar senha nova",
@@ -30,8 +30,8 @@ export default async function RedefinirSenhaPage({
   const token = typeof raw === "string" ? raw : "";
 
   return (
-    <AuthShell variant="entrar">
+    <AuthCentered>
       <RedefinirForm token={token} />
-    </AuthShell>
+    </AuthCentered>
   );
 }

@@ -21,7 +21,7 @@ export default function RootLayout({
     <html lang="pt-br">
       <body className="bg-[#000] text-white font-sans antialiased">
         <div className="admin-shell">
-          <aside className="admin-side">
+          <aside className="admin-side" id="admin-side">
             <Link href="/dashboard" className="flex items-center gap-2.5">
               <Image
                 src="/logo.png"
@@ -34,14 +34,31 @@ export default function RootLayout({
                 AIRSOFT <span className="text-[#8bcf16]">AMERICANA</span>
               </span>
             </Link>
-            <p className="admin-side-sub">Painel de uso interno</p>
             <AdminNav />
-            <p className="admin-side-foot">
-              Acesso apenas por URL direta. Sem botão na loja pública.
-            </p>
           </aside>
           <div className="admin-main">{children}</div>
         </div>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                const toggle = document.querySelector('.admin-menu-toggle');
+                const side = document.getElementById('admin-side');
+                const overlay = document.getElementById('admin-overlay');
+                if (toggle && side && overlay) {
+                  toggle.addEventListener('click', function() {
+                    side.classList.toggle('is-open');
+                    overlay.classList.toggle('is-open');
+                  });
+                  overlay.addEventListener('click', function() {
+                    side.classList.remove('is-open');
+                    overlay.classList.remove('is-open');
+                  });
+                }
+              })();
+            `,
+          }}
+        />
       </body>
     </html>
   );

@@ -1,5 +1,11 @@
 {
   "buildCommand": "next build",
   "outputDirectory": ".next",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://airsoftamericana-api.vercel.app/api/:path*"
+    }
+  ]
 }

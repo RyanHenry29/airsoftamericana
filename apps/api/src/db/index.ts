@@ -60,6 +60,7 @@ function isNodeProcess(pid: number): boolean {
 
 /**
  * Trava exclusiva por diretório do PGlite.
+ * Versão melhorada: usa lock file com PID + timestamp, cleanup mais robusto.
  */
 function acquirePgliteLock(dir: string): () => void {
   const lockPath = path.join(dir, LOCK_FILE);
@@ -67,12 +68,14 @@ function acquirePgliteLock(dir: string): () => void {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       const fd = fs.openSync(lockPath, "wx");
-      fs.writeSync(fd, String(process.pid));
+      const lockData = JSON.stringify({ pid: process.pid, startedAt: Date.now() });
+      fs.writeSync(fd, lockData);
       fs.closeSync(fd);
       return () => {
         try {
           const cur = fs.readFileSync(lockPath, "utf8").trim();
-          if (cur === String(process.pid)) fs.rmSync(lockPath, { force: true });
+          const data = JSON.parse(cur);
+          if (data.pid === process.pid) fs.rmSync(lockPath, { force: true });
         } catch {
           /* lock já limpo */
         }
@@ -82,7 +85,9 @@ function acquirePgliteLock(dir: string): () => void {
 
       let holder = NaN;
       try {
-        holder = Number(fs.readFileSync(lockPath, "utf8").trim());
+        const cur = fs.readFileSync(lockPath, "utf8").trim();
+        const data = JSON.parse(cur);
+        holder = data.pid;
       } catch {
         holder = NaN;
       }
@@ -100,6 +105,7 @@ function acquirePgliteLock(dir: string): () => void {
         );
       }
 
+      // Lock órfão ou stale — remove e tenta novamente
       try {
         fs.rmSync(lockPath, { force: true });
       } catch {
@@ -153,11 +159,56 @@ function poolSsl(connectionString: string): { url: string; ssl?: boolean | tls.C
   return { url: url.toString() };
 }
 
+/**
+ * Determina o diretório do banco baseado no ambiente.
+ * Garante isolamento total entre dev, test e produção.
+ */
+function getPgliteDir(): string {
+  const env = process.env.NODE_ENV ?? "development";
+  const configured = process.env.PGLITE_DIR;
+
+  if (configured) {
+    return path.isAbsolute(configured) ? configured : path.resolve(PACKAGE_ROOT, configured);
+  }
+
+  // Diretórios isolados por ambiente
+  const envDirs: Record<string, string> = {
+    development: path.join(PACKAGE_ROOT, "data-dev"),
+    test: path.join(PACKAGE_ROOT, "data-test"),
+    production: path.join(PACKAGE_ROOT, "data-prod"),
+  };
+
+  return envDirs[env] ?? path.join(PACKAGE_ROOT, "data-dev");
+}
+
+/**
+ * Limpa locks órfãos na inicialização para evitar conflitos com processos
+ * anteriores que não liberaram o lock corretamente.
+ */
+function cleanupStaleLocks(dir: string): void {
+  const lockPath = path.join(dir, LOCK_FILE);
+  try {
+    const content = fs.readFileSync(lockPath, "utf8").trim();
+    const pid = Number(content);
+    if (Number.isFinite(pid) && pid > 0) {
+      const isAlive = isProcessAlive(pid);
+      const isNode = isNodeProcess(pid);
+      if (!isAlive || !isNode) {
+        fs.rmSync(lockPath, { force: true });
+      }
+    }
+  } catch {
+    // Lock não existe ou erro de leitura - ignora
+  }
+}
+
 export async function getDb(): Promise<Db> {
   if (db) return db;
 
   // Em teste, logger no-op ativa contagem só quando benchStart() é chamado (benchmark/N+1).
   const bench = process.env.NODE_ENV === "test" ? { logger: benchLogger } : {};
+
+  // Se DATABASE_URL está definido, usa PostgreSQL (produção ou dev com Postgres)
   if (config.DATABASE_URL) {
     const { url, ssl } = poolSsl(config.DATABASE_URL);
     // Pooler de transação (porta 6543) não suporta prepared statements; manter
@@ -177,12 +228,19 @@ export async function getDb(): Promise<Db> {
     });
     db = drizzlePg(poolInstance, { schema, ...bench });
   } else {
-    const configured = process.env.PGLITE_DIR;
-    const dir = configured
-      ? path.isAbsolute(configured)
-        ? configured
-        : path.resolve(PACKAGE_ROOT, configured)
-      : path.join(PACKAGE_ROOT, "data");
+    // Sem DATABASE_URL: só permitido em desenvolvimento/teste.
+    // Em produção, falha explícita — PGlite NÃO é adequado para produção.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "DATABASE_URL é obrigatória em produção. " +
+        "Configure a variável de ambiente DATABASE_URL com a string de conexão PostgreSQL. " +
+        "PGlite não é suportado em ambiente de produção."
+      );
+    }
+
+    // Desenvolvimento/teste: usa PGlite com diretório isolado por ambiente
+    const dir = getPgliteDir();
+    cleanupStaleLocks(dir);
     fs.mkdirSync(dir, { recursive: true });
     releaseLock = acquirePgliteLock(dir);
     pgliteInstance = new PGlite(path.join(dir, "airsoft.db"));

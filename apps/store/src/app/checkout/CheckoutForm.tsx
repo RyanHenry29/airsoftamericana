@@ -4,9 +4,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, Truck, Zap } from "lucide-react";
-import { fetchViaCep, formatCep, isCompleteCep, mergeCepLookup } from "../lib/viacep";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { ShieldCheck, Truck, Zap, MapPin, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { fetchViaCep, formatCep, mergeCepLookup } from "../lib/viacep";
 
 const API_URL = "";
 
@@ -19,6 +19,56 @@ const OPTIONS: { id: Pay; name: string; desc: string; tag: string }[] = [
 ];
 
 type CartItem = { variantId: string; quantity: number; ageRestricted?: boolean };
+
+/* ───────── hook de CEP com debounce + cache ───────── */
+function useCepLookup() {
+  const [status, setStatus] = useState<"idle" | "busy" | "ok" | "miss">("idle");
+  const [foundAddress, setFoundAddress] = useState<{ street: string; neighborhood: string; city: string; state: string } | null>(null);
+  const doneRef = useRef<string>("");        // CEPs já consultados com sucesso
+  const missRef = useRef<string>("");        // CEPs que não existem na base
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const lookup = useCallback(async (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length !== 8) { setStatus("idle"); setFoundAddress(null); return; }
+    if (doneRef.current === digits) { setStatus("ok"); return; }
+    if (missRef.current === digits) { setStatus("miss"); setFoundAddress(null); return; }
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setStatus("busy");
+
+    timerRef.current = setTimeout(async () => {
+      try {
+        const found = await fetchViaCep(digits);
+        if (!found) {
+          missRef.current = digits;
+          setFoundAddress(null);
+          setStatus("miss");
+          return;
+        }
+        doneRef.current = digits;
+        setFoundAddress({ street: found.street, neighborhood: found.neighborhood, city: found.city, state: found.state });
+        setStatus("ok");
+      } catch {
+        setFoundAddress(null);
+        setStatus("miss");
+      }
+    }, 180); // debounce leve
+  }, []);
+
+  const apply = useCallback((form: { zip: string; street: string; neighborhood: string; city: string; state: string; number: string; complement: string }) => {
+    if (!foundAddress) return form;
+    return mergeCepLookup(form, { zip: "", street: foundAddress.street, neighborhood: foundAddress.neighborhood, city: foundAddress.city, state: foundAddress.state } as any);
+  }, [foundAddress]);
+
+  const reset = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setStatus("idle");
+    setFoundAddress(null);
+  }, []);
+
+  return { status, foundAddress, lookup };
+}
 
 export function CheckoutForm() {
   const router = useRouter();
@@ -43,9 +93,8 @@ export function CheckoutForm() {
     terms: false,
     ageConfirmed: false,
   });
-  // Consulta ViaCEP no checkout: rua/bairro/cidade/uf vêm prontos, número é do cliente.
-  const [zipStatus, setZipStatus] = useState<"idle" | "busy" | "ok" | "miss">("idle");
-  const zipDone = useRef("");
+
+  const { status, foundAddress, lookup } = useCepLookup();
 
   useEffect(() => {
     async function load() {
@@ -104,23 +153,21 @@ export function CheckoutForm() {
   function onZipChange(e: React.ChangeEvent<HTMLInputElement>) {
     const masked = formatCep(e.target.value);
     setData((d) => ({ ...d, zip: masked }));
-    if (isCompleteCep(masked)) void lookupZip(masked);
+    lookup(masked);
   }
 
-  /** Mesma regra da conta: falha ou CEP inexistente vira null e o cliente digita. */
-  async function lookupZip(value: string) {
-    const digits = value.replace(/\D/g, "");
-    if (digits.length !== 8 || zipDone.current === digits) return;
-    zipDone.current = digits;
-    setZipStatus("busy");
-    const found = await fetchViaCep(digits);
-    if (!found) {
-      setZipStatus("miss");
-      return;
+  // Aplica o endereço encontrado nos campos vazios
+  useEffect(() => {
+    if (status === "ok" && foundAddress) {
+      setData((d) => ({
+        ...d,
+        street: d.street || foundAddress.street,
+        neighborhood: d.neighborhood || foundAddress.neighborhood,
+        city: d.city || foundAddress.city,
+        state: d.state || foundAddress.state,
+      }));
     }
-    setData((d) => mergeCepLookup(d, found));
-    setZipStatus("ok");
-  }
+  }, [status, foundAddress]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -194,28 +241,56 @@ export function CheckoutForm() {
             </div>
             <div className="checkout-field">
               <label htmlFor="zip" className="checkout-label">CEP</label>
-              <input
-                id="zip"
-                className="checkout-input"
-                inputMode="numeric"
-                placeholder="00000-000"
-                autoComplete="postal-code"
-                value={data.zip}
-                onChange={onZipChange}
-                onBlur={() => void lookupZip(data.zip)}
-                maxLength={9}
-                required
-              />
-              {zipStatus !== "idle" && (
-                <span className="checkout-cep-hint">
-                  {zipStatus === "busy"
-                    ? "Buscando CEP na ViaCEP…"
-                    : zipStatus === "ok"
-                      ? "Logradouro preenchido — confira e digite o número."
-                      : "CEP fora da base — preencha os campos na mão."}
-                </span>
-              )}
+              <div className="relative">
+                <input
+                  id="zip"
+                  className="checkout-input pr-12"
+                  inputMode="numeric"
+                  placeholder="00000-000"
+                  autoComplete="postal-code"
+                  value={data.zip}
+                  onChange={onZipChange}
+                  maxLength={9}
+                  required
+                />
+                {status === "busy" && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-primary" aria-hidden="true">
+                    <Loader2 size={18} className="animate-spin" />
+                  </span>
+                )}
+                {status === "ok" && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--primary-dark)]" aria-hidden="true">
+                    <CheckCircle2 size={18} strokeWidth={3} />
+                  </span>
+                )}
+                {status === "miss" && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#f87171]" aria-hidden="true">
+                    <AlertCircle size={18} strokeWidth={2.2} />
+                  </span>
+                )}
+              </div>
+              <p className="mt-1.5 text-sm" style={{ color: status === "busy" ? "var(--primary)" : status === "ok" ? "var(--primary-dark)" : status === "miss" ? "#f87171" : "var(--muted-foreground)" }}>
+                {status === "busy" && "Buscando CEP na ViaCEP…"}
+                {status === "ok" && "Endereço encontrado — confira e complete o número."}
+                {status === "miss" && "CEP não encontrado na base — preencha os campos manualmente."}
+              </p>
             </div>
+
+            {/* Card de endereço preenchido automaticamente */}
+            {status === "ok" && foundAddress && (
+              <div className="checkout-field checkout-field--full checkout-address-card" style={{ gridColumn: "1 / -1" }}>
+                <div className="flex items-start gap-3 p-4 rounded-[var(--radius)] border border-border bg-base">
+                  <MapPin size={20} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground">{foundAddress.street}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {foundAddress.neighborhood}, {foundAddress.city} - {foundAddress.state}
+                    </p>
+                    <p className="mt-1.5 text-xs text-muted-foreground/70">Digite o <strong>número</strong> e, se houver, o <strong>complemento</strong>.</p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="checkout-field checkout-field--full">
               <label htmlFor="street" className="checkout-label">Rua</label>
               <input id="street" className="checkout-input" autoComplete="address-line1" value={data.street} onChange={set("street")} required />
