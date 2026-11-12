@@ -105,25 +105,37 @@ export async function transitionOrder(
     actorLabel?: string;
     ip?: string;
   },
-): Promise<void> {
-  const rows = await db
-    .select()
-    .from(schema.orders)
-    .where(eq(schema.orders.id, input.orderId));
-  const order = rows[0];
-  if (!order) throw notFound("Pedido não encontrado");
-
-  const from = order.status as OrderStatus;
-  if (from === input.to) return;
-  if (!canTransition(from, input.to as OrderStatus)) {
-    throw conflict(
-      "invalid_transition",
-      `Transição inválida: ${from} → ${input.to}`,
-      { from, to: input.to },
-    );
-  }
-
+): Promise<boolean> {
+  // AUD-15: a leitura do status e a validação da transição acontecem DENTRO
+  // da transação, com SELECT FOR UPDATE — dois concorrentes (webhook duplo,
+  // admin + webhook, checkout + webhook) ficam serializados no lock da linha
+  // e o segundo reavalia `canTransition` contra o estado já atualizado.
+  // Sem o lock, leitura fora da transição permitia corrida clássica
+  // check-then-act: ambos liam `aguardando_pagamento` e ambos transicionavam.
+  // Retorna true = transição aplicada; false = pedido já estava no status alvo.
+  let transitioned = false;
+  let fromForAudit: OrderStatus | undefined;
   await db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, input.orderId))
+      .for("update");
+    const order = rows[0];
+    if (!order) throw notFound("Pedido não encontrado");
+
+    const from = order.status as OrderStatus;
+    if (from === input.to) return;
+    if (!canTransition(from, input.to as OrderStatus)) {
+      throw conflict(
+        "invalid_transition",
+        `Transição inválida: ${from} → ${input.to}`,
+        { from, to: input.to },
+      );
+    }
+    transitioned = true;
+    fromForAudit = from;
+
     await tx
       .update(schema.orders)
       .set({ status: input.to, updatedAt: new Date() })
@@ -159,16 +171,20 @@ export async function transitionOrder(
     }
   });
 
+  if (!fromForAudit) return false; // idempotente: pedido já estava no status alvo
+
   await audit(db, {
     actorUserId: input.actorUserId,
     actorLabel: input.actorLabel,
     action: "order.transition",
     entity: "order",
     entityId: input.orderId,
-    before: { status: from },
+    before: { status: fromForAudit },
     after: { status: input.to, reason: input.reason },
     ip: input.ip,
   });
+
+  return transitioned;
 }
 
 export interface VolumeUsage {

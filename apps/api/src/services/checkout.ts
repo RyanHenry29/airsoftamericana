@@ -1,3 +1,4 @@
+// language: TS, file: apps/api/src/services/checkout.ts, target: Fastify 5 + drizzle
 import { eq, sql, and, gte, lt, count } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
@@ -8,8 +9,9 @@ import { assessRisk, saveAssessment } from "./fraud.js";
 import { validateCoupon, incrementCouponUsage } from "./coupons.js";
 import { calculateShipping, getCheapestOption, type ShippingOption } from "./shipping.js";
 import { getFreeShippingFromCents } from "./settings.js";
-import { resolveActiveAdapter, loadGatewayConfig } from "./payments/types.js";
+import { resolveActiveAdapter, loadGatewayConfig, isSandboxProvider } from "./payments/types.js";
 import { initAdapters } from "./payments/index.js";
+import { applyPendingEventsForPayment } from "./payments/webhook-events.js";
 import { sha256, CredentialDecryptionError } from "../lib/crypto.js";
 import { audit } from "../lib/audit.js";
 import type { CheckoutInput, OrderStatus, PaymentMethod, PaymentStatus } from "@airsoft/shared";
@@ -30,38 +32,102 @@ export interface CheckoutResult {
 
 const checkoutCache = new Map<string, { orderId: string; expiresAt: number }>();
 
+/** Reproduz a resposta de um checkout já processado (idempotência). */
+async function replayCheckout(
+  db: Db,
+  orderId: string,
+  input: CheckoutInput,
+): Promise<CheckoutResult> {
+  const rows = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+  const order = rows[0];
+  if (!order) throw conflict("checkout_replay_missing", "Pedido de idempotência não encontrado");
+  const payRows = await db.select().from(schema.payments).where(eq(schema.payments.orderId, order.id));
+  const payment = payRows[0];
+  return {
+    orderId: order.id,
+    orderNumber: order.number,
+    status: order.status as OrderStatus,
+    payment: payment
+      ? {
+          method: payment.method as PaymentMethod,
+          provider: payment.provider,
+          status: (payment.status === "aprovado"
+            ? "aprovado"
+            : payment.status === "recusado"
+              ? "recusado"
+              : payment.status === "autorizado"
+                ? "autorizado"
+                : "pendente") as PaymentStatus,
+          payload: payment.payload ?? undefined,
+          expiresAt: payment.expiresAt ?? undefined,
+          providerTransactionId: payment.providerTransactionId ?? "",
+        }
+      : {
+          method: input.paymentMethod as PaymentMethod,
+          provider: "",
+          status: "pendente" as PaymentStatus,
+          providerTransactionId: "",
+        },
+  };
+}
+
 export async function handleCheckout(
   db: Db,
   input: CheckoutInput & { deviceFingerprint?: string; cardToken?: string; installments?: number },
-  context: { customerId: string; ip?: string; correlationId?: string },
+  context: {
+    customerId: string;
+    ip?: string;
+    correlationId?: string;
+    /** Header Idempotency-Key da requisição (opcional; o fingerprint cobre retry). */
+    idempotencyKey?: string;
+  },
 ): Promise<CheckoutResult> {
   const fingerprint = sha256(
     JSON.stringify({ c: context.customerId, i: input.items, t: input.paymentMethod, a: input.address }) +
       Math.floor(Date.now() / (5 * 60 * 1000)),
   );
+
+  // ---- Idempotência do POST de checkout (AUD-15 / regra dura nº 4):
+  // chave = header Idempotency-Key ou fingerprint (cliente+itens+método+
+  // endereço, janela de 5 min). Persistida em idempotency_keys com unique —
+  // dois checkouts idênticos concorrentes resolvem para UM pedido, mesmo em
+  // múltiplas instâncias (o cache em memória continua como fast-path só).
+  const idemKey = `checkout:${context.customerId}:${context.idempotencyKey ?? fingerprint}`;
+  const [existingIdem] = await db
+    .select()
+    .from(schema.idempotencyKeys)
+    .where(eq(schema.idempotencyKeys.key, idemKey))
+    .limit(1);
+  if (existingIdem?.result && typeof (existingIdem.result as { orderId?: string })?.orderId === "string") {
+    return replayCheckout(db, (existingIdem.result as { orderId: string }).orderId, input);
+  }
   const cached = checkoutCache.get(fingerprint);
   if (cached && cached.expiresAt > Date.now()) {
-    const rows = await db.select().from(schema.orders).where(eq(schema.orders.id, cached.orderId));
-    const order = rows[0];
-    if (order) {
-      const payRows = await db.select().from(schema.payments).where(eq(schema.payments.orderId, order.id));
-      const payment = payRows[0];
-      return {
-        orderId: order.id,
-        orderNumber: order.number,
-        status: order.status as OrderStatus,
-        payment: payment
-          ? {
-              method: payment.method as PaymentMethod,
-              provider: payment.provider,
-              status: (payment.status === "aprovado" ? "aprovado" : payment.status === "recusado" ? "recusado" : "pendente") as PaymentStatus,
-              payload: payment.payload ?? undefined,
-              expiresAt: payment.expiresAt ?? undefined,
-              providerTransactionId: payment.providerTransactionId ?? "",
-            }
-          : { method: input.paymentMethod as PaymentMethod, provider: "sandbox", status: "pendente" as PaymentStatus, providerTransactionId: "" },
-      };
+    return replayCheckout(db, cached.orderId, input);
+  }
+
+  // ---- Gateway ANTES de qualquer escrita (AUD-01): sem gateway válido o
+  // checkout responde 503 e NÃO cria pedido, NÃO reserva estoque.
+  await initAdapters(db);
+  let adapter;
+  try {
+    adapter = await resolveActiveAdapter(db);
+  } catch (error) {
+    // Credencial ilegível é indisponibilidade, não falta de configuração.
+    // O detalhe técnico fica na auditoria; o cliente vê a orientação.
+    if (error instanceof CredentialDecryptionError) {
+      throw serviceUnavailable(
+        "gateway_unavailable",
+        "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
+      );
     }
+    throw error;
+  }
+  if (!adapter || (process.env.NODE_ENV === "production" && isSandboxProvider(adapter.provider))) {
+    throw serviceUnavailable(
+      "no_payment_gateway_enabled",
+      "Nenhum gateway de pagamento está habilitado — o checkout está temporariamente indisponível.",
+    );
   }
 
   const variantIds = input.items.map((i) => i.variantId);
@@ -133,14 +199,11 @@ export async function handleCheckout(
 
   let amountCents = subtotalCents - discountCents + shippingCents;
   if (input.paymentMethod === "pix") {
-    const adapter = await resolveActiveAdapter(db);
-    if (adapter) {
-      const cfg = await loadGatewayConfig(db, adapter.provider);
-      const pct = cfg?.pixDiscountPercent ?? 0;
-      if (pct > 0) {
-        const pixDiscount = Math.floor((subtotalCents * pct) / 100);
-        amountCents = subtotalCents - discountCents - pixDiscount + shippingCents;
-      }
+    const cfg = await loadGatewayConfig(db, adapter.provider);
+    const pct = cfg?.pixDiscountPercent ?? 0;
+    if (pct > 0) {
+      const pixDiscount = Math.floor((subtotalCents * pct) / 100);
+      amountCents = subtotalCents - discountCents - pixDiscount + shippingCents;
     }
   }
   if (amountCents < 0) amountCents = 0;
@@ -180,62 +243,111 @@ export async function handleCheckout(
     }
   }
 
-  await db.transaction(async (tx) => {
-    await tx.insert(schema.orders).values({
-      id: orderId,
-      number: orderNumber,
-      customerId: context.customerId,
-      status: "aguardando_pagamento",
-      subtotalCents,
-      discountCents,
-      shippingCents,
-      totalCents: amountCents,
-      couponCode: input.couponCode ?? null,
-      paymentMethod: input.paymentMethod,
-      addressJson: input.address as never,
-      customerNotes: input.customerNotes ?? null,
-      termsVersion: "1.0",
-      termsAcceptedAt: new Date(),
-      termsIp: context.ip ?? null,
-      volumeDay: day,
-      riskLevel: "baixo",
-      riskScore: 0,
-      riskReasons: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+  // ---- Pedido + itens + reserva + chave de idempotência em UMA transação.
+  // A chave com unique serializa checkouts idênticos concorrentes: quem
+  // perder a corrida lê o orderId vencedor e reproduz a resposta.
+  class CheckoutReplay extends Error {
+    constructor() {
+      super("checkout_replay");
+    }
+  }
+  try {
+    await db.transaction(async (tx) => {
+      try {
+        // result gravado na INSERÇÃO: perdedores da corrida (unique violation)
+        // leem o orderId imediatamente — sem janela de null.
+        await tx.insert(schema.idempotencyKeys).values({
+          id: crypto.randomUUID(),
+          key: idemKey,
+          action: "checkout",
+          payloadHash: fingerprint,
+          result: { orderId },
+        });
+      } catch (e) {
+        // drizzle embrulha: "Failed query: ..." com a causa original em .cause
+        const chain: string[] = [];
+        let cur: unknown = e;
+        while (cur instanceof Error) {
+          chain.push(cur.message);
+          cur = (cur as { cause?: unknown }).cause;
+        }
+        if (chain.some((m) => /unique|duplicate/i.test(m))) throw new CheckoutReplay();
+        throw e;
+      }
 
-    for (const snap of snapshots) {
-      await tx.insert(schema.orderItems).values({
+      await tx.insert(schema.orders).values({
+        id: orderId,
+        number: orderNumber,
+        customerId: context.customerId,
+        // AUD-15: o pedido NASCE aguardando_pagamento e SAI dele apenas pelo
+        // resultado financeiro do provedor (ou decisão humana). A criação da
+        // cobrança não é resultado.
+        status: "aguardando_pagamento",
+        subtotalCents,
+        discountCents,
+        shippingCents,
+        totalCents: amountCents,
+        couponCode: input.couponCode ?? null,
+        paymentMethod: input.paymentMethod,
+        addressJson: input.address as never,
+        customerNotes: input.customerNotes ?? null,
+        termsVersion: "1.0",
+        termsAcceptedAt: new Date(),
+        termsIp: context.ip ?? null,
+        volumeDay: day,
+        riskLevel: "baixo",
+        riskScore: 0,
+        riskReasons: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      for (const snap of snapshots) {
+        await tx.insert(schema.orderItems).values({
+          id: crypto.randomUUID(),
+          orderId,
+          variantId: snap.variantId,
+          sku: snap.sku,
+          name: snap.name,
+          quantity: snap.quantity,
+          unitPriceCents: snap.unitPriceCents,
+          totalCents: snap.unitPriceCents * snap.quantity,
+        });
+        await reserveStock(tx as unknown as Db, {
+          variantId: snap.variantId,
+          quantity: snap.quantity,
+          orderId,
+          reason: "Checkout iniciado",
+        });
+      }
+
+      await tx.insert(schema.orderStatusHistory).values({
         id: crypto.randomUUID(),
         orderId,
-        variantId: snap.variantId,
-        sku: snap.sku,
-        name: snap.name,
-        quantity: snap.quantity,
-        unitPriceCents: snap.unitPriceCents,
-        totalCents: snap.unitPriceCents * snap.quantity,
+        fromStatus: null,
+        toStatus: "aguardando_pagamento",
+        actorType: "system",
+        actorSystem: true,
+        createdAt: new Date(),
       });
-      await reserveStock(tx as unknown as Db, {
-        variantId: snap.variantId,
-        quantity: snap.quantity,
-        orderId,
-        reason: "Checkout iniciado",
-      });
-    }
 
-    await tx.insert(schema.orderStatusHistory).values({
-      id: crypto.randomUUID(),
-      orderId,
-      fromStatus: null,
-      toStatus: "aguardando_pagamento",
-      actorType: "system",
-      actorSystem: true,
-      createdAt: new Date(),
+      if (couponId) await incrementCouponUsage(tx as unknown as Db, couponId);
     });
-
-    if (couponId) await incrementCouponUsage(tx as unknown as Db, couponId);
-  });
+  } catch (e) {
+    if (e instanceof CheckoutReplay) {
+      // Vencedor já commitou chave (com orderId) + pedido — reproduz a resposta dele.
+      const [winner] = await db
+        .select()
+        .from(schema.idempotencyKeys)
+        .where(eq(schema.idempotencyKeys.key, idemKey))
+        .limit(1);
+      const winnerOrderId = (winner?.result as { orderId?: string } | null)?.orderId;
+      if (winnerOrderId) return replayCheckout(db, winnerOrderId, input);
+      // Chave existente sem orderId: forma antiga — trata como duplicata.
+      throw conflict("checkout_duplicate", "Checkout idêntico já em processamento");
+    }
+    throw e;
+  }
 
   const priorOrdersLast24h = (
     await db
@@ -292,12 +404,8 @@ export async function handleCheckout(
     deviceFingerprint: input.deviceFingerprint ?? null,
   });
 
-  await transitionOrder(db, {
-    orderId,
-    to: "pagamento_em_processamento",
-    actorLabel: "system",
-  });
-
+  // Risco reclassifica o pedido (nunca aprova): alto → antifraude;
+  // médio/revisão → revisão manual; baixo → permanece aguardando_pagamento.
   let finalStatus: OrderStatus = "aguardando_pagamento";
   if (risk.level === "alto") {
     finalStatus = "em_analise_antifraude";
@@ -305,39 +413,15 @@ export async function handleCheckout(
   } else if (risk.level === "medio" || requiresReview) {
     finalStatus = "aguardando_revisao_manual";
     await transitionOrder(db, { orderId, to: "aguardando_revisao_manual", reason: `Score ${risk.score}`, actorLabel: "antifraude" });
-  } else {
-    finalStatus = "pagamento_aprovado";
-    await transitionOrder(db, { orderId, to: "pagamento_aprovado", actorLabel: "system" });
   }
-
-  await initAdapters(db);
-  let adapter;
-  try {
-    adapter = await resolveActiveAdapter(db);
-  } catch (error) {
-    // Credencial ilegível é indisponibilidade, não falta de configuração.
-    // O detalhe técnico fica na auditoria; o cliente vê a orientação.
-    if (error instanceof CredentialDecryptionError) {
-      throw serviceUnavailable(
-        "gateway_unavailable",
-        "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
-      );
-    }
-    throw error;
-  }
-  if (!adapter) throw conflict("no_payment_gateway", "Nenhum gateway configurado");
 
   const gatewayConfig = await loadGatewayConfig(db, adapter.provider);
   const captureAfterReview = gatewayConfig?.captureAfterReview ?? false;
 
   let paymentResult: CheckoutResult["payment"];
+
   if (risk.level === "alto") {
-    paymentResult = {
-      method: input.paymentMethod,
-      provider: adapter.provider,
-      status: "recusado",
-      providerTransactionId: "",
-    };
+    // Alto risco: NEM COBRANÇA é criada no provedor até revisão humana.
     await db.insert(schema.payments).values({
       id: crypto.randomUUID(),
       orderId,
@@ -347,19 +431,57 @@ export async function handleCheckout(
       amountCents,
       createdAt: new Date(),
     });
-  } else {
-    const created = await adapter.createPayment({
-      orderId,
-      amountCents,
+    paymentResult = {
       method: input.paymentMethod,
-      customer: { name: customer.name, email: customer.email, cpf: customer.cpf, phone: customer.phone },
-      cardToken: input.cardToken,
-      installments: input.installments,
-    });
+      provider: adapter.provider,
+      status: "recusado",
+      providerTransactionId: "",
+    };
+  } else {
+    let created;
+    try {
+      created = await adapter.createPayment({
+        orderId,
+        amountCents,
+        method: input.paymentMethod,
+        customer: { name: customer.name, email: customer.email, cpf: customer.cpf, phone: customer.phone },
+        cardToken: input.cardToken,
+        installments: input.installments,
+      });
+    } catch (error) {
+      // Falha de comunicação com o provedor: o pedido não pode ficar preso
+      // aguardando com estoque reservado. Cancela (libera estoque) e 503.
+      await transitionOrder(db, {
+        orderId,
+        to: "cancelado",
+        reason: `Falha do gateway ${adapter.provider}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
+        actorLabel: "checkout",
+      });
+      finalStatus = "cancelado";
+      throw serviceUnavailable(
+        "gateway_unavailable",
+        "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
+      );
+    }
 
     let finalPaymentStatus: "pendente" | "autorizado" | "aprovado" | "recusado" = created.status;
     if (created.status === "autorizado" && !captureAfterReview && risk.level === "baixo") {
-      const captured = await adapter.capture(created.providerTransactionId, amountCents);
+      let captured;
+      try {
+        captured = await adapter.capture(created.providerTransactionId, amountCents);
+      } catch (error) {
+        await transitionOrder(db, {
+          orderId,
+          to: "cancelado",
+          reason: `Falha de captura no gateway ${adapter.provider}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
+          actorLabel: "checkout",
+        });
+        finalStatus = "cancelado";
+        throw serviceUnavailable(
+          "gateway_unavailable",
+          "Gateway indisponível no momento — tente novamente em instantes ou escolha outra forma de pagamento.",
+        );
+      }
       finalPaymentStatus = captured.status;
     }
 
@@ -374,8 +496,27 @@ export async function handleCheckout(
       providerTransactionId: created.providerTransactionId,
       payload: created.payload ?? null,
       expiresAt: created.expiresAt ?? null,
+      capturedAt: finalPaymentStatus === "aprovado" ? new Date() : null,
       createdAt: new Date(),
     });
+
+    // ---- Estado do pedido derivado EXCLUSIVAMENTE do resultado financeiro:
+    //   aprovado (cartão capturado)       → pagamento_aprovado
+    //   autorizado (captura após revisão) → pagamento_em_processamento
+    //   pendente (PIX/boleto criados)     → permanece aguardando_pagamento
+    //   recusado                          → cancelado (libera estoque)
+    const payRows = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+    const paymentRow = payRows[0]!;
+    if (finalPaymentStatus === "aprovado") {
+      await transitionOrder(db, { orderId, to: "pagamento_aprovado", actorLabel: "checkout" });
+      finalStatus = "pagamento_aprovado";
+    } else if (finalPaymentStatus === "autorizado") {
+      await transitionOrder(db, { orderId, to: "pagamento_em_processamento", actorLabel: "checkout" });
+      finalStatus = "pagamento_em_processamento";
+    } else if (finalPaymentStatus === "recusado") {
+      await transitionOrder(db, { orderId, to: "cancelado", reason: "Pagamento recusado", actorLabel: "checkout" });
+      finalStatus = "cancelado";
+    }
 
     paymentResult = {
       method: input.paymentMethod,
@@ -385,6 +526,31 @@ export async function handleCheckout(
       expiresAt: created.expiresAt,
       providerTransactionId: created.providerTransactionId,
     };
+
+    // ---- Corrida checkout×webhook: o webhook pode ter chegado ENTRE o
+    // createPayment no provedor e o INSERT do pagamento local. Eventos
+    // pendentes gravados sem paymentId são aplicados agora.
+    await applyPendingEventsForPayment(db, {
+      provider: adapter.provider,
+      payment: paymentRow,
+      adapterParseWebhook: (raw) => adapter.parseWebhook(raw),
+    });
+    const [reloaded] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    if (reloaded && reloaded.status !== finalStatus) {
+      // O webhook aplicou algo entre a transição e aqui — o resultado do
+      // checkout reflete o estado real.
+      finalStatus = reloaded.status as OrderStatus;
+      const reloadedPay = (await db.select().from(schema.payments).where(eq(schema.payments.id, paymentRow.id)))[0];
+      if (reloadedPay) {
+        paymentResult.status = (reloadedPay.status === "aprovado"
+          ? "aprovado"
+          : reloadedPay.status === "recusado"
+            ? "recusado"
+            : reloadedPay.status === "autorizado"
+              ? "autorizado"
+              : "pendente") as PaymentStatus;
+      }
+    }
   }
 
   checkoutCache.set(fingerprint, { orderId, expiresAt: Date.now() + 5 * 60 * 1000 });

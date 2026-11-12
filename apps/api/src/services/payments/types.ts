@@ -143,13 +143,36 @@ export function encryptCredentials(creds: Record<string, string>): string {
   return encryptSecret(JSON.stringify(creds));
 }
 
+/** Provider de teste — nunca utilizável em produção (AUD-01). */
+export const SANDBOX_PROVIDER = "sandbox";
+
+export function isSandboxProvider(provider: string): boolean {
+  return provider === SANDBOX_PROVIDER;
+}
+
+/** Produção real? Definida uma vez para os guardas de gateway. */
+export function isProductionApi(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
 export async function resolveActiveAdapter(db: Db): Promise<PaymentAdapter | undefined> {
   const rows = await db.select().from(schema.gatewayConfigs);
+  const prod = isProductionApi();
+
+  // Seleção: default habilitado → GATEWAY_ACTIVE → qualquer habilitado.
+  // Sandbox NUNCA entra na seleção em produção (AUD-01): nem por
+  // configuração, nem por env, nem como fallback silencioso.
+  const candidates = rows.filter(
+    (r) => r.enabled && !(prod && isSandboxProvider(r.provider)),
+  );
   const def =
-    rows.find((r) => r.isDefault && r.enabled) ??
-    rows.find((r) => r.enabled && r.provider === process.env.GATEWAY_ACTIVE) ??
-    rows.find((r) => r.enabled);
-  if (!def) return registry.get("sandbox");
+    candidates.find((r) => r.isDefault) ??
+    candidates.find((r) => r.provider === process.env.GATEWAY_ACTIVE) ??
+    candidates[0];
+
+  // Sem gateway válido: undefined — o checkout responde 503 rotulado.
+  // NUNCA fallback para sandbox.
+  if (!def) return undefined;
 
   // Credencial ilegível no provedor escolhido = gateway indisponível.
   // "Não configurado" (sem credencial nenhuma) é outro caso: o adapter
@@ -161,5 +184,11 @@ export async function resolveActiveAdapter(db: Db): Promise<PaymentAdapter | und
     );
   }
 
-  return registry.get(def.provider);
+  const adapter = registry.get(def.provider);
+  if (!adapter) return undefined;
+
+  // Barra final: um adapter sandbox registrado (dev/teste) não pode vazar
+  // para produção por nenhum caminho de seleção.
+  if (prod && isSandboxProvider(adapter.provider)) return undefined;
+  return adapter;
 }
