@@ -1,7 +1,78 @@
 // @ts-ignore - drizzle type overloads
-import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
+
+// ——— Busca textual ————————————————————————————————————————————————
+// O banco aplica translate(lower(col)) com este mapa e casa com o termo dobrado
+// aqui em JS: "ação" e "acao" viram a mesma string dos dois lados, sem depender
+// da extensão unaccent estar instalada. Par a par: impossível desalinhar comprimento.
+const FOLD_MAP: Record<string, string> = {
+  á: "a", à: "a", â: "a", ã: "a", ä: "a",
+  é: "e", è: "e", ê: "e", ë: "e",
+  í: "i", ì: "i", î: "i", ï: "i",
+  ó: "o", ò: "o", ô: "o", õ: "o", ö: "o",
+  ú: "u", ù: "u", û: "u", ü: "u",
+  ñ: "n", ç: "c",
+};
+const FOLD_FROM = Object.keys(FOLD_MAP).join("");
+const FOLD_TO = Object.values(FOLD_MAP).join("");
+
+/** Reduz para a forma sem acento e sem caixa — mesmo resultado de translate(lower(...)). */
+export function fold(value: string): string {
+  return value
+    .normalize("NFD")
+    .toLowerCase()
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+/** Escapa curingas do LIKE: termo "50%" vira busca literal, não coringa. */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/** Coluna de texto na forma em que o banco compara: minúscula e sem acento. */
+export function folded(column: SQLWrapper): SQL {
+  return sql`translate(lower(${column}), ${FOLD_FROM}, ${FOLD_TO})`;
+}
+
+/**
+ * Divide a consulta em termos: um por espaço, minúsculos, sem acento,
+ * pontuação só nas bordas — "g&g" e "m4a1" ficam inteiros.
+ */
+export function searchTokens(q: string): string[] {
+  return fold(q)
+    .split(/\s+/)
+    .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
+    .filter((token) => token.length > 0);
+}
+
+/** Um termo precisa aparecer em algum campo: textos, tags, marca ou categoria. */
+function tokenCondition(token: string): SQL {
+  const term = `%${escapeLike(token)}%`;
+  return or(
+    sql`${folded(schema.products.name)} like ${term}`,
+    sql`${folded(schema.products.shortDescription)} like ${term}`,
+    sql`${folded(schema.products.description)} like ${term}`,
+    sql`${folded(schema.products.tags)} like ${term}`,
+    sql`exists (select 1 from ${schema.brands} where ${schema.brands.id} = ${schema.products.brandId} and ${folded(schema.brands.name)} like ${term})`,
+    sql`exists (select 1 from ${schema.categories} where ${schema.categories.id} = ${schema.products.categoryId} and ${folded(schema.categories.name)} like ${term})`,
+  )!;
+}
+
+/** Relevância da busca: igual (0) > começa com (1) > contém (2) > resto (3). */
+function rankExpression(phrase: string): SQL {
+  const name = folded(schema.products.name);
+  const short = folded(schema.products.shortDescription);
+  const desc = folded(schema.products.description);
+  const starts = `${escapeLike(phrase)}%`;
+  const contains = `%${escapeLike(phrase)}%`;
+  return sql`case
+    when ${name} = ${phrase} then 0
+    when ${name} like ${starts} then 1
+    when ${name} like ${contains} or ${short} like ${contains} or ${desc} like ${contains} then 2
+    else 3 end`;
+}
 
 export type SortKey =
   | "featured_first"
@@ -149,15 +220,20 @@ export async function listProducts(db: Db, input: CatalogQuery) {
     else if (brandId) conditions.push(eq(schema.products.brandId, brandId));
   }
 
-  if (input.q) {
-    const term = `%${input.q.trim()}%`;
-    conditions.push(
-      or(
-        ilike(schema.products.name, term),
-        ilike(schema.products.description, term),
-        ilike(schema.products.shortDescription, term),
-      )!,
-    );
+  const rawQuery = input.q?.trim() ?? "";
+  const tokens = rawQuery ? searchTokens(rawQuery) : [];
+  if (rawQuery) {
+    if (tokens.length === 0) {
+      // Consulta sem nenhum termo utilizável (só pontuação): nada a casar.
+      conditions.push(sql`false`);
+    } else {
+      // AND entre termos — todos precisam aparecer. Termos de 1 letra só entram
+      // quando não há nenhum mais longo, senão a busca afoga em falso positivo.
+      const meaningful = tokens.filter((token) => token.length >= 2);
+      for (const token of meaningful.length > 0 ? meaningful : tokens) {
+        conditions.push(tokenCondition(token));
+      }
+    }
   }
 
   if (input.specKey && input.specValue) {
@@ -239,20 +315,45 @@ export async function listProducts(db: Db, input: CatalogQuery) {
   })();
   const sortExpr2 = input.sort === "featured_first" || input.sort === "bestsellers" ? desc(schema.products.createdAt) : asc(schema.products.id);
 
+  // Relevância só quando q existe e a ordenação é a de destaque — em preço/nome
+  // a ordem pedida pelo usuário pesa mais que a correspondência.
+  const rankSql =
+    tokens.length > 0 && (input.sort ?? "featured_first") === "featured_first"
+      ? rankExpression(fold(rawQuery).replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
+      : undefined;
+  const orderList: SQL[] = rankSql ? [rankSql, sortExpr, sortExpr2] : [sortExpr, sortExpr2];
+
   const rows = await (async () => {
     if (!variantWhere) {
-      return baseQuery.orderBy(sortExpr, sortExpr2).limit(input.limit).offset(offset);
+      return baseQuery.orderBy(...orderList).limit(input.limit).offset(offset);
     }
-    // com DISTINCT, expressões de order devem ser compatíveis; price sort usa subquery escalar (ok)
-    return db
-      .selectDistinct(publicProductCols)
+    if (!rankSql) {
+      return db
+        .selectDistinct(publicProductCols)
+        .from(schema.products)
+        .innerJoin(schema.productVariants, eq(schema.productVariants.productId, schema.products.id))
+        .leftJoin(schema.inventory, eq(schema.inventory.variantId, schema.productVariants.id))
+        .where(and(whereSql, variantWhere))
+        .orderBy(...orderList)
+        .limit(input.limit)
+        .offset(offset);
+    }
+    // Com DISTINCT o PG exige ORDER BY no select list (42P10) — a relevância
+    // entra como coluna oculta e sai do resultado antes de virar produto.
+    const ranked = await db
+      .selectDistinct({ ...publicProductCols, __rank: rankSql.as("__rank") })
       .from(schema.products)
       .innerJoin(schema.productVariants, eq(schema.productVariants.productId, schema.products.id))
       .leftJoin(schema.inventory, eq(schema.inventory.variantId, schema.productVariants.id))
       .where(and(whereSql, variantWhere))
-      .orderBy(sortExpr, sortExpr2)
+      .orderBy(sql`__rank`, ...orderList.slice(1))
       .limit(input.limit)
       .offset(offset);
+    return ranked.map((row) => {
+      const { __rank, ...rest } = row;
+      void __rank;
+      return rest;
+    });
   })();
 
   const totalResult = await db.select({ count: sql`count(*)` }).from(schema.products).where(whereSql);

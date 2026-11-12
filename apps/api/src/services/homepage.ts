@@ -1,8 +1,8 @@
 // @ts-ignore - drizzle type overloads
-import { and, asc, count, desc, eq, ilike, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { schema } from "../db/index.js";
-import { listProducts, type SortKey } from "./catalog.js";
+import { listProducts, fold, escapeLike, folded, type SortKey } from "./catalog.js";
 import { countProductsByCategory } from "./taxonomy.js";
 import { getCommercialSettings, type CommercialSettings, DEFAULT_COMMERCIAL } from "./settings.js";
 
@@ -162,6 +162,11 @@ export async function searchSuggestions(db: Db, term: string) {
   const q = term.trim();
   if (q.length < 2) return { products: [], categories: [], brands: [] };
 
+  // Mesmo dobra do catálogo: "Ação" no banco casa com "acao" digitado.
+  const foldedQ = fold(q).replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "");
+  if (!foldedQ) return { products: [], categories: [], brands: [] };
+  const pattern = `%${escapeLike(foldedQ)}%`;
+
   const products = await db
     .select({
       id: schema.products.id,
@@ -170,7 +175,7 @@ export async function searchSuggestions(db: Db, term: string) {
       ageRestricted: schema.products.ageRestricted,
     })
     .from(schema.products)
-    .where(and(eq(schema.products.published, true), ilike(schema.products.name, `%${q}%`)))
+    .where(and(eq(schema.products.published, true), sql`${folded(schema.products.name)} like ${pattern}`))
     .limit(6);
 
   const productImages = products.length
@@ -186,13 +191,13 @@ export async function searchSuggestions(db: Db, term: string) {
   const categories = await db
     .select({ id: schema.categories.id, name: schema.categories.name, slug: schema.categories.slug })
     .from(schema.categories)
-    .where(and(eq(schema.categories.active, true), ilike(schema.categories.name, `%${q}%`)))
+    .where(and(eq(schema.categories.active, true), sql`${folded(schema.categories.name)} like ${pattern}`))
     .limit(4);
 
   const brands = await db
     .select({ id: schema.brands.id, name: schema.brands.name, slug: schema.brands.slug })
     .from(schema.brands)
-    .where(and(eq(schema.brands.active, true), ilike(schema.brands.name, `%${q}%`)))
+    .where(and(eq(schema.brands.active, true), sql`${folded(schema.brands.name)} like ${pattern}`))
     .limit(4);
 
   return {
