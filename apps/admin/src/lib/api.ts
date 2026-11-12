@@ -7,8 +7,21 @@
  * qualquer página sabe tratar o gate de MFA (setup pendente ou verificação
  * pendente) em vez de mostrar "erro ao carregar".
  */
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+export const API_URL = apiUrl();
+
+function apiUrl(): string {
+  // No browser: caminho relativo — o rewrite do next.config (proxy /api/*)
+  // mantém o painel na mesma origem da API: cookie de sessão first-party,
+  // sem CORS e sem env var embutida no build. No server (SSR) o fetch precisa
+  // de URL absoluta para alcançar a API direto.
+  if (typeof window !== "undefined") return "";
+  return (
+    process.env.NEXT_PUBLIC_API_URL?.trim() ||
+    (process.env.NODE_ENV === "production"
+      ? "https://airsoftamericana-api.vercel.app"
+      : "http://localhost:4000")
+  );
+}
 
 export class ApiError extends Error {
   readonly status: number;
