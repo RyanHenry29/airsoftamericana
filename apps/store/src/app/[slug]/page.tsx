@@ -240,11 +240,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             )}
 
             {first ? (
-              <div className="pdp__buy">
-                <AddToCart variantId={first.id} />
+              <div className="pdp__buy" id="comprar">
+                <AddToCart product={product} settings={settings} />
               </div>
             ) : (
-              <p className="pdp__nostock">Sem variações cadastradas para este item.</p>
+              <p className="pdp__nostock" id="comprar">
+                Sem variações cadastradas para este item.
+              </p>
             )}
           </div>
 

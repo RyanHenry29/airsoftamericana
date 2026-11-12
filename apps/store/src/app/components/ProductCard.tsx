@@ -1,14 +1,16 @@
 // language: TSX, file: apps/store/src/app/components/ProductCard.tsx, target: Next.js App Router
 // Card de produto no padrão da referência: foto real, preço, condição PIX e parcelamento.
-// Inclui botão direto "Adicionar ao carrinho" para converter da grade.
+// ESPIAR abre o QuickView com os dados já no card; COMPRAR vai direto para a
+// seção de compra da PDP (/{slug}#comprar — seletor de opção, quantidade, add).
 "use client";
 
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ShoppingCart } from "lucide-react";
+import { Eye, ShoppingCart } from "lucide-react";
 import type { CommercialSettings, StoreProduct } from "../lib/store";
 import { formatBRL, installmentsFor, pixPrice } from "../lib/store";
+import { QuickView } from "./QuickView";
 
 type Props = {
   product: StoreProduct;
@@ -25,30 +27,7 @@ export function ProductCard({ product, settings, compact = false }: Props) {
   const pix = pixPrice(price, settings);
   const inst = installmentsFor(price, settings);
   const out = product.available <= 0;
-  const firstVariant = product.variants?.[0];
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-
-  async function addToCart() {
-    if (!firstVariant || busy || out) return;
-    setBusy(true);
-    try {
-      const res = await fetch(`${""}/api/cart/items`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ variantId: firstVariant.id, quantity: 1 }),
-      });
-      if (res.ok) {
-        setDone(true);
-        setTimeout(() => setDone(false), 1500);
-      }
-    } catch {
-      /* offline */
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [peek, setPeek] = useState(false);
 
   return (
     <li className="pcard-item">
@@ -106,27 +85,28 @@ export function ProductCard({ product, settings, compact = false }: Props) {
           </span>
         )}
 
-        {!out && firstVariant ? (
+        <div className="pcard-actions">
           <button
             type="button"
-            className="pcard-add"
-            onClick={addToCart}
-            disabled={busy}
-            aria-label={`Adicionar ${product.name} ao carrinho`}
+            className="pcard-btn pcard-btn--eye"
+            onClick={() => setPeek(true)}
+            aria-label={`Espiar ${product.name}`}
           >
-            {busy ? (
-              <ShoppingCart size={14} className="animate-spin" aria-hidden="true" />
-            ) : done ? (
-              <span className="text-[10px] font-black">OK</span>
-            ) : (
-              <>
-                <ShoppingCart size={14} aria-hidden="true" />
-                <span>Adicionar</span>
-              </>
-            )}
+            <Eye size={14} strokeWidth={2} aria-hidden="true" />
+            ESPIAR
           </button>
-        ) : null}
+          <Link
+            href={`/${product.slug}#comprar`}
+            className="pcard-btn pcard-btn--buy"
+            aria-label={`Comprar ${product.name}`}
+          >
+            <ShoppingCart size={14} strokeWidth={2} aria-hidden="true" />
+            COMPRAR
+          </Link>
+        </div>
       </div>
+
+      {peek && <QuickView product={product} settings={settings} onClose={() => setPeek(false)} />}
     </li>
   );
 }

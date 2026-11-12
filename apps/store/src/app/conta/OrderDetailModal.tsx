@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Eye, ShoppingCart, X } from "lucide-react";
+import { Copy, ExternalLink, Eye, ShoppingCart, X } from "lucide-react";
 import { API_URL, fetchWithTimeout } from "../lib/store";
 import { PAY_LABEL, STATUS_LABEL, brl, dateBr } from "./order-labels";
 
@@ -41,6 +41,100 @@ type DetailOrder = {
 };
 
 type OrderDetail = { order: DetailOrder; items: DetailItem[] };
+
+// Pagamento do pedido (pago/pendente + payload = PIX copia-e-cola ou link do gateway).
+type OrderPayment = {
+  method: string;
+  provider: string;
+  status: string;
+  payload: string | null;
+  expiresAt: string | null;
+} | null;
+
+const PAY_STATUS_LABEL: Record<string, string> = {
+  pendente: "Aguardando pagamento",
+  autorizado: "Pagamento autorizado",
+  aprovado: "Pagamento aprovado",
+  recusado: "Pagamento recusado",
+  chargeback: "Estorno em disputa",
+};
+
+function PaymentBlock({ payment }: { payment: NonNullable<OrderPayment> }) {
+  const [copied, setCopied] = useState(false);
+  const pending = payment.status === "pendente" || payment.status === "autorizado";
+  const isLink = Boolean(payment.payload && /^https?:\/\//i.test(payment.payload));
+  const isPixCode = Boolean(payment.payload && !isLink);
+  const tone =
+    payment.status === "recusado" || payment.status === "chargeback"
+      ? "is-bad"
+      : payment.status === "aprovado" || payment.status === "autorizado"
+        ? "is-ok"
+        : "";
+
+  async function copy() {
+    if (!payment.payload) return;
+    try {
+      await navigator.clipboard.writeText(payment.payload);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <section className="omodal__block" aria-label="Pagamento">
+      <span className="omodal__label">Pagamento</span>
+      <div className="omodal__pay">
+        <span className={`omodal__pay-status ${tone}`}>
+          {PAY_STATUS_LABEL[payment.status] ?? payment.status}
+        </span>
+        <span className="omodal__meta-item">
+          {PAY_LABEL[payment.method] ?? payment.method} · {payment.provider}
+        </span>
+        {pending && payment.expiresAt && (
+          <span className="omodal__meta-item">
+            Válido até{" "}
+            {new Date(payment.expiresAt).toLocaleString("pt-BR", {
+              dateStyle: "short",
+              timeStyle: "short",
+            })}
+          </span>
+        )}
+      </div>
+
+      {pending && isPixCode && payment.payload && (
+        <>
+          <span className="omodal__pay-hint">PIX copia e cola</span>
+          <textarea
+            className="omodal__pix"
+            readOnly
+            rows={3}
+            value={payment.payload}
+            aria-label="Código PIX copia e cola"
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <button type="button" className="btn-ghost omodal__copy" onClick={() => void copy()}>
+            <Copy size={13} strokeWidth={2} aria-hidden="true" />
+            {copied ? "Copiado" : "Copiar código"}
+          </button>
+        </>
+      )}
+
+      {pending && isLink && payment.payload && (
+        <a
+          className="btn-ghost omodal__copy"
+          href={payment.payload}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <ExternalLink size={13} strokeWidth={2} aria-hidden="true" />
+          Abrir pagamento
+        </a>
+      )}
+    </section>
+  );
+}
 
 type Choice = { variantId: string; qty: number };
 
@@ -85,6 +179,7 @@ export function OrderDetailModal({
   const router = useRouter();
   const [tab, setTab] = useState<"espiar" | "comprar">(mode);
   const [detail, setDetail] = useState<OrderDetail | null>(null);
+  const [payment, setPayment] = useState<OrderPayment>(null);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState("");
   const [choices, setChoices] = useState<Record<string, Choice>>({});
@@ -102,6 +197,7 @@ export function OrderDetailModal({
         const json = (await res.json().catch(() => ({}))) as {
           order?: DetailOrder;
           items?: DetailItem[];
+          payment?: OrderPayment;
           error?: { message?: string };
         };
         if (!alive) return;
@@ -111,6 +207,7 @@ export function OrderDetailModal({
         }
         const items = json.items ?? [];
         setDetail({ order: json.order, items });
+        setPayment(json.payment ?? null);
         const initial: Record<string, Choice> = {};
         for (const item of items) {
           const v = defaultVariant(item);
@@ -317,6 +414,8 @@ export function OrderDetailModal({
                   <strong>{brl(order.totalCents)}</strong>
                 </div>
               </section>
+
+              {payment && <PaymentBlock payment={payment} />}
 
               <AddressBlock address={order.addressJson} />
 

@@ -433,7 +433,23 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
     }
     // ESPIAR/COMPRAR: pedido + itens com slug do produto e variantes ativas.
     const detail = await getOrderDetailForCustomer(db, { orderId: order.id, customerId: customer.id });
-    reply.send({ order: detail.order, items: detail.items });
+    // Pagamento do pedido: payload Ã© o PIX copia-e-cola (ou o link do gateway)
+    // â€” Ã© o que o cliente precisa para pagar depois de criar o pedido.
+    const payRows = await db.select().from(payments).where(eq(payments.orderId, order.id)).limit(1);
+    const pay = payRows[0];
+    reply.send({
+      order: detail.order,
+      items: detail.items,
+      payment: pay
+        ? {
+            method: pay.method,
+            provider: pay.provider,
+            status: pay.status,
+            payload: pay.payload ?? null,
+            expiresAt: pay.expiresAt instanceof Date ? pay.expiresAt.toISOString() : (pay.expiresAt ?? null),
+          }
+        : null,
+    });
   });
 
   // ---------------------------------------------------------- Auth cliente
