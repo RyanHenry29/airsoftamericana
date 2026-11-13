@@ -9,6 +9,7 @@ import cors from "@fastify/cors";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { config } from "./src/config.js";
+import { withSystemLock } from "./src/services/payments/system-locks.js";
 import { getDb } from "./src/db/index.js";
 import { schema } from "./src/db/index.js";
 import { buildHome, getCommercialSettings, searchSuggestions } from "./src/services/homepage.js";
@@ -135,7 +136,10 @@ async function getFastifyApp() {
           app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
           return { recovery, repair, expiry };
         };
-        await runMaintenance();
+        await withSystemLock(db, "payment_maintenance", 5 * 60 * 1000, runMaintenance).then((r) => {
+          // r.ok=false = outra instância detém o lease e conduz a passada.
+          if (!r.ok) app.log.info("payment maintenance at boot skipped: lease held by another instance");
+        });
         // Varrimento periódico (revisão v4): boot sozinho não cobre processos
         // longevos — reservas abandonadas com a aplicação ligada precisam do
         // intervalo. 15 min, não-reentrante, unref.
