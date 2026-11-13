@@ -529,6 +529,10 @@ export const paymentEvents = pgTable(
     // reivindica o evento (FOR UPDATE SKIP LOCKED + janela de exclusão).
     // Expira sozinho: crash do worker devolve o evento à fila.
     leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    // Revisão v5 (fencing): token do dono do lease. O worker só conclui o
+    // evento (aplicar/marcar/dead-letter) se AINDA é o dono — lease perdido
+    // no meio da aplicação aborta com `lease_lost` e não toca o estado.
+    leaseToken: varchar("lease_token", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [
