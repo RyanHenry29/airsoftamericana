@@ -336,6 +336,9 @@ async function finalizeExpiry(
         status: input.paymentStatus,
         authorizedCents: input.paymentStatus === "autorizado" ? (input.authorizedCents ?? null) : null,
         capturedAt: input.captured ? new Date() : null,
+        // Assentamento invalida a observação de ausência (revisão v5):
+        // sem estado obsoleto reutilizável após mudança de estado.
+        notFoundFirstSeenAt: null,
       })
       .where(eq(schema.payments.id, payment.id));
 
@@ -376,7 +379,7 @@ async function finalizeExpiry(
  */
 export function startPaymentMaintenance(
   db: Db,
-  runOnce: () => Promise<unknown>,
+  runOnce: (ctx: { lost: () => boolean }) => Promise<unknown>,
   opts: { intervalMs?: number; lockTtlMs?: number; lockName?: string } = {},
 ): { stop: () => void } {
   const intervalMs = opts.intervalMs ?? 15 * 60 * 1000;

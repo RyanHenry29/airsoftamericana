@@ -343,6 +343,11 @@ export async function applyPaymentEvent(
     // 1) Pagamento.
     const patch: Record<string, unknown> = { status: targetPaymentStatus };
     if (targetPaymentStatus === "aprovado") patch.capturedAt = new Date();
+    // Revisão v5: assentamento DEFINITIVO invalida a observação de ausência —
+    // primeira consulta `null` (not_found_first_seen_at) nunca é reutilizada
+    // após mudança de estado (o pagamento não volta a `pendente`, mas o
+    // campo é limpo na fonte: sem estado obsoleto).
+    if (fresh.status === "pendente") patch.notFoundFirstSeenAt = null;
     await tx.update(schema.payments).set(patch).where(eq(schema.payments.id, fresh.id));
 
     // 2) Pedido — mesmo lock, mesmo tx.

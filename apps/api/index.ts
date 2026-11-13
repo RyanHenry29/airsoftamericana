@@ -126,9 +126,14 @@ async function getFastifyApp() {
       try {
         const { recoverPendingEvents, repairPartialApplications } = await import("./src/services/payments/webhook-events.js");
         const { expireStaleReservations, startPaymentMaintenance } = await import("./src/services/payments/expiry.js");
-        const runMaintenance = async () => {
+        const runMaintenance = async (lockCtx?: { lost: () => boolean }) => {
+          // Revisão v5 (item 5): perda do lock confirmada pelo heartbeat ⇒
+          // aborta entre fases — não executa manutenção sem ser o dono.
+          if (lockCtx?.lost()) return { aborted: true };
           const recovery = await recoverPendingEvents(db);
+          if (lockCtx?.lost()) return { aborted: true, recovery };
           const repair = await repairPartialApplications(db);
+          if (lockCtx?.lost()) return { aborted: true, recovery, repair };
           // Expiração SEGURA de reservas: só libera estoque após confirmar o
           // estado da cobrança no provedor (com tolerância e dupla
           // confirmação) — cobrança viva nunca é cancelada.
