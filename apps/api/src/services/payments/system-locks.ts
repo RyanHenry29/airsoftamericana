@@ -78,6 +78,11 @@ export async function releaseSystemLock(db: Db, name: string, token: string): Pr
  *    lease é estendido — passada longa não perde o lock no meio);
  *  - não adquirido → devolve { ok: false } SEM rodar `fn` (outra instância
  *    é a responsável por esta passada);
+ *  - RENOVAÇÃO RECUSADA (token não é mais o dono) → `ctx.lost()` passa a
+ *    devolver true: `fn` ABORTA COOPERATIVAMENTE entre fases — um worker
+ *    não continua manutenção depois de perder o lock. Falha TRANSITÓRIA
+ *    de rede na renovação NÃO marca perda (o token ainda é nosso; próximo
+ *    heartbeat renova);
  *  - qualquer falha → lock liberado no `finally` (release é idempotente
  *    por token; se o lease já expirou, expira sozinho).
  */
@@ -85,21 +90,26 @@ export async function withSystemLock<T>(
   db: Db,
   name: string,
   ttlMs: number,
-  fn: () => Promise<T>,
+  fn: (ctx: { /** true = a renovação confirmou que o lock foi tomado por outro. */ lost: () => boolean }) => Promise<T>,
 ): Promise<{ ok: true; value: T } | { ok: false }> {
   const token = await acquireSystemLock(db, name, ttlMs);
   if (!token) return { ok: false };
 
-  // Heartbeat de renovação: ttl/3, unref. Renovação falhou = lock perdido
-  // (raro: exige ttl estourado sem heartbeat); para de renovar — o dono
-  // atual assume após a expiração.
+  let ownerLost = false;
+  // Heartbeat de renovação: ttl/3, unref. Recusa na renovação = o lock foi
+  // tomado por outra instância (guarda por token): marca a perda — `fn`
+  // decide onde abortar. Erro na renovação = transitório: não marca.
   const heartbeat = setInterval(() => {
-    void renewSystemLock(db, name, token, ttlMs).catch(() => {});
+    void renewSystemLock(db, name, token, ttlMs)
+      .then((renewed) => {
+        if (!renewed) ownerLost = true;
+      })
+      .catch(() => {});
   }, Math.max(1_000, Math.floor(ttlMs / 3)));
   if (typeof heartbeat.unref === "function") heartbeat.unref();
 
   try {
-    return { ok: true, value: await fn() };
+    return { ok: true, value: await fn({ lost: () => ownerLost }) };
   } finally {
     clearInterval(heartbeat);
     await releaseSystemLock(db, name, token).catch(() => {});

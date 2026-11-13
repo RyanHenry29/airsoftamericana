@@ -1739,6 +1739,39 @@ describe("fencing token do lease (revisão v5, itens 1-2)", () => {
     expect(evtAfter!.processedAt).toBeNull();
   });
 
+  it("webhook positivo INVALIDA a observação de ausência (nada obsoleto reutilizável)", async () => {
+    const { pay, orderId } = await fenceCheckout("fence-inval");
+    // Primeira observação `null` já persistida (passada anterior da expiração).
+    await db
+      .update(schema.payments)
+      .set({ notFoundFirstSeenAt: new Date(Date.now() - 30 * 60 * 1000) })
+      .where(eq(schema.payments.id, pay.id));
+
+    // Webhook aprovado chega e assenta o pagamento.
+    const raw = JSON.stringify({
+      id: "inval-1",
+      type: "payment.approved",
+      data: { transactionId: pay.providerTransactionId, amountCents: pay.amountCents, currency: "BRL" },
+    });
+    const row = await insertEvent("fence-inval", { ...pay, providerTransactionId: pay.providerTransactionId });
+    // insertEvent usa payload SEM amount — sobrescreve com o payload cheio:
+    await db.update(schema.paymentEvents).set({ payload: JSON.parse(raw) }).where(eq(schema.paymentEvents.id, row.id));
+
+    const outcome = await applyPaymentEvent(db, {
+      provider: "fence-inval",
+      event: getAdapter("fence-inval")!.parseWebhook(raw),
+      payment: pay,
+      eventRowId: row.id,
+      signatureValid: true,
+    });
+    expect(outcome.applied).toBe(true);
+
+    const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
+    expect(payAfter!.status).toBe("aprovado");
+    expect(payAfter!.notFoundFirstSeenAt).toBeNull(); // observação invalidada
+    void orderId;
+  });
+
   it("CLAIM único: cada reivindicação gera um token DIFERENTE", async () => {
     const { pay } = await fenceCheckout("fence-token");
     const row1 = await insertEvent("fence-token", pay, { leaseExpiresAt: null });
@@ -1823,6 +1856,22 @@ describe("lease de manutenção multi-instância (revisão v5, item 3)", () => {
     expect(maxConcurrent).toBe(1);
   });
 
+  it("PERDA de lock confirmada pelo heartbeat → ctx.lost() sinaliza aborto cooperativo", async () => {
+    // ttl curto: o lease expira durante a execução e OUTRA instância toma.
+    const first = withSystemLock(db, "lost-lock", 50, async (ctx) => {
+      await new Promise((r) => setTimeout(r, 1_400)); // heartbeat em ~1s: renovação recusada
+      return { sawLost: ctx.lost() };
+    });
+    await new Promise((r) => setTimeout(r, 150)); // lease expira; ladrão toma
+    const thief = await acquireSystemLock(db, "lost-lock", 60_000);
+    expect(thief).toBeTruthy();
+    const r1 = await first;
+    expect(r1.ok).toBe(true);
+    if (r1.ok) {
+      expect(r1.value.sawLost).toBe(true); // heartbeat confirmou a perda
+    }
+  });
+
   it("startPaymentMaintenance com 2 instâncias: passadas NUNCA se sobrepõem", async () => {
     let active = 0;
     let maxConcurrent = 0;
@@ -1833,8 +1882,7 @@ describe("lease de manutenção multi-instância (revisão v5, item 3)", () => {
       await new Promise((r) => setTimeout(r, 20));
       passes++;
       active--;
-    };
-    const a = startPaymentMaintenance(db, runOnce, { intervalMs: 30, lockTtlMs: 60_000, lockName: "maintenance-itest" });
+    };    const a = startPaymentMaintenance(db, runOnce, { intervalMs: 30, lockTtlMs: 60_000, lockName: "maintenance-itest" });
     const b = startPaymentMaintenance(db, runOnce, { intervalMs: 30, lockTtlMs: 60_000, lockName: "maintenance-itest" });
     await new Promise((r) => setTimeout(r, 250));
     a.stop();
