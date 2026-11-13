@@ -1,4 +1,4 @@
-# AUD-01 + AUD-15 — Correções, Homologação e Rollback (v4)
+# AUD-01 + AUD-15 — Correções, Homologação e Rollback (v4, supersedida pela v5)
 
 Branch: `fix/aud01-aud15-pagamento`
 Base: `master` remoto (`ba22fa9`) — PR reconstruído limpo (ver §2.1)
@@ -221,3 +221,90 @@ Critério de saída: estados finais conforme §1, nenhum `payment.regression_ign
 6. **Eventos parked** (corrida checkout×webhook) permanecem estacionados até 30 dias por idade — o varrimento periódico consome tentativas com backoff; monitorar `skipped_lease`/`parked` no log de manutenção.
 6. **`GATEWAY_ACTIVE` default `sandbox` no `config.ts` inalterado** — alterar derrubaria o boot em produção; a barra de runtime (503) cobre o caso.
 7. **Desconhecido sem `queryPaymentByOrder`** mantém reserva indefinidamente até reconciliação/webhook — com adapter sem consulta, o operador precisa acompanhar; os adapters atuais (sandbox; Cielo a implementar no PR seguinte) já expõem o método.
+
+---
+
+# Revisão v5 — fencing, multi-instância, expiração assíncrona e atomicidade
+
+> **STATUS: NÃO PUBLICÁVEL / EM REVISÃO.** A v4 (`1cdf48f`) permanece a única versão publicada no PR #1. A v5 vive na branch local `wip/v5-fencing` (não pushada). Produção congelada; SQLs de hardening não executados; nenhum merge ou deploy sem autorização explícita.
+
+A v5 endereça os 4 detalhes técnicos levantados na revisão da v4. Base: `wip/v5-fencing` sobre a v4.
+
+## v5.1 — Fencing token (itens 1 e 2)
+
+**Problema (revisão v4):** lease de 2 min impede reivindicação simultânea, mas um worker que demora MAIS que o lease perde a posse — e nada impedia o worker antigo de CONCLUIR o evento que já não possui.
+
+**Solução:**
+
+- `LeaseLostError` (classe exportada em `webhook-events.ts`) — lançada DENTRO da transação de aplicação ⇒ rollback TOTAL (pagamento, pedido, histórico, estoque, marcação).
+- Claim gera `lease_token` único (`crypto.randomUUID()`) por reivindicação — coluna `payment_events.lease_token` (ALTER idempotente no migrate).
+- **Centralização (item 2):** TODA marcação de `processed_at` em `applyPaymentEvent` passa por `markProcessed()` — 7 pontos, zero caminhos alternativos. Com `leaseToken`, a marcação é guardada (`WHERE lease_token = ours AND processed_at IS NULL`) + re-leitura: guarda falhou ⇒ `LeaseLostError`. Sem token (rota de webhook, reentrega), a marcação por id segue — caminho sem lease não tem posse a provar.
+- Pré-checagem SEM lock antes do trabalho caro (validação/consulta ao gateway) — economiza trabalho quando o lease já foi perdido. A decisão real fica na guarda da marcação, dentro da ordem canônica de locks **pagamento → pedido → evento** (lock de evento no início INVERTERIA a ordem e deadlocka com a rota de webhook).
+- `recoverPendingEvents` captura `LeaseLostError` → contador `leaseLost`, evento fica para o dono atual.
+
+## v5.2 — Manutenção multi-instância (item 3)
+
+**Problema:** `startPaymentMaintenance` com flag local (`setInterval` + variável) só protege UM processo — duas instâncias executam a mesma varredura em paralelo.
+
+**Solução — `apps/api/src/services/payments/system-locks.ts` + tabela `system_locks`:**
+
+- Aquisição ATÔMICA: `INSERT ... ON CONFLICT (name) DO UPDATE ... WHERE expirado RETURNING` — em corrida, no máximo uma instância recebe token.
+- Renovação SOMENTE pelo dono (guarda por token) — `withSystemLock` renova em heartbeat (ttl/3, `unref`).
+- Expiração pelo relógio do BANCO — crash da instância devolve o lock sozinho. Release idempotente por token.
+- `startPaymentMaintenance`: cada passada roda sob `withSystemLock(db, 'payment_maintenance', 5 min)`; boot idem (`index.ts`) — duas instâncias subindo em paralelo: uma conduz, outra registra skip.
+
+## v5.3 — Expiração assíncrona (item 4)
+
+**Problema:** as duas consultas `null` da v4 eram IMEDIATAS e na mesma passada — não são confirmação independente; e o resultado da primeira não era persistido.
+
+**Solução:**
+
+- Coluna `payments.not_found_first_seen_at` (ALTER idempotente): primeira observação `null` é PERSISTIDA + auditada (`expiry.notfound_first_seen`).
+- Confirmação independente exige observações em PASSADAS DISTINTAS: janela `confirmWindowMs` (default = intervalo de manutenção, 15 min). Segunda passada com `null` + janela decorrida + fora da tolerância (24 h) ⇒ ausência definitiva.
+- Cobrança viva após a janela ⇒ reserva preservada (nunca cancela uma cobrança confirmável).
+
+## v5.4 — Atomicidade da expiração (item 5)
+
+**Problema:** a v4 atualizava o pagamento FORA da transação da transição — janela entre update do pagamento e transição do pedido era estado parcial observável.
+
+**Solução — `finalizeExpiry` (uma transação):**
+
+1. Consulta ao gateway FORA da transação (já feita antes).
+2. DENTRO: `SELECT payment FOR UPDATE` + revalidação `status='pendente'` (webhook que resolveu na janela vence — retorno `paymentSettled:false`, nada é tocado) → update do pagamento → `transitionOrderInTx` (lock FOR UPDATE do pedido; estoque/história na mesma tx) → auditoria DENTRO da tx.
+3. Ordem de locks canônica **pagamento → pedido** — idêntica à rota de webhook: sem deadlocks.
+4. Falha em qualquer ponto ⇒ rollback total: sem estoque liberado sem cancelamento, sem auditoria órfã, sem pagamento aprovado com pedido parado.
+
+## v5.5 — Correção adicional encontrada nos testes
+
+- **Baseline criava `payment_events.processed_at` com `DEFAULT now()`** — o `DROP NOT NULL` da v4 não remove o default: evento novo nascia "processado" (processed_at = createdAt) sem passar por nenhum caminho de aplicação. v5 adiciona `ALTER ... DROP DEFAULT` idempotente no migrate. Em produção com PostgreSQL, o mesmo default estaria ativo se a tabela for pré-existente — a correção alcança os dois bancos.
+
+## Testes v5 (critério de conclusão)
+
+`apps/api/src/services/payments-integrity.test.ts` — 51 testes no arquivo; novos cenários:
+
+| Cenário | Teste | Resultado |
+| --- | --- | --- |
+| Worker antigo com token de outro → `lease_lost` sem aplicar | pré-checagem | ✅ |
+| Token trocado DURANTE a aplicação (hook na consulta ao gateway) ⇒ `LeaseLostError` ⇒ rollback total | guarda na marcação | ✅ |
+| Recovery: lease perdido ⇒ `leaseLost` contado, evento para o dono atual | RECOVER | ✅ |
+| Claims distintos, dono legítimo não é bloqueado | CLAIM único | ✅ |
+| Lock vigente: 2ª instância não adquire | aquisição atômica | ✅ |
+| Lease vencido devolve o lock | expiração | ✅ |
+| Renovação só pelo dono; intruso não rouba nem libera | renovação | ✅ |
+| `withSystemLock` em contenção: 1 execução, 2ª pula | contenção | ✅ |
+| 2 instâncias de `startPaymentMaintenance`: passadas nunca se sobrepõem | maxConcurrent = 1 | ✅ |
+| 1ª passada `null` persiste observação e não cancela; cobrança viva após janela não cancela | confirmação assíncrona | ✅ |
+| Webhook × expiração em paralelo: UMA aprovação, sem estado parcial | corrida | ✅ |
+| Falha transacional (CHECK constraint) ⇒ rollback total: estoque, histórico, auditoria intactos | falha determinística | ✅ |
+
+## Gates v5 executados
+
+- `npx tsc --noEmit` ×3 — exit 0.
+- `npm test` (apps/api) — **270/270**, 33 arquivos.
+- PostgreSQL real (`node scripts/pg-integration.mjs` da raiz) — **75/75**, 4 arquivos.
+
+## Pendente para a v5 sair do status NÃO PUBLICÁVEL
+
+1. Revisão humana dos diffs `ba22fa9..wip/v5-fencing` (7 commits).
+2. Decisão explícita do revisor sobre publicar no PR #1 (push da branch) ou substituir.
+3. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
