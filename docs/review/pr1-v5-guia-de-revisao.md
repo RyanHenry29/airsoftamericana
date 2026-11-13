@@ -4,7 +4,7 @@
 >
 > **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..f9e5d8d`).
 >
-> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza).
+> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**).
 
 ## Rodada de correção (`68445bb`) — resultado da revisão v5.1
 
@@ -81,13 +81,13 @@ A revisão apontou 3 problemas (1 CRÍTICO, 2 ALTO) e 2 MÉDIO. Todos corrigidos
 - Evento preso: o lease do evento expira sozinho (2 min) e volta à fila; backoff não bloqueia indefinidamente; dead-letter por idade só para PARKED; `LeaseLostError` deixa o evento como está. **Qualificação (revisão):** "não deixa preso" é uma propriedade do desenho (lease expirável + backoff), demonstrada pelos testes de recuperação — ela NÃO substitui verificação operacional de retomada após indisponibilidade prolongada do banco ou reinicialização; monitorar `scanned/applied/parked/skippedLease` no log de manutenção.
 - Falha de manutenção: engolida pela passada (não derruba o processo); a passada seguinte re-tenta com aquisição ativa.
 
-## Gates (executados nesta rodada — números medidos, não presumidos)
+## Gates (executados após `3313667`, tree somente-v5 — números medidos, não presumidos)
 
 | Gate | Resultado |
 | --- | --- |
 | `npx tsc --noEmit` (api, store, admin) | exit 0 ×3 |
-| `npm test` (apps/api) | **281/281**, 33 arquivos |
-| PostgreSQL real (`node scripts/pg-integration.mjs`, da raiz) | **86/86**, 4 arquivos |
+| `npm test` (apps/api) | **285/285**, 33 arquivos (66 no arquivo de integridade) |
+| PostgreSQL real (`node scripts/pg-integration.mjs`, da raiz) | **90/90**, 4 arquivos |
 
 ## Cenários novos (v5.1 correção, 9 testes — todos com fase vermelha documentada)
 
@@ -103,8 +103,22 @@ A revisão apontou 3 problemas (1 CRÍTICO, 2 ALTO) e 2 MÉDIO. Todos corrigidos
 
 Endurecido: `CLAIM único` agora captura e compara os tokens (não nulos e distintos) — comprova unicidade, não só processamento.
 
+## Evidências pós-revisão (`3313667`) — 4 testes novos
+
+Endereçam as duas lacunas apontadas na revisão condicionada:
+
+| Evidência | O que prova |
+| --- | --- |
+| `RECUSA confirmada: fase 1 roda, fases 2-3 NÃO rodam` | Lease tomado por outra instância ⇒ heartbeat RECUSADO (não margem: TTL 3000 ms > tempo decorrido ~1300 ms) ⇒ `lost()` true ⇒ runMaintenance **não executa** recuperação→reparo→expiração além da fase 1. Asserções: recusa real (`renewSystemLock` token antigo = false) + fases bloqueadas. |
+| `INCERTEZA prolongada: fase 1 roda, fases 2-3 NÃO rodam` | Sem renovação confirmada ≥ TTL (TTL 50 ms, heartbeat real aos 1000 ms) ⇒ fases 2-3 bloqueadas. |
+| `EXPIRAÇÃO: auditoria 'expiry.cancelled' falha ⇒ tudo revertido` | Trigger determinístico `BEFORE INSERT ON audit_logs` RAISE para a ação alvo. Falha de auditoria DEPOIS da mutação financeira reverte: pagamento (pendente), pedido (aguardando_pagamento), estoque (reservado=1), histórico (só criação) e NENHUM registro de auditoria. |
+| `WEBHOOK pagamento tardio: auditoria 'order.late_payment' falha ⇒ tudo revertido` | Mesmo gatilho no caminho de webhook: pagamento pendente, pedido permanece cancelado, marcação do evento (última escrita) revertida — evento volta à fila. |
+
+Indicador operacional (revisão, item C): `ExpirySummary.skippedInvalidState` conta as recusas de transição automática — vai para o log de manutenção (`app.log.info({ recovery, repair, expiry })` no boot) com registro individual `expiry.skipped_invalid_order_state` em `audit_logs` por pedido. Durabilidade do `refund_required` (item B): registro `order.late_payment` com `decision: "refund_required"` nas duas vias (webhook e expiração), append-only, DENTRO da transação financeira.
+
 ## Pendências para publicação
 
-1. Aprovação humana do diff da correção (`118f69c..f9e5d8d`).
+1. Aprovação humana das evidências (`c853b07..3313667`) sobre os 3 pontos condicionados: bloqueio de próxima fase, rollback por falha de auditoria, execução dos gates.
 2. Decisão: push da `wip/v5-fencing` no PR #1 (substituindo a v4) ou PR novo.
 3. SQLs de hardening e homologação com gateway real continuam bloqueados (produção congelada).
+4. ATENÇÃO de ambiente: há trabalho paralelo em edição NESTE working tree (assistente IA: `admin-ai.ts`, `ai-assistant.ts`, `page.tsx`, testes `#n`) — NÃO faz parte da v5, não está commitado; os gates da v5 foram executados com esses arquivos temporariamente afastados (stash) e a tree devolvida ao estado encontrado.

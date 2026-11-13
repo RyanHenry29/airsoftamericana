@@ -280,7 +280,7 @@ A v5 endereça os 4 detalhes técnicos levantados na revisão da v4. Base: `wip/
 
 ## Testes v5 (critério de conclusão)
 
-`apps/api/src/services/payments-integrity.test.ts` — **62 testes no arquivo** (13 v5 + 9 da correção pós-revisão); cenários:
+`apps/api/src/services/payments-integrity.test.ts` — **66 testes no arquivo** (13 v5 + 9 da correção pós-revisão + 4 evidências); cenários:
 
 | Cenário | Teste | Resultado |
 | --- | --- | --- |
@@ -309,11 +309,22 @@ A v5 endereça os 4 detalhes técnicos levantados na revisão da v4. Base: `wip/
 | `deadLetter` | token persistido NULL + token informado | marcava | bloqueia; evento na fila |
 | Fencing × expiração | ladrão assume durante aplicação; expiração paralela | — (cobertura nova) | webhook aborta; expiração assenta 1×; evento para o dono atual |
 
-## Gates v5 executados (números medidos nesta rodada)
+## Gates v5 executados (números medidos após `3313667`)
 
 - `npx tsc --noEmit` (api, store, admin) — exit 0 ×3.
-- `npm test` (apps/api) — **281/281**, 33 arquivos.
-- PostgreSQL real (`node scripts/pg-integration.mjs` da raiz) — **86/86**, 4 arquivos.
+- `npm test` (apps/api) — **285/285**, 33 arquivos (66 no arquivo de integridade).
+- PostgreSQL real (`node scripts/pg-integration.mjs` da raiz) — **90/90**, 4 arquivos.
+
+### Evidências pós-revisão (`3313667`) — 4 testes novos
+
+| Evidência | Prova |
+| --- | --- |
+| Heartbeat: recusa confirmada ⇒ fases 2-3 bloqueadas | Lease tomado por outra instância, renovação RECUSADA (não margem), `runMaintenance` não executa além da fase 1 |
+| Heartbeat: incerteza além da margem ⇒ fases 2-3 bloqueadas | Sem renovação confirmada ≥ TTL ⇒ `lost()` true ⇒ nenhuma fase nova |
+| Auditoria: falha no INSERT reverte a mutação (expiração) | Trigger em `audit_logs` RAISE ⇒ pagamento, pedido, estoque, histórico e auditoria revertidos |
+| Auditoria: falha no INSERT reverte a mutação (webhook tardio) | Trigger em `order.late_payment` ⇒ pagamento pendente, evento volta à fila |
+
+Indicador operacional: `ExpirySummary.skippedInvalidState` (log de manutenção) + `expiry.skipped_invalid_order_state` em `audit_logs` por pedido.
 
 ## Pendente para a v5 sair do status NÃO PUBLICÁVEL
 
