@@ -658,6 +658,10 @@ export async function migrate(db: Db) {
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "dead_letter" boolean NOT NULL DEFAULT false;
   `).catch(() => {});
+  // Revisão v4: lease do claim (exclusão de reivindicação entre instâncias).
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_expires_at" timestamptz;
+  `).catch(() => {});
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "payment_events_payment_idx" ON "payment_events" ("payment_id");
   `);

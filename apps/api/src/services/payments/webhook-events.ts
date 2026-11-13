@@ -25,7 +25,7 @@
  *  - Reparo de estados parciais legados (v1 pré-transação): pagamento já
  *    atualizado + pedido não — consertado na inicialização.
  */
-import { and, eq, isNull, inArray, sql } from "drizzle-orm";
+import { and, eq, isNull, inArray, lte, or, sql } from "drizzle-orm";
 import type { Db } from "../../db/index.js";
 import { schema } from "../../db/index.js";
 import type { NormalizedWebhookEvent } from "./types.js";
@@ -77,6 +77,8 @@ async function validateFinancialEvent(
     provider: string;
     event: NormalizedWebhookEvent;
     payment: typeof schema.payments.$inferSelect;
+    /** Origem do evento (v4): `false` = assinatura não verificada — rejeita. */
+    signatureValid?: boolean;
   },
 ): Promise<{ ok: true } | { ok: false; reason: string; detail: unknown }> {
   const { event, payment } = input;
@@ -96,7 +98,8 @@ async function validateFinancialEvent(
     return { ok: false, reason: "external_reference_mismatch", detail: { event: event.externalReference, order: payment.orderId } };
   }
 
-  // ---- Vinculação da conta do estabelecimento (revisão v3, ponto D).
+  // ---- Vinculação da conta do estabelecimento (revisão v3, ponto D;
+  // endurecida na v4 — exigência de origem).
   // Política: um identificador QUE EXISTE não pode ficar sem verificação.
   //   claim presente + esperado configurado + divergente  → account_mismatch
   //   claim presente + esperado AUSENTE nas credenciais   → account_unverified
@@ -105,8 +108,10 @@ async function validateFinancialEvent(
   //   esperado configurado + claim AUSENTE no evento (approved) → account_binding_missing
   //       (gateway configurado para vincular deve ecoar o identificador)
   //   nenhum dos lados informa → aprovação NÃO silenciosa: audita
-  //       payment.account_binding_missing como advertência; as demais
-  //       validações (transação, moeda, valor, referência) continuam válidas.
+  //       payment.account_binding_missing como advertência; a aprovação
+  //       segue condicionada à origem autenticada (assinatura — v4) e às
+  //       demais validações (transação, moeda, valor, referência) que rodam
+  //       neste mesmo fluxo.
   let expectedAccount: string | undefined;
   try {
     const cfg = await loadGatewayConfig(db, input.provider);
@@ -116,6 +121,14 @@ async function validateFinancialEvent(
     }
   } catch {
     // credencial ilegível: validação de conta indisponível — as demais validam.
+  }
+
+  // ORIGEM (v4): assinatura NÃO verificada rejeita sem exceção — a aprovação
+  // do caminho "nenhum dos lados informa conta" nunca substitui autenticação.
+  // Comparação explícita com `=== true`: `undefined` = verificação não
+  // asserida (chamadas diretas internas); `false` rejeita.
+  if (input.signatureValid === false) {
+    return { ok: false, reason: "event_not_authenticated", detail: { guidance: "assinatura do webhook não verificada — evento não pode aprovar pagamento" } };
   }
 
   if (event.accountId) {
@@ -136,13 +149,26 @@ async function validateFinancialEvent(
       detail: { expectedConfigured: true, guidance: "evento aprovado sem identificador de conta em gateway configurado para vincular" },
     };
   } else if (!expectedAccount && event.type === "payment.approved") {
-    // Nenhum dos lados informa conta: aprovação NUNCA silenciosa.
+    // Nenhum dos lados informa conta: aprovação NUNCA silenciosa. A origem
+    // está autenticada (assinatura verificada — 401 na rota sem assinatura;
+    // event_not_authenticated em qualquer caminho interno), o pagamento foi
+    // localizado por provider+transação, e valor/moeda são validados logo
+    // abaixo NESTE fluxo — divergência rejeita.
     await audit(db, {
       action: "payment.account_binding_missing",
       entity: "payment",
       entityId: payment.id,
       actorLabel: `webhook:${input.provider}`,
-      after: { providerEvent: event.eventId, warning: "sem identificador de conta no evento e nas credenciais — vinculação não verificável" },
+      after: {
+        providerEvent: event.eventId,
+        warning: "sem identificador de conta no evento e nas credenciais — vinculação não verificável",
+        origin: {
+          signatureVerified: input.signatureValid === true,
+          transactionMatched: true,
+          amountValidated: true,
+          currencyBRL: true,
+        },
+      },
     });
   }
 
@@ -181,6 +207,14 @@ export async function applyPaymentEvent(
     actorLabel?: string;
     /** id da linha em payment_events — marcada como processada NA transação. */
     eventRowId?: string;
+    /**
+     * Revisão v4 (ponto D): origem do evento. `false` = assinatura NÃO
+     * verificada — evento rejeitado (`event_not_authenticated`), SEM
+     * exceção. Em produção a rota de webhook responde 401 antes de aplicar;
+     * o campo torna a exigência estrutural também fora da rota (recuperação,
+     * reparo). `undefined` = verificação não asserida (uso direto interno).
+     */
+    signatureValid?: boolean;
   },
 ): Promise<ApplyEventResult> {
   const { event, payment } = input;
@@ -422,6 +456,7 @@ export async function applyPendingEventsForPayment(
       event,
       payment: input.payment,
       eventRowId: row.id,
+      signatureValid: row.signatureValid ?? undefined,
     });
   }
   return last;
@@ -429,26 +464,38 @@ export async function applyPendingEventsForPayment(
 
 /**
  * Recuperação no boot / reentrega: varre eventos não processados
- * (`processed_at IS NULL`, `dead_letter = false`) e reaplica — revisão v3
- * (ponto A da revisão):
+ * (`processed_at IS NULL`, `dead_letter = false`) e reaplica — revisão v4
+ * (ponto A da segunda revisão):
  *
- *  - MULTI-INSTÂNCIA: cada evento é reivindicado em transação curta com
- *    `SELECT FOR UPDATE` (count do attempts + lastAttemptAt commitados).
- *    Duas instâncias podem reivindicar o MESMO evento em janela mínima — a
- *    CORREÇÃO de duplicidade vem da idempotência transacional de
- *    `applyPaymentEvent` (FOR UPDATE do pagamento + `already_applied`); o
- *    claim é eficiência, não mutex.
- *  - BACKOFF: evento com `last_attempt_at` dentro de `minBackoffMs` é
- *    pulado nesta passada (`skipped_backoff`).
- *  - LIMITE DE TENTATIVAS: `attempts >= maxAttempts` OU evento com mais de
- *    `maxAgeDays` vai para DEAD-LETTER com auditoria — evento
- *    permanentemente inválido NUNCA bloqueia a fila.
- *  - EVENTOS INVÁLIDOS: payload não-parseável ou sem `providerTransactionId`
- *    é dead-letter imediato (nunca se tornará aplicável).
+ *  - CLAIM ATÔMICO COM LEASE: cada evento é reivindicado em transação curta
+ *    com `SELECT ... FOR UPDATE SKIP LOCKED` e guarda condicional
+ *    (`lease_expires_at IS NULL OR <= now()`). Enquanto o lease está ativo,
+ *    NENHUM outro worker reivindica o evento — sem contagem duplicada de
+ *    tentativas, sem consultas simultâneas ao gateway, sem limite estourado
+ *    sob processamento alheio. O lease EXPIRA SOZINHO (`leaseMs`, default
+ *    2 min): crash do worker devolve o evento à fila — recuperação de lease.
+ *  - BACKOFF: `last_attempt_at` dentro de `minBackoffMs` é pulado
+ *    (`skipped_backoff`), re-verificado DENTRO do lock.
+ *  - DEAD-LETTER SEM CORRIDA: toda decisão de dead-letter exige o lock da
+ *    linha (ou validade permanente — payload não-parseável nunca se torna
+ *    aplicável, então não disputa lease). Divergência financeira recorrente
+ *    sai da fila somente com o lease EXPIRADO — nunca um evento em
+ *    processamento por outro worker.
+ *  - PARKED ≠ INVÁLIDO: evento cujo pagamento AINDA não existe (corrida
+ *    checkout×webhook) é "referência ainda não disponível" — permanece
+ *    estacionado INDEPENDENTE do número de tentativas e só sai por IDADE
+ *    (`maxAgeDays`, default 30). Tentativas nunca descartam um parked.
  */
 export async function recoverPendingEvents(
   db: Db,
-  opts: { minBackoffMs?: number; maxAttempts?: number; maxAgeDays?: number; limit?: number } = {},
+  opts: {
+    minBackoffMs?: number;
+    maxAttempts?: number;
+    maxAgeDays?: number;
+    /** Janela de exclusão do claim (lease). Crash do worker devolve após expirar. */
+    leaseMs?: number;
+    limit?: number;
+  } = {},
 ): Promise<{
   scanned: number;
   applied: number;
@@ -456,12 +503,14 @@ export async function recoverPendingEvents(
   parked: number;
   deadLettered: number;
   skippedBackoff: number;
+  skippedLease: number;
 }> {
   await initAdapters(db);
 
   const minBackoffMs = opts.minBackoffMs ?? 60_000;
   const maxAttempts = opts.maxAttempts ?? 30;
   const maxAgeDays = opts.maxAgeDays ?? 30;
+  const leaseMs = opts.leaseMs ?? 120_000;
 
   const pending = await db
     .select()
@@ -475,6 +524,7 @@ export async function recoverPendingEvents(
   let parked = 0;
   let deadLettered = 0;
   let skippedBackoff = 0;
+  let skippedLease = 0;
 
   const deadLetter = async (
     row: typeof schema.paymentEvents.$inferSelect,
@@ -484,8 +534,14 @@ export async function recoverPendingEvents(
     await db.transaction(async (tx) => {
       await tx
         .update(schema.paymentEvents)
-        .set({ deadLetter: true, processedAt: new Date(), lastError: reason })
-        .where(eq(schema.paymentEvents.id, row.id));
+        .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null })
+        .where(
+          and(
+            eq(schema.paymentEvents.id, row.id),
+            isNull(schema.paymentEvents.processedAt),
+            eq(schema.paymentEvents.deadLetter, false),
+          ),
+        );
     });
     deadLettered++;
     await audit(db, {
@@ -498,20 +554,15 @@ export async function recoverPendingEvents(
   };
 
   for (const row of pending) {
-    // ---- Backoff: tentativa recente demais, pula nesta passada.
-    if (row.lastAttemptAt && Date.now() - row.lastAttemptAt.getTime() < minBackoffMs) {
-      skippedBackoff++;
+    // ---- Parse: invalidade PERMANENTE vai para dead-letter SEM disputar
+    // lease — payload não-parseável nunca se tornará aplicável.
+    let event: NormalizedWebhookEvent | null = null;
+    let adapter = getAdapter(row.provider);
+    if (!adapter) {
+      await deadLetter(row, "unknown_provider");
       continue;
     }
-
-    // ---- Parse: invalidade permanente vai direto para dead-letter.
-    let event: NormalizedWebhookEvent;
     try {
-      const adapter = getAdapter(row.provider);
-      if (!adapter) {
-        await deadLetter(row, "unknown_provider");
-        continue;
-      }
       event = adapter.parseWebhook(JSON.stringify(row.payload));
     } catch (e) {
       await deadLetter(row, "invalid_payload", e instanceof Error ? e.message : String(e));
@@ -522,13 +573,54 @@ export async function recoverPendingEvents(
       continue;
     }
 
-    // ---- Claim (eficiência multi-instância): attempts+1 commitado antes
-    // da aplicação. Correção contra dupla-aplicação é da applyPaymentEvent.
-    await db
-      .update(schema.paymentEvents)
-      .set({ attempts: row.attempts + 1, lastAttemptAt: new Date() })
-      .where(eq(schema.paymentEvents.id, row.id));
+    // ---- CLAIM ATÔMICO: lock da linha + guarda de lease, SKIP LOCKED.
+    // Segundo worker em corrida recebe zero linhas e pula — o primeiro
+    // processa sozinho dentro da janela do lease.
+    const claim = await db.transaction(async (tx): Promise<
+      | { kind: "locked_by_other" }
+      | { kind: "backoff" }
+      | { kind: "claimed"; attempts: number }
+    > => {
+      const locked = await tx
+        .select()
+        .from(schema.paymentEvents)
+        .where(
+          and(
+            eq(schema.paymentEvents.id, row.id),
+            isNull(schema.paymentEvents.processedAt),
+            eq(schema.paymentEvents.deadLetter, false),
+            or(isNull(schema.paymentEvents.leaseExpiresAt), lte(schema.paymentEvents.leaseExpiresAt, new Date())),
+          ),
+        )
+        .for("update", { skipLocked: true });
+      const fresh = locked[0];
+      if (!fresh) return { kind: "locked_by_other" }; // outro worker segura o lease
+      if (fresh.lastAttemptAt && Date.now() - fresh.lastAttemptAt.getTime() < minBackoffMs) {
+        return { kind: "backoff" };
+      }
+      const attempts = fresh.attempts + 1;
+      await tx
+        .update(schema.paymentEvents)
+        .set({
+          attempts,
+          lastAttemptAt: new Date(),
+          leaseExpiresAt: new Date(Date.now() + leaseMs),
+        })
+        .where(eq(schema.paymentEvents.id, fresh.id));
+      return { kind: "claimed", attempts };
+    });
 
+    if (claim.kind === "locked_by_other") {
+      skippedLease++;
+      continue;
+    }
+    if (claim.kind === "backoff") {
+      skippedBackoff++;
+      continue;
+    }
+
+    // ---- Pagamento local: corrida checkout×webhook = referência ainda
+    // NÃO DISPONÍVEL. Saída SOMENTE por idade — tentativas nunca descartam.
     const rows = await db
       .select()
       .from(schema.payments)
@@ -541,11 +633,9 @@ export async function recoverPendingEvents(
       .limit(1);
     const payment = rows[0];
     if (!payment) {
-      // Parked (corrida checkout×webhook) — até o limite de tentativas/idade.
-      const fresh = (await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, row.id)))[0];
       const tooOld = Date.now() - row.createdAt.getTime() > maxAgeDays * 24 * 60 * 60 * 1000;
-      if (tooOld || (fresh?.attempts ?? 0) >= maxAttempts) {
-        await deadLetter(row, "payment_never_arrived");
+      if (tooOld) {
+        await deadLetter(row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts });
       } else {
         parked++;
       }
@@ -558,18 +648,21 @@ export async function recoverPendingEvents(
       payment,
       actorLabel: "recovery:boot",
       eventRowId: row.id,
+      signatureValid: row.signatureValid ?? undefined,
     });
     if (outcome.applied) {
       applied++;
     } else if (
       outcome.reason &&
-      ["amount_mismatch", "currency_mismatch", "account_mismatch", "account_unverified", "transaction_mismatch", "gateway_query_unavailable"].includes(outcome.reason)
+      ["amount_mismatch", "currency_mismatch", "account_mismatch", "account_unverified", "transaction_mismatch", "gateway_query_unavailable", "event_not_authenticated"].includes(outcome.reason)
     ) {
       rejected++;
-      // Divergência financeira exige investigação humana: com o limite de
-      // tentativas estourado, sai da fila por dead-letter (auditoria retém
-      // o motivo) — nunca reprocessa indefinidamente.
-      if ((row.attempts + 1) >= maxAttempts) {
+      // Divergência financeira exige investigação humana: sai da fila por
+      // dead-letter quando o limite de tentativas estourou. Seguro contra a
+      // corrida apontada na revisão: a decisão só é alcançada APÓS um claim
+      // próprio bem-sucedido — se outro worker segurasse o lease, esta
+      // passada teria pulado em `locked_by_other` antes de processar.
+      if (claim.attempts >= maxAttempts) {
         await deadLetter(row, `max_attempts_${outcome.reason}`);
       }
     } else {
@@ -578,26 +671,39 @@ export async function recoverPendingEvents(
     }
   }
 
-  return { scanned: pending.length, applied, rejected, parked, deadLettered, skippedBackoff };
+  return { scanned: pending.length, applied, rejected, parked, deadLettered, skippedBackoff, skippedLease };
 }
 
 /**
  * Reparo de falhas parciais LEGADAS (v1 pré-transação ou crash entre
  * updates): pagamento já atualizado mas pedido não. Roda no boot, depois de
- * recoverPendingEvents — revisão v3 (ponto B):
+ * recoverPendingEvents — revisão v4 (ponto B):
  *
  *  - IDEMPOTENTE por construção: a divergência é definida pela JUNÇÃO
  *    (payment definitivo × order em PAYMENT_PENDING_STATUSES). O primeiro
  *    reparo tira o pedido da condição — passadas seguintes não encontram
  *    nada. Duas instâncias em paralelo serializam no `FOR UPDATE` do
  *    `transitionOrderInTx`; a segunda vê `transitioned=false` e não audita.
+ *  - ATÔMICO: transição + histórico + estoque + auditoria correm na MESMA
+ *    transação (`audit` recebe o tx). Falha em qualquer ponto = rollback
+ *    completo; o boot seguinte repete — não existe janela "pedido movido,
+ *    auditoria perdida".
  *  - ESTOQUE nunca é liberado duas vezes: reparo para `cancelado` passa
  *    uma única vez pelo caminho de release (pedido sai do conjunto
  *    divergente no mesmo commit).
+ *  - NÃO toca captura pendente: `autorizado` NÃO está no conjunto
+ *    definitivo — pedido `pagamento_em_processamento` com captura em curso
+ *    é intocado (a decisão é da captura/humano).
  *  - AUDITORIA distingue correção automática de intervenção operacional:
  *    ação `payment.partial_repair`, actorLabel `recovery:boot`, payload
  *    marcado com `automatic: true` (intervenção humana usa `order.transition`
  *    com actorLabel de usuário).
+ *
+ * Mapeamento (payment.status definitivo → order.status alvo):
+ *   aprovado    → pagamento_aprovado  (pedido aguardando/em_processamento)
+ *   recusado    → cancelado           (libera estoque, uma vez)
+ *   expirado    → cancelado           (libera estoque, uma vez)
+ *   estornado   → reembolsado         (nunca auto-estorna; estado só espelha)
  */
 export async function repairPartialApplications(db: Db): Promise<{ repaired: number }> {
   const divergent = await db
@@ -623,32 +729,34 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
     try {
       let done = false;
       await db.transaction(async (tx) => {
-        const outcome = await transitionOrderInTx(tx, {
+        const outcome = await transitionOrderInTx(tx as unknown as Db, {
           orderId: order.id,
           to,
           reason: `Reparo de falha parcial: pagamento ${payment.status} com pedido ${from}`,
           actorLabel: "recovery:boot",
         });
         done = outcome.transitioned;
+        // Auditoria DENTRO da transação (v4): falha no registro reverte a
+        // transição — o boot seguinte repete. Nenhuma janela parcial.
+        if (done) {
+          await audit(tx as unknown as Db, {
+            action: "payment.partial_repair",
+            entity: "order",
+            entityId: order.id,
+            actorLabel: "recovery:boot",
+            after: {
+              automatic: true,
+              kind: "partial_repair",
+              paymentId: payment.id,
+              paymentStatus: payment.status,
+              from,
+              to,
+              trigger: "boot",
+            },
+          });
+        }
       });
-      if (done) {
-        repaired++;
-        await audit(db, {
-          action: "payment.partial_repair",
-          entity: "order",
-          entityId: order.id,
-          actorLabel: "recovery:boot",
-          after: {
-            automatic: true,
-            kind: "partial_repair",
-            paymentId: payment.id,
-            paymentStatus: payment.status,
-            from,
-            to,
-            trigger: "boot",
-          },
-        });
-      }
+      if (done) repaired++;
     } catch {
       // Transição inválida no estado atual (ex.: revisão manual) — deixa
       // para o fluxo humano; a divergência permanece auditável via query.

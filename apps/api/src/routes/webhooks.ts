@@ -214,12 +214,14 @@ export async function registerWebhookRoutes(app: FastifyInstance, db: Db) {
 
     // Resultado financeiro → estado local. Atomicidade (pagamento + pedido +
     // histórico + estoque + processed_at) vive em applyPaymentEvent.
+    // signatureValid: true — a rota só chega aqui com assinatura verificada (401 antes).
     const outcome = await applyPaymentEvent(db, {
       provider,
       event,
       payment,
       actorLabel: `webhook:${provider}`,
       eventRowId,
+      signatureValid: true,
     });
 
     return reply.send({
