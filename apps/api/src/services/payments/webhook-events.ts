@@ -215,6 +215,14 @@ export async function applyPaymentEvent(
      * reparo). `undefined` = verificação não asserida (uso direto interno).
      */
     signatureValid?: boolean;
+    /**
+     * Revisão v5 (fencing): token do claim. Quando informado, a aplicação
+     * verifica DENTRO da transação (lock da linha do evento) que este
+     * worker AINDA é o dono do lease. Lease vencido e reivindicado por
+     * outro worker ⇒ `lease_lost` — o worker antigo não conclui o evento
+     * que já não possui.
+     */
+    leaseToken?: string;
   },
 ): Promise<ApplyEventResult> {
   const { event, payment } = input;
@@ -223,6 +231,17 @@ export async function applyPaymentEvent(
   // Chargebacks são tratados pela rota (tabela própria, transação própria).
   if (event.type === "chargeback.received" || event.type === "chargeback.resolved") {
     return { applied: false, reason: "chargeback_handled_elsewhere" };
+  }
+
+  // ---- FENCING (v5) — pré-checagem SEM lock: economiza o trabalho caro
+  // (validação, consulta ao gateway) quando o lease já foi perdido. A
+  // decisão REAL fica na guarda da marcação, dentro da transação — sem
+  // invertar a ordem de locks.
+  if (input.eventRowId && input.leaseToken) {
+    const [evt] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, input.eventRowId));
+    if (!evt || evt.processedAt || evt.deadLetter || (evt.leaseToken && evt.leaseToken !== input.leaseToken)) {
+      return { applied: false, reason: "lease_lost" } as ApplyEventResult;
+    }
   }
 
   // ---- Validação financeira ANTES de qualquer escrita.
@@ -243,6 +262,8 @@ export async function applyPaymentEvent(
   const targetPaymentStatus = targetPaymentStatusFor(event.type);
 
   // ---- Transação única: pagamento + pedido + histórico + estoque + evento.
+  // Ordem de locks (v5, canônica em TODO caminho que transiciona pedido com
+  // pagamento): pagamento → pedido → linha do evento. Sem deadlocks.
   const pendingAudits: AuditPending[] = [];
   const result = await db.transaction(async (tx) => {
     // Estado FRESCO sob lock — o `payment` de entrada pode estar obsoleto.
@@ -255,6 +276,32 @@ export async function applyPaymentEvent(
     if (!fresh) {
       return { applied: false, reason: "payment_not_found" } as ApplyEventResult;
     }
+
+    // Marcação do evento (v5): com leaseToken, a marcação é GUARDADA por
+    // posse (token + não processado). Guarda falhou ⇒ lease perdido no meio
+    // da aplicação ⇒ rollback TOTAL (LeaseLostError) — o worker antigo não
+    // conclui o evento que já não possui; o dono atual reavalia.
+    const markProcessed = async () => {
+      if (!input.eventRowId) return;
+      await tx
+        .update(schema.paymentEvents)
+        .set({ paymentId: fresh.id, processedAt: new Date() })
+        .where(
+          input.leaseToken
+            ? and(
+                eq(schema.paymentEvents.id, input.eventRowId),
+                eq(schema.paymentEvents.leaseToken, input.leaseToken),
+                isNull(schema.paymentEvents.processedAt),
+              )
+            : eq(schema.paymentEvents.id, input.eventRowId),
+        );
+      if (input.leaseToken) {
+        const [after] = await tx.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, input.eventRowId));
+        if (!after || !after.processedAt || after.leaseToken !== input.leaseToken) {
+          throw new LeaseLostError();
+        }
+      }
+    };
 
     // Proteção de regressão: estados financeiros definitivos não regridem.
     if (
@@ -504,6 +551,8 @@ export async function recoverPendingEvents(
   deadLettered: number;
   skippedBackoff: number;
   skippedLease: number;
+  /** Fencing: lease perdido durante a aplicação — outro worker assumiu. */
+  leaseLost: number;
 }> {
   await initAdapters(db);
 
@@ -525,32 +574,51 @@ export async function recoverPendingEvents(
   let deadLettered = 0;
   let skippedBackoff = 0;
   let skippedLease = 0;
+  let leaseLost = 0;
 
+  /**
+   * Dead-letter (v5): transação com lock da linha, guarda de estado e
+   * FENCING — com token, só o dono atual do lease marca. Auditoria DENTRO
+   * da transação (falha no registro reverte a marcação; boot repete).
+   * Devolve true se ESTE worker marcou.
+   */
   const deadLetter = async (
     row: typeof schema.paymentEvents.$inferSelect,
     reason: string,
     detail?: unknown,
-  ) => {
+    leaseToken?: string,
+  ): Promise<boolean> => {
+    let marked = false;
     await db.transaction(async (tx) => {
-      await tx
-        .update(schema.paymentEvents)
-        .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null })
+      const locked = await tx
+        .select()
+        .from(schema.paymentEvents)
         .where(
           and(
             eq(schema.paymentEvents.id, row.id),
             isNull(schema.paymentEvents.processedAt),
             eq(schema.paymentEvents.deadLetter, false),
           ),
-        );
+        )
+        .for("update");
+      const fresh = locked[0];
+      if (!fresh) return; // já marcado/lettered por outra passada
+      if (leaseToken && fresh.leaseToken && fresh.leaseToken !== leaseToken) return; // lease perdido
+      await tx
+        .update(schema.paymentEvents)
+        .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null, leaseToken: null })
+        .where(eq(schema.paymentEvents.id, fresh.id));
+      marked = true;
+      await audit(tx as unknown as Db, {
+        action: "payment.event_dead_letter",
+        entity: "payment_event",
+        entityId: row.id,
+        actorLabel: "recovery:boot",
+        after: { provider: row.provider, eventId: row.eventId, type: row.type, reason, detail, attempts: fresh.attempts },
+      });
     });
-    deadLettered++;
-    await audit(db, {
-      action: "payment.event_dead_letter",
-      entity: "payment_event",
-      entityId: row.id,
-      actorLabel: "recovery:boot",
-      after: { provider: row.provider, eventId: row.eventId, type: row.type, reason, detail, attempts: row.attempts },
-    });
+    if (marked) deadLettered++;
+    return marked;
   };
 
   for (const row of pending) {
@@ -575,11 +643,13 @@ export async function recoverPendingEvents(
 
     // ---- CLAIM ATÔMICO: lock da linha + guarda de lease, SKIP LOCKED.
     // Segundo worker em corrida recebe zero linhas e pula — o primeiro
-    // processa sozinho dentro da janela do lease.
+    // processa sozinho dentro da janela do lease. O token (fencing, v5)
+    // prova posse: quem perdeu o lease não conclui o evento.
+    const leaseToken = crypto.randomUUID();
     const claim = await db.transaction(async (tx): Promise<
       | { kind: "locked_by_other" }
       | { kind: "backoff" }
-      | { kind: "claimed"; attempts: number }
+      | { kind: "claimed"; attempts: number; leaseToken: string }
     > => {
       const locked = await tx
         .select()
@@ -605,9 +675,10 @@ export async function recoverPendingEvents(
           attempts,
           lastAttemptAt: new Date(),
           leaseExpiresAt: new Date(Date.now() + leaseMs),
+          leaseToken,
         })
         .where(eq(schema.paymentEvents.id, fresh.id));
-      return { kind: "claimed", attempts };
+      return { kind: "claimed", attempts, leaseToken };
     });
 
     if (claim.kind === "locked_by_other") {
@@ -635,7 +706,7 @@ export async function recoverPendingEvents(
     if (!payment) {
       const tooOld = Date.now() - row.createdAt.getTime() > maxAgeDays * 24 * 60 * 60 * 1000;
       if (tooOld) {
-        await deadLetter(row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts });
+        await deadLetter(row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts }, claim.leaseToken);
       } else {
         parked++;
       }
@@ -649,9 +720,15 @@ export async function recoverPendingEvents(
       actorLabel: "recovery:boot",
       eventRowId: row.id,
       signatureValid: row.signatureValid ?? undefined,
+      leaseToken: claim.leaseToken,
     });
     if (outcome.applied) {
       applied++;
+    } else if (outcome.reason === "lease_lost") {
+      // Fencing (v5): o lease foi vencido e reivindicado por outro worker
+      // durante a aplicação — este worker NÃO conclui o evento; o dono
+      // atual processa. Sem contagem como aplicação nem rejeição.
+      leaseLost++;
     } else if (
       outcome.reason &&
       ["amount_mismatch", "currency_mismatch", "account_mismatch", "account_unverified", "transaction_mismatch", "gateway_query_unavailable", "event_not_authenticated"].includes(outcome.reason)
@@ -663,7 +740,7 @@ export async function recoverPendingEvents(
       // próprio bem-sucedido — se outro worker segurasse o lease, esta
       // passada teria pulado em `locked_by_other` antes de processar.
       if (claim.attempts >= maxAttempts) {
-        await deadLetter(row, `max_attempts_${outcome.reason}`);
+        await deadLetter(row, `max_attempts_${outcome.reason}`, undefined, claim.leaseToken);
       }
     } else {
       // already_applied / noop: evento saiu da fila (marcado na transação).
@@ -671,7 +748,7 @@ export async function recoverPendingEvents(
     }
   }
 
-  return { scanned: pending.length, applied, rejected, parked, deadLettered, skippedBackoff, skippedLease };
+  return { scanned: pending.length, applied, rejected, parked, deadLettered, skippedBackoff, skippedLease, leaseLost };
 }
 
 /**

@@ -662,6 +662,23 @@ export async function migrate(db: Db) {
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_expires_at" timestamptz;
   `).catch(() => {});
+  // Revisão v5: fencing token do lease — conclusão exige posse atual.
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_token" varchar(64);
+  `).catch(() => {});
+  // Revisão v5: lease de manutenção entre INSTÂNCIAS (exclusão no banco,
+  // não no processo) — uma instância varre por vez.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "system_locks" (
+      "name" varchar(64) PRIMARY KEY,
+      "lease_token" varchar(64),
+      "lease_expires_at" timestamptz,
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    );
+  `).catch(() => {});
+  await db.execute(sql`
+    INSERT INTO "system_locks" ("name") VALUES ('payment_maintenance') ON CONFLICT DO NOTHING;
+  `).catch(() => {});
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "payment_events_payment_idx" ON "payment_events" ("payment_id");
   `);
