@@ -85,7 +85,7 @@ A revisão apontou 3 problemas (1 CRÍTICO, 2 ALTO) e 2 MÉDIO. Todos corrigidos
 
 | Gate | Resultado |
 | --- | --- |
-| `npx tsc --noEmit` (api, store, admin) | exit 0 ×3 |
+| `npx tsc --noEmit` (shared, api, store, admin) | exit 0 ×4 — `shared` verificado com tsconfig próprio (`packages/shared/tsconfig.json`); o workflow de CI executa os 4 |
 | `npm test` (apps/api) | **289/289**, 33 arquivos (70 no arquivo de integridade) |
 | PostgreSQL real (`node scripts/pg-integration.mjs`, da raiz) | **94/94**, 4 arquivos |
 | CI independente | `.github/workflows/api-gates.yml` criado — ativa ao publicar a branch |
@@ -172,3 +172,9 @@ As consultas 3 e 1 do `late-payment-monitor.sql` auditam as resoluções e exclu
 3. **AUD-03 permanece pendente** (ledger, checksum, coordenação de migrations) — item de arquitetura independente, fora do escopo da v5.
 4. SQLs de hardening e homologação com gateway real continuam bloqueados (produção congelada).
 5. ATENÇÃO de ambiente: há trabalho paralelo em edição NESTE working tree (assistente IA: `admin-ai.ts`, `ai-assistant.ts`, `page.tsx`, testes `#n`) — NÃO faz parte da v5, não está commitado; os gates da v5 foram executados com esses arquivos temporariamente afastados (stash) e a tree devolvida ao estado encontrado.
+
+## Pendências de ENDURECIMENTO (veredito final — não bloqueadores, próxima rodada pós-merge)
+
+1. **Isolamento por registro na passada de expiração.** Falha de consulta ao provedor já é isolada (`queryWithRetry` ⇒ `skippedUnknown`), mas uma exceção em `finalizeExpiry`/`audit()` de UM registro (deadlock, erro pontual de banco) interrompe o processamento dos demais elegíveis da passada. Consequência atual: apenas ATRASO — nada é assentado errado (o registro falho faz rollback; a passada seguinte reprocessa, idempotente). Endurecimento desejado: `try/catch` por registro com contador `failed` no `ExpirySummary` + teste de prova (trigger RAISE num registro, segundo registro processado na mesma passada).
+2. **Referência de tempo do lease.** A margem de segurança (`ctx.lost()`) usa o relógio LOCAL (`Date.now()`), enquanto `lease_expires_at` é controlado pelo relógio do BANCO. Divergência de relógio entre instâncias/banco afeta os dois lados. Endurecimento desejado: referência de tempo consistente com o banco (ex.: `now()` lido do banco na renovação) ou margem conservadora explicitando a tolerância de skew.
+3. **Identificador estruturado para divergências financeiras.** A fila operacional hoje depende de eventos de `audit_logs` (interpretados por `late-payment-monitor.sql`). Melhoria futura: registro próprio com estado operacional (aberto/resolvido), facilitando alertas, métricas e relatórios — sem atualizar nem excluir o histórico original (append-only preservado).

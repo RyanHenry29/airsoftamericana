@@ -343,7 +343,7 @@ CI: `.github/workflows/api-gates.yml` — tsc ×3 + `npm test` + `node scripts/p
 
 ## Gates v5 executados (números medidos após `1dc5c2f`, tree somente-v5)
 
-- `npx tsc --noEmit` (api, store, admin) — exit 0 ×3.
+- `npx tsc --noEmit` (shared, api, store, admin) — exit 0 ×4 (`shared` com tsconfig próprio; o workflow de CI executa os 4).
 - `npm test` (apps/api) — **289/289**, 33 arquivos (70 no arquivo de integridade).
 - PostgreSQL real (`node scripts/pg-integration.mjs` da raiz) — **94/94**, 4 arquivos.
 
@@ -352,4 +352,5 @@ CI: `.github/workflows/api-gates.yml` — tsc ×3 + `npm test` + `node scripts/p
 1. Veredito final do revisor sobre a rodada de correção condicionada (`b0b8d14..1dc5c2f`): os 5 pendências (2 ALTO, 3 MÉDIO) endereçados com evidência.
 2. Decisão explícita do revisor sobre publicar no PR #1 (push da branch) ou substituir; o CI executa os gates de forma independente no push.
 3. AUD-03 (ledger, checksum, coordenação de migrations) — pendente por decisão de arquitetura, fora do escopo da v5.
-4. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
+4. Endurecimento pós-veredito (não bloqueadores, próxima rodada pós-merge): (a) isolamento por registro na passada de expiração — exceção pontual de um registro hoje atrasa (não corrompe: rollback + reprocesso idempotente na passada seguinte); (b) referência de tempo do lease alinhada ao relógio do banco; (c) identificador estruturado com estado para divergências financeiras. Detalhes no guia de revisão.
+5. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
