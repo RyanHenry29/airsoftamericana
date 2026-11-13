@@ -25,13 +25,16 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
-      # --- Portão 1: TypeScript nos três apps (fail = job falha) ----------
+      # --- Portão 1: TypeScript nos quatro projetos (fail = job falha) ------
       # shared é buildado (não só typecheckado): packages/shared/package.json
       # aponta types → dist/index.d.ts — sem dist, apps/api não resolve o
       # módulo em checkout limpo (falha de CI #43477854407). O build valida
       # os tipos E emite as declarações que os typechecks seguintes consomem.
       - name: build shared
         run: npm run build -w @airsoft/shared
+
+      - name: typecheck shared
+        run: npx tsc --noEmit -p packages/shared/tsconfig.json
 
       - name: typecheck api
         run: npx tsc --noEmit -p apps/api/tsconfig.json
