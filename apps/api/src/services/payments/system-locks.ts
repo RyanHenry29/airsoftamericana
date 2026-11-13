@@ -99,7 +99,14 @@ export async function withSystemLock<T>(
   db: Db,
   name: string,
   ttlMs: number,
-  fn: (ctx: { /** true = perda confirmada OU incerteza além da margem de segurança (TTL). */ lost: () => boolean }) => Promise<T>,
+  fn: (ctx: {
+    /** true = perda confirmada OU incerteza além da margem de segurança (TTL). */
+    lost: () => boolean;
+    /** Nome do lease (repassado para fencing transacional em reparos). */
+    lockName: string;
+    /** Token do dono atual (repassado para fencing transacional em reparos). */
+    leaseToken: string;
+  }) => Promise<T>,
 ): Promise<{ ok: true; value: T } | { ok: false }> {
   const token = await acquireSystemLock(db, name, ttlMs);
   if (!token) return { ok: false };
@@ -132,6 +139,8 @@ export async function withSystemLock<T>(
       ok: true,
       value: await fn({
         lost: () => ownerLost || performance.now() - lastConfirmedAt > ttlMs,
+        lockName: name,
+        leaseToken: token,
       }),
     };
   } finally {

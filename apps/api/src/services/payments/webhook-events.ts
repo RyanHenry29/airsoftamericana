@@ -745,6 +745,12 @@ export async function recoverPendingEvents(
  * updates): pagamento já atualizado mas pedido não. Roda no boot, depois de
  * recoverPendingEvents — revisão v4 (ponto B):
  *
+ *  - FENCING TRANSACIONAL: se `ctx.lockName` e `ctx.leaseToken` forem
+ *    informados, cada reparo valida e bloqueia a linha do lock em
+ *    `system_locks` (token + lease_expires_at > now()) DENTRO da mesma
+ *    transação da transição. Lease expirado ou tomado por outra instância
+ *    lança `LeaseLostError` e reverte tudo — um worker obsoleto não confima
+ *    alterações depois de perder a propriedade.
  *  - IDEMPOTENTE por construção: a divergência é definida pela JUNÇÃO
  *    (payment definitivo × order em PAYMENT_PENDING_STATUSES). O primeiro
  *    reparo tira o pedido da condição — passadas seguintes não encontram
@@ -771,7 +777,13 @@ export async function recoverPendingEvents(
  *   expirado    → cancelado           (libera estoque, uma vez)
  *   estornado   → reembolsado         (nunca auto-estorna; estado só espelha)
  */
-export async function repairPartialApplications(db: Db): Promise<{ repaired: number }> {
+export async function repairPartialApplications(
+  db: Db,
+  ctx?: { lockName?: string; leaseToken?: string; lost?: () => boolean },
+): Promise<{ repaired: number }> {
+  // Barreira local barata: já perdemos o lease? Abortamos antes de tocar o banco.
+  if (ctx?.lost?.()) throw new LeaseLostError();
+
   const divergent = await db
     .select({ payment: schema.payments, order: schema.orders })
     .from(schema.payments)
@@ -785,6 +797,10 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
 
   let repaired = 0;
   for (const { payment, order } of divergent) {
+    // Barreira local entre reparos: o lease pode ter expirado enquanto
+    // processávamos o anterior.
+    if (ctx?.lost?.()) throw new LeaseLostError();
+
     const from = order.status as OrderStatus;
     const to: OrderStatus | null =
       payment.status === "aprovado"
@@ -795,6 +811,25 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
     try {
       let done = false;
       await db.transaction(async (tx) => {
+        // Fencing transacional: validar e bloquear o lock de manutenção
+        // dentro desta mesma transação. Se o lease expirou ou foi tomado
+        // por outra instância, a linha não é encontrada e abortamos com
+        // rollback total (transição + auditoria + tudo).
+        if (ctx?.lockName && ctx?.leaseToken) {
+          const [lock] = await tx
+            .select()
+            .from(schema.systemLocks)
+            .where(
+              and(
+                eq(schema.systemLocks.name, ctx.lockName),
+                eq(schema.systemLocks.leaseToken, ctx.leaseToken),
+                sql`${schema.systemLocks.leaseExpiresAt} > now()`,
+              ),
+            )
+            .for("update");
+          if (!lock) throw new LeaseLostError();
+        }
+
         const outcome = await transitionOrderInTx(tx as unknown as Db, {
           orderId: order.id,
           to,
@@ -823,7 +858,8 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
         }
       });
       if (done) repaired++;
-    } catch {
+    } catch (err) {
+      if (err instanceof LeaseLostError) throw err; // lease perdido — aborta o reparo inteiro
       // Transição inválida no estado atual (ex.: revisão manual) — deixa
       // para o fluxo humano; a divergência permanece auditável via query.
     }
