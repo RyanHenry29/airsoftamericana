@@ -78,11 +78,18 @@ export async function releaseSystemLock(db: Db, name: string, token: string): Pr
  *    lease é estendido — passada longa não perde o lock no meio);
  *  - não adquirido → devolve { ok: false } SEM rodar `fn` (outra instância
  *    é a responsável por esta passada);
- *  - RENOVAÇÃO RECUSADA (token não é mais o dono) → `ctx.lost()` passa a
- *    devolver true: `fn` ABORTA COOPERATIVAMENTE entre fases — um worker
- *    não continua manutenção depois de perder o lock. Falha TRANSITÓRIA
- *    de rede na renovação NÃO marca perda (o token ainda é nosso; próximo
- *    heartbeat renova);
+ *  - `ctx.lost()` (correção pós-revisão) distingue TRÊS estados:
+ *      · owned    — renovação CONFIRMADA pelo banco;
+ *      · lost     — renovação RECUSADA (token não é mais o dono);
+ *      · uncertain— renovação sem resposta (indisponibilidade transitória).
+ *    A recusa marca perda IMEDIATA. A incerteza NÃO é declarada como perda,
+ *    mas também NÃO pode durar indefinidamente: `lost()` vira true quando
+ *    nenhuma renovação é CONFIRMADA por ≥ ttlMs (aquisição conta como
+ *    confirmação; renovações confirmadas rearmam a margem). Ultrapassado o
+ *    TTL sem confirmação, o lease no BANCO já expirou — outra instância PODE
+ *    ter assumido, e este worker não continua manutenção nessa dúvida.
+ *  - `fn` ABORTA COOPERATIVAMENTE entre fases quando `lost()` vira true —
+ *    um worker não executa manutenção sem posse (ou certeza de posse).
  *  - qualquer falha → lock liberado no `finally` (release é idempotente
  *    por token; se o lease já expirou, expira sozinho).
  */
@@ -90,26 +97,38 @@ export async function withSystemLock<T>(
   db: Db,
   name: string,
   ttlMs: number,
-  fn: (ctx: { /** true = a renovação confirmou que o lock foi tomado por outro. */ lost: () => boolean }) => Promise<T>,
+  fn: (ctx: { /** true = perda confirmada OU incerteza além da margem de segurança (TTL). */ lost: () => boolean }) => Promise<T>,
 ): Promise<{ ok: true; value: T } | { ok: false }> {
   const token = await acquireSystemLock(db, name, ttlMs);
   if (!token) return { ok: false };
 
+  // A AQUISIÇÃO é a primeira renovação confirmada — a margem começa aqui.
+  let lastConfirmedAt = Date.now();
   let ownerLost = false;
-  // Heartbeat de renovação: ttl/3, unref. Recusa na renovação = o lock foi
-  // tomado por outra instância (guarda por token): marca a perda — `fn`
-  // decide onde abortar. Erro na renovação = transitório: não marca.
+  // Heartbeat de renovação: ttl/3, unref.
+  //  - recusa (token não é mais o dono) = perda CONFIRMADA: marca;
+  //  - erro na renovação = incerteza: NÃO marca — o limite de segurança
+  //    (nenhuma confirmação por ≥ TTL) decide em `lost()`.
   const heartbeat = setInterval(() => {
     void renewSystemLock(db, name, token, ttlMs)
       .then((renewed) => {
-        if (!renewed) ownerLost = true;
+        if (renewed) {
+          lastConfirmedAt = Date.now();
+        } else {
+          ownerLost = true;
+        }
       })
       .catch(() => {});
   }, Math.max(1_000, Math.floor(ttlMs / 3)));
   if (typeof heartbeat.unref === "function") heartbeat.unref();
 
   try {
-    return { ok: true, value: await fn({ lost: () => ownerLost }) };
+    return {
+      ok: true,
+      value: await fn({
+        lost: () => ownerLost || Date.now() - lastConfirmedAt > ttlMs,
+      }),
+    };
   } finally {
     clearInterval(heartbeat);
     await releaseSystemLock(db, name, token).catch(() => {});

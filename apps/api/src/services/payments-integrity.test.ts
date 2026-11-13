@@ -3,7 +3,7 @@
 // idempotência de webhook, regressão, pagamento tardio e corrida checkout×webhook.
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import crypto from "node:crypto";
-import { getDb } from "../db/index.js";
+import { getDb, type Db } from "../db/index.js";
 import { migrate } from "../db/migrate.js";
 import { schema } from "../db/index.js";
 import { handleCheckout } from "./checkout.js";
@@ -1772,12 +1772,14 @@ describe("fencing token do lease (revisão v5, itens 1-2)", () => {
     void orderId;
   });
 
-  it("CLAIM único: cada reivindicação gera um token DIFERENTE", async () => {
+  it("CLAIM único: cada reivindicação gera um token DIFERENTE (capturado e comparado)", async () => {
     const { pay } = await fenceCheckout("fence-token");
     const row1 = await insertEvent("fence-token", pay, { leaseExpiresAt: null });
 
-    // 1º claim: recovery aplica e conclui — token gravado.
+    // 1º claim: recovery aplica e conclui — token gravado na linha.
     await recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 });
+    const [evt1] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, row1.id));
+    const token1 = evt1!.leaseToken;
 
     // Evento novo para 2º claim sobre o MESMO caminho.
     const raw = JSON.stringify({ id: "fence-2", type: "payment.approved", data: { transactionId: pay.providerTransactionId } });
@@ -1791,11 +1793,17 @@ describe("fencing token do lease (revisão v5, itens 1-2)", () => {
       processedAt: null,
     });
     const second = await recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 });
+    const [evt2] = await db.select().from(schema.paymentEvents).where(and(eq(schema.paymentEvents.provider, "fence-token"), eq(schema.paymentEvents.eventId, parsed.eventId)));
+    const token2 = evt2!.leaseToken;
+
+    // UNICIDADE comprovada: os dois claims escreveram tokens PRÓPRIOS —
+    // não nulos e diferentes (reuso de token entre claims = defeito de fencing).
+    expect(token1).toBeTruthy();
+    expect(token2).toBeTruthy();
+    expect(token1).not.toBe(token2);
 
     // A guarda NÃO bloqueia o dono legítimo: ambos concluídos com claims
     // próprios (tokens gerados por reivindicação, não reutilizados).
-    const [evt1] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, row1.id));
-    const [evt2] = await db.select().from(schema.paymentEvents).where(and(eq(schema.paymentEvents.provider, "fence-token"), eq(schema.paymentEvents.eventId, parsed.eventId)));
     expect(second.applied).toBe(1);
     expect(evt1!.processedAt).toBeTruthy();
     expect(evt2!.processedAt).toBeTruthy();
@@ -2023,5 +2031,423 @@ describe("atomicidade da expiração e corrida com webhook (revisão v5, item 5)
       await db.execute(`ALTER TABLE "payments" DROP CONSTRAINT IF EXISTS test_forbid_capture`);
     }
   });
+
+  it("FENCING × EXPIRAÇÃO em paralelo: ladrão assume o lease; webhook aborta; expiração assenta UMA vez", async () => {
+    const provider = "fence-race";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    registerAdapter(new ApprovedExpiryAdapter(provider) as unknown as PaymentAdapter);
+    const orderId = await staleOrder(provider, variant.id, customerId);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+
+    // Evento reivindicado por worker-a (lease vigente), sem amountCents —
+    // validação passa pelo gateway (ponto de virada do ladrão).
+    const raw = JSON.stringify({ id: "fence-race-1", type: "payment.approved", data: { transactionId: pay.providerTransactionId } });
+    const parsed = getAdapter(provider)!.parseWebhook(raw);
+    const [evt] = await db
+      .insert(schema.paymentEvents)
+      .values({
+        provider,
+        eventId: parsed.eventId,
+        type: "payment.approved",
+        payload: JSON.parse(raw),
+        signatureValid: true,
+        leaseToken: "worker-a",
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      })
+      .returning();
+
+    class StealRaceAdapter extends RenamedSandboxAdapter {
+      constructor() {
+        super(provider);
+      }
+      async queryPayment(providerTransactionId: string): Promise<QueryPaymentResult> {
+        await db
+          .update(schema.paymentEvents)
+          .set({ leaseToken: "worker-b", leaseExpiresAt: new Date(Date.now() + 60_000) })
+          .where(eq(schema.paymentEvents.id, evt.id));
+        return super.queryPayment(providerTransactionId);
+      }
+      async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+        return { status: "aprovado", amountCents: 10000, currency: "BRL" };
+      }
+    }
+    registerAdapter(new StealRaceAdapter() as unknown as PaymentAdapter);
+
+    const webhook = applyPaymentEvent(db, {
+      provider,
+      event: parsed,
+      payment: pay,
+      eventRowId: evt.id,
+      leaseToken: "worker-a",
+      signatureValid: true,
+    }).catch((err) => err); // LeaseLostError propaga no caminho direto
+
+    const [expiryResult, webhookOutcome] = await Promise.all([
+      expireStaleReservations(db, { olderThanMinutes: 60 }),
+      webhook,
+    ]);
+
+    // Webhook aborta: o worker antigo não conclui o evento que perdeu.
+    expect(webhookOutcome).toBeInstanceOf(LeaseLostError);
+
+    // Expiração assenta: UMA transição de aprovação, pagamento aprovado.
+    expect(expiryResult.approved).toBe(1);
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(1);
+    const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
+    expect(payAfter!.status).toBe("aprovado");
+
+    // Evento NÃO concluído pelo worker antigo — fica para o dono atual
+    // (passada seguinte marca como already_applied).
+    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, evt.id));
+    expect(evtAfter!.processedAt).toBeNull();
+    expect(evtAfter!.leaseToken).toBe("worker-b");
+  });
 });
+
+// ---------------------------------------------------------------------------
+// Correção pós-revisão (v5.1) — decisão de expiração DEFINIDA PELO ESTADO DO
+// PEDIDO (finalizeExpiry). Contrato exigido pela revisão:
+//   1. Pagamento aprovado NUNCA é confirmado com pedido cancelado sem
+//      registro durável de refund_required.
+//   2. Transição obrigatória recusada ⇒ NADA é assentado (pagamento fica
+//      pendente) — e a recusa não mata a passada de manutenção.
+//   3. Reconciliação (pedido já no alvo) NUNCA audita late_confirmation
+//      como se a transição tivesse ocorrido.
+// ---------------------------------------------------------------------------
+
+describe("finalizeExpiry: decisão por estado do pedido (correção pós-revisão)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+    registerAdapter(new SandboxAdapter());
+  });
+
+  async function staleOrderFor(provider: string, variantId: string, customerId: string) {
+    // Adapter do provider registrado ANTES do checkout (o checkout resolve
+    // o gateway pelo provider da config habilitada).
+    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider,
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const created = await handleCheckout(
+      db,
+      { items: [{ variantId, quantity: 1 }], address: addr(), paymentMethod: "pix", acceptedTerms: true, ageConfirmed: true } as any,
+      { customerId, ip: "127.0.0.1" },
+    );
+    await db.update(schema.orders).set({ createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }).where(eq(schema.orders.id, created.orderId));
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, created.orderId));
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
+    return { orderId: created.orderId, paymentId: pay.id };
+  }
+
+  /** Adapter aprovado que vira o estado do pedido na consulta ao gateway —
+   *  simula mutação (admin/webhook) na janela entre scan e decisão. */
+  class FlipOrderAdapter extends RenamedSandboxAdapter {
+    constructor(providerName: string, private orderId: string, private to: string) {
+      super(providerName);
+    }
+    async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+      await db.update(schema.orders).set({ status: this.to as any }).where(eq(schema.orders.id, this.orderId));
+      return { status: "aprovado", amountCents: 10000, currency: "BRL" };
+    }
+  }
+
+  it("PEDIDO CANCELADO + provedor aprovado: pagamento tardio assentado com refund_required DURÁVEL — sem reabrir pedido, sem matar a passada", async () => {
+    const provider = "late-exp";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId } = await staleOrderFor(provider, variant.id, customerId);
+    // O pedido é cancelado DURANTE a passada (janela entre scan e decisão):
+    // o gancho do adapter vira o estado antes de devolver "aprovado".
+    registerAdapter(new FlipOrderAdapter(provider, orderId, "cancelado") as unknown as PaymentAdapter);
+
+    let threw: unknown = null;
+    let summary: Awaited<ReturnType<typeof expireStaleReservations>> | undefined;
+    try {
+      summary = await expireStaleReservations(db, { olderThanMinutes: 60 });
+    } catch (err) {
+      threw = err;
+    }
+
+    // A passada SOBREVIVE: recusa/derivação de transição não é exceção
+    // não-tratada (estado "veneno" não derruba o varrimento inteiro).
+    expect(threw).toBeNull();
+
+    // Dinheiro entrou: realidade financeira registrada no pagamento.
+    const [payment] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+    expect(payment!.status).toBe("aprovado");
+    expect(payment!.capturedAt).toBeTruthy();
+
+    // Pedido NÃO reabre.
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("cancelado");
+
+    // Sem transição de aprovação no histórico (pedido cancelado não transiciona).
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(0);
+
+    // Registro DURÁVEL de refund_required (order.late_payment, na transação).
+    const late = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "order.late_payment"), eq(schema.auditLogs.entityId, orderId)));
+    expect(late.length).toBe(1);
+    expect(JSON.stringify(late[0]!.afterJson)).toContain("refund_required");
+
+    // NUNCA audita late_confirmation como se tivesse transicionado.
+    const lateConf = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "expiry.late_confirmation"), eq(schema.auditLogs.entityId, orderId)));
+    expect(lateConf.length).toBe(0);
+
+    // Estoque não é tocado pela expiração (pedido já estava cancelado sem transição).
+    const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(inv.reserved).toBe(1);
+
+    // Contador do summary registra o pagamento tardio.
+    expect((summary as any)?.latePayment).toBe(1);
+  });
+
+  it("PEDIDO JÁ NO ALVO: pagamento reconciliado SEM auditoria de confirmação tardia", async () => {
+    const provider = "recon-exp";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId } = await staleOrderFor(provider, variant.id, customerId);
+    // Pedido já em pagamento_aprovado na janela do scan→decisão (divergência
+    // legada): reconciliação, não transição.
+    registerAdapter(new FlipOrderAdapter(provider, orderId, "pagamento_aprovado") as unknown as PaymentAdapter);
+
+    let threw: unknown = null;
+    let summary: Awaited<ReturnType<typeof expireStaleReservations>> | undefined;
+    try {
+      summary = await expireStaleReservations(db, { olderThanMinutes: 60 });
+    } catch (err) {
+      threw = err;
+    }
+    expect(threw).toBeNull();
+
+    const [payment] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+    expect(payment!.status).toBe("aprovado");
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+
+    // Sem transição (from === to): NENHUMA entrada nova no histórico.
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(0);
+
+    // NÃO audita late_confirmation (transição não ocorreu).
+    const lateConf = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "expiry.late_confirmation"), eq(schema.auditLogs.entityId, orderId)));
+    expect(lateConf.length).toBe(0);
+
+    // Audita a RECONCILIAÇÃO, com o estado real do pedido.
+    const recon = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "expiry.payment_reconciled"), eq(schema.auditLogs.entityId, orderId)));
+    expect(recon.length).toBe(1);
+
+    expect((summary as any)?.approved).toBe(0);
+    expect((summary as any)?.latePayment).toBe(0);
+  });
+
+  it("TRANSIÇÃO recusada (estado não-transicionável): NADA é assentado — pagamento permanece pendente", async () => {
+    const provider = "refuse-exp";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId } = await staleOrderFor(provider, variant.id, customerId);
+    // Pedido enviado na janela scan→decisão: nenhum estado de pagamento
+    // transiciona a partir daqui — assentamento automático é proibido.
+    registerAdapter(new FlipOrderAdapter(provider, orderId, "enviado") as unknown as PaymentAdapter);
+
+    let threw: unknown = null;
+    let summary: Awaited<ReturnType<typeof expireStaleReservations>> | undefined;
+    try {
+      summary = await expireStaleReservations(db, { olderThanMinutes: 60 });
+    } catch (err) {
+      threw = err;
+    }
+    expect(threw).toBeNull(); // recusa não derruba a passada
+
+    // Pagamento NÃO é assentado — investigação humana decide.
+    const [payment] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+    expect(payment!.status).toBe("pendente");
+    expect(payment!.capturedAt).toBeNull();
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("enviado");
+
+    // Auditoria OPERACIONAL da recusa (fora da transação — não houve mutação).
+    const skipAudit = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "expiry.skipped_invalid_order_state"), eq(schema.auditLogs.entityId, orderId)));
+    expect(skipAudit.length).toBe(1);
+    expect((summary as any)?.approved).toBe(0);
+    expect((summary as any)?.latePayment).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Correção pós-revisão (v5.2) — heartbeats: INCERTEZA não pode durar para
+// sempre. Sem renovação CONFIRMADA por ≥ TTL, ctx.lost() vira true — mesmo
+// sem nenhuma recusa (banco silencioso não mantém o worker no lock).
+// ---------------------------------------------------------------------------
+
+describe("withSystemLock: incerteza do heartbeat (correção pós-revisão)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    await db.execute(`DELETE FROM "system_locks"`).catch(() => {});
+    await db.execute(`INSERT INTO "system_locks" ("name") VALUES ('payment_maintenance') ON CONFLICT DO NOTHING`);
+  });
+
+  it("INCERTEZA prolongada: sem renovação confirmada por ≥ TTL ⇒ ctx.lost() true — mesmo sem recusa", async () => {
+    // TTL 50 ms: o 1º heartbeat só rodaria aos 1 s — entre a aquisição e lá
+    // NENHUMA renovação é confirmada. A margem de segurança (TTL) vence: o
+    // lease no banco já expirou; outra instância PODE ter assumido.
+    const r = await withSystemLock(db, "uncertain-lock", 50, async (ctx) => {
+      await new Promise((res) => setTimeout(res, 300));
+      return { sawLost: ctx.lost() };
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.sawLost).toBe(true);
+  });
+
+  it("dentro da margem (renovação confirmada recentemente): ctx.lost() permanece false", async () => {
+    const r = await withSystemLock(db, "certain-lock", 60_000, async (ctx) => {
+      await new Promise((res) => setTimeout(res, 100));
+      return { sawLost: ctx.lost() };
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.sawLost).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Correção pós-revisão (v5.3) — migrations: DDL obrigatório NÃO pode ser
+// engolido. Falha real de DDL rejeita o migrate (boot interrompido);
+// idempotência continua valendo (reexecução é no-op, não erro).
+// ---------------------------------------------------------------------------
+
+describe("migrate: DDL obrigatório propaga falha (correção pós-revisão)", () => {
+  it("FALHA de DDL obrigatório rejeita o migrate — silêncio não é sucesso", async () => {
+    let rejected = false;
+    // DROP COLUMN dentro de transação: rollback SEMPRE restaura o schema.
+    await db
+      .transaction(async (tx: Db) => {
+        await tx.execute(`ALTER TABLE "payment_events" DROP COLUMN "processed_at"`);
+        try {
+          await migrate(tx as unknown as Db);
+          rejected = false; // migrate ENGOLIU a falha obrigatória (defeito)
+        } catch {
+          rejected = true; // migrate PROPAGOU (comportamento exigido)
+        }
+        throw new Error("rollback sempre — restaura processed_at");
+      })
+      .catch(() => {});
+    expect(rejected).toBe(true);
+
+    // A coluna voltou (rollback da transação).
+    const cols = await db.execute(`SELECT column_name FROM information_schema.columns WHERE table_name = 'payment_events' AND column_name = 'processed_at'`);
+    expect((cols as any).rows?.length ?? 0).toBe(1);
+  });
+
+  it("IDEMPOTÊNCIA preservada: migrate reexecutado é no-op (sem erro)", async () => {
+    await expect(migrate(db as unknown as Db)).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Correção pós-revisão (v5.4) — dead-letter: token informado exige
+// correspondência EXATA com o persistido, inclusive quando o persistido é
+// NULL. Três estados no comparador: dono legítimo marca; divergência e
+// ausência de token persistido BLOQUEIAM.
+// ---------------------------------------------------------------------------
+
+describe("deadLetter: guarda estrita de token (correção pós-revisão)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+    registerAdapter(new SandboxAdapter());
+  });
+
+  it("token persistido NULL + token informado: dead-letter BLOQUEADA (evento permanece na fila)", async () => {
+    const provider = "dl-strict";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider,
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const result = await handleCheckout(
+      db,
+      { items: [{ variantId: variant.id, quantity: 1 }], address: addr(), paymentMethod: "pix", acceptedTerms: true, ageConfirmed: true } as any,
+      { customerId, ip: "127.0.0.1" },
+    );
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
+
+    // Adapter ladrão: limpa o token persistido no meio do processamento e
+    // devolve valor divergente ao gateway ⇒ amount_mismatch ⇒ max_attempts
+    // (1) ⇒ dead-letter com o token do claim — contra persistido NULL.
+    class ClearTokenAdapter extends RenamedSandboxAdapter {
+      constructor(providerName: string) {
+        super(providerName);
+      }
+      async queryPayment(providerTransactionId: string): Promise<QueryPaymentResult> {
+        await db.execute(`UPDATE "payment_events" SET "lease_token" = NULL WHERE "provider" = 'dl-strict' AND "processed_at" IS NULL`);
+        return { status: "pendente", amountCents: 1, currency: "BRL" };
+      }
+      async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+        return null;
+      }
+    }
+    registerAdapter(new ClearTokenAdapter(provider) as unknown as PaymentAdapter);
+
+    // Evento SEM amountCents: validação passa pelo gateway (gancho acima).
+    const raw = JSON.stringify({
+      id: "dl-strict-1",
+      type: "payment.approved",
+      data: { transactionId: pay.providerTransactionId },
+    });
+    const parsed = (getAdapter(provider) as PaymentAdapter)!.parseWebhook(raw);
+    await db.insert(schema.paymentEvents).values({
+      provider,
+      eventId: parsed.eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    });
+
+    const summary = await recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 });
+
+    // Guarda estrita: token persistido NULL ≠ token do claim ⇒ NÃO marca.
+    expect(summary.deadLettered).toBe(0);
+    const [row] = await db
+      .select()
+      .from(schema.paymentEvents)
+      .where(and(eq(schema.paymentEvents.provider, provider), eq(schema.paymentEvents.eventId, parsed.eventId)));
+    expect(row!.deadLetter).toBe(false);
+    expect(row!.processedAt).toBeNull();
+    expect(summary.rejected).toBe(1);
+  });
+});
+
 
