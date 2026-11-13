@@ -37,6 +37,7 @@ import { initAdapters } from "./index.js";
 import { transitionOrderInTx } from "../orders.js";
 import { audit } from "../../lib/audit.js";
 import { withSystemLock } from "./system-locks.js";
+import { type OrderStatus } from "@airsoft/shared";
 
 export interface ExpirySummary {
   scanned: number;
@@ -47,6 +48,12 @@ export interface ExpirySummary {
   skippedUnknown: number;
   /** `null` do provedor dentro da tolerância — reserva preservada. */
   skippedNotFoundGrace: number;
+  /** Revisão v5 (item 4): primeira observação `null` persistida. */
+  firstSeenRecorded: number;
+  /** Revisão v5 (item 4): `null` com primeira observação recente — janela de
+   *  consistência ainda não decorrida; confirmação independente virá na
+   *  passada seguinte. */
+  skippedConfirmWindow: number;
 }
 
 const QUERY_RETRIES = 2;
@@ -73,11 +80,20 @@ async function queryWithRetry(
 
 export async function expireStaleReservations(
   db: Db,
-  opts: { olderThanMinutes?: number; notFoundGraceMinutes?: number; limit?: number } = {},
+  opts: {
+    olderThanMinutes?: number;
+    notFoundGraceMinutes?: number;
+    /** Janela mínima entre a primeira observação `null` e a confirmação
+     *  independente (default = intervalo de manutenção): dois `null` em
+     *  passadas distintas são independentes; na mesma passada, não. */
+    confirmWindowMs?: number;
+    limit?: number;
+  } = {},
 ): Promise<ExpirySummary> {
   await initAdapters(db);
   const olderThanMinutes = opts.olderThanMinutes ?? 60;
   const notFoundGraceMinutes = opts.notFoundGraceMinutes ?? 24 * 60;
+  const confirmWindowMs = opts.confirmWindowMs ?? 15 * 60 * 1000;
 
   const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
   const graceCutoff = new Date(Date.now() - notFoundGraceMinutes * 60 * 1000);
@@ -101,6 +117,8 @@ export async function expireStaleReservations(
     skipped: 0,
     skippedUnknown: 0,
     skippedNotFoundGrace: 0,
+    firstSeenRecorded: 0,
+    skippedConfirmWindow: 0,
   };
 
   for (const { order, payment } of stale) {
@@ -137,8 +155,30 @@ export async function expireStaleReservations(
     let remote = queried.result;
 
     if (remote === null) {
-      // Provedor reporta ausência. Tolerância: dentro do grace, resposta
-      // negativa precoce NÃO cancela — consistência eventual preservada.
+      // Revisão v5 (item 4): a primeira observação `null` é PERSISTIDA —
+      // a decisão nunca depende de dois `null` na mesma passada. A próxima
+      // passada (janela = intervalo de manutenção) reconsulta: só então as
+      // duas observações são independentes.
+      if (!payment.notFoundFirstSeenAt) {
+        await db
+          .update(schema.payments)
+          .set({ notFoundFirstSeenAt: new Date() })
+          .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
+        summary.firstSeenRecorded++;
+        await audit(db, {
+          action: "expiry.notfound_first_seen",
+          entity: "order",
+          entityId: order.id,
+          actorLabel: "expiry:auto",
+          after: {
+            provider: payment.provider,
+            reason: "provedor não conhece a cobrança — observação persistida; confirmação independente na passada seguinte",
+            graceMinutes: notFoundGraceMinutes,
+          },
+        });
+      }
+      // Tolerância: dentro do grace, resposta negativa NÃO cancela —
+      // consistência eventual do gateway preservada (v4).
       if (order.createdAt.getTime() > graceCutoff.getTime()) {
         summary.skippedNotFoundGrace++;
         await audit(db, {
@@ -154,96 +194,89 @@ export async function expireStaleReservations(
         });
         continue;
       }
-      // Dupla confirmação: 2ª consulta imediata — blip de consistência
-      // eventual não vira cancelamento.
-      try {
-        remote = await adapter.queryPaymentByOrder(order.id);
-      } catch {
-        summary.skippedUnknown++;
+      // Janela de confirmação: a observação persistida é recente — este
+      // `null` não é independente do primeiro; a passada seguinte decide.
+      const firstSeen = payment.notFoundFirstSeenAt?.getTime() ?? 0;
+      if (Date.now() - firstSeen < confirmWindowMs) {
+        summary.skippedConfirmWindow++;
         await audit(db, {
-          action: "expiry.skipped_unknown",
+          action: "expiry.skipped_confirm_window",
           entity: "order",
           entityId: order.id,
           actorLabel: "expiry:auto",
-          after: { provider: payment.provider, reason: "2ª confirmação falhou — reserva preservada" },
+          after: {
+            provider: payment.provider,
+            reason: "segunda observação antes da janela de confirmação — decisão adiada para a passada seguinte",
+            firstSeenAt: payment.notFoundFirstSeenAt,
+            confirmWindowMs,
+          },
         });
         continue;
       }
-      if (remote !== null) {
-        // Apareceu entre as consultas: segue com o resultado real (abaixo).
-        // null→pendente fica no ramo de cobrança viva; null→aprovado no de aprovação.
+      // Tolerância vencida + duas observações independentes (passadas
+      // distintas), ambas `null`: ausência definitiva — cancela com estoque
+      // livre, atomicamente (v5, item 5).
+      const settled = await finalizeExpiry(db, {
+        paymentId: payment.id,
+        orderId: order.id,
+        paymentStatus: "expirado",
+        toOrderStatus: "cancelado",
+        reason: "Reserva expirada: sem cobrança no provedor (duas observações independentes após tolerância)",
+      });
+      if (settled.transitioned) {
+        summary.cancelled++;
+      } else {
+        summary.skipped++; // webhook/admin venceu a corrida
       }
+      continue;
     }
 
     if (remote !== null && (remote.status === "aprovado" || remote.status === "autorizado")) {
-      // Update GUARDADO por status pendente: webhook que resolveu na janela
-      // vence — sem overwrite, sem dupla contagem. Verificação por re-leitura
-      // (o drizzle PGlite desta casa não aceita returning com colunas aqui).
-      await db
-        .update(schema.payments)
-        .set({
-          status: remote.status,
-          authorizedCents: remote.status === "autorizado" ? payment.amountCents : null,
-          capturedAt: remote.status === "aprovado" ? new Date() : null,
-        })
-        .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
-      const [afterGuard] = await db.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
-      if (afterGuard!.status !== remote.status) {
-        summary.skipped++; // resolvido por webhook/reparo na janela
-        continue;
-      }
-      const to = remote.status === "aprovado" ? "pagamento_aprovado" : "pagamento_em_processamento";
-      let transitioned = false;
-      await db.transaction(async (tx) => {
-        const outcome = await transitionOrderInTx(tx as unknown as Db, {
-          orderId: order.id,
-          to,
-          reason: "Cobrança confirmada pelo provedor durante expiração de reserva",
-          actorLabel: "expiry:auto",
-        });
-        transitioned = outcome.transitioned;
+      // Revisão v5 (item 5): decisão, atualização do pagamento, transição do
+      // pedido, histórico e estoque em UMA transação — pagamento lockado
+      // ANTES do pedido (ordem canônica pagamento→pedido). Guarda por
+      // `status='pendente'` sob lock: webhook que resolveu na janela vence.
+      const settled = await finalizeExpiry(db, {
+        paymentId: payment.id,
+        orderId: order.id,
+        paymentStatus: remote.status,
+        authorizedCents: remote.status === "autorizado" ? payment.amountCents : null,
+        captured: remote.status === "aprovado",
+        toOrderStatus: remote.status === "aprovado" ? "pagamento_aprovado" : "pagamento_em_processamento",
+        reason: "Cobrança confirmada pelo provedor durante expiração de reserva",
+        auditAfter: { providerStatus: remote.status, to: remote.status === "aprovado" ? "pagamento_aprovado" : "pagamento_em_processamento" },
+        auditAction: "expiry.late_confirmation",
       });
-      if (transitioned) {
+      if (settled.transitioned) {
         summary.approved++;
-        await audit(db, {
-          action: "expiry.late_confirmation",
-          entity: "order",
-          entityId: order.id,
-          actorLabel: "expiry:auto",
-          after: { providerStatus: remote.status, to },
-        });
+      } else {
+        summary.skipped++; // resolvido por webhook/admin na janela
       }
       continue;
     }
 
     if (remote !== null && (remote.status === "expirado" || remote.status === "recusado" || remote.status === "estornado")) {
-      // Provedor é a fonte da verdade para o estado da cobrança. Guardado:
-      // só assume o estado se o pagamento ainda está pendente.
-      await db
-        .update(schema.payments)
-        .set({ status: remote.status })
-        .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
-      const [afterGuard] = await db.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
-      if (afterGuard!.status !== remote.status) {
-        summary.skipped++; // resolvido por webhook na janela
-        continue;
-      }
-      if (await cancelOrder(db, order.id, `Reserva expirada: cobrança ${remote.status} no provedor (confirmado por consulta)`)) {
+      // Provedor é a fonte da verdade para o estado da cobrança — mesmo
+      // caminho atômico (v5, item 5): guarda sob lock do pagamento.
+      const settled = await finalizeExpiry(db, {
+        paymentId: payment.id,
+        orderId: order.id,
+        paymentStatus: remote.status,
+        toOrderStatus: "cancelado",
+        reason: `Reserva expirada: cobrança ${remote.status} no provedor (confirmado por consulta)`,
+      });
+      if (settled.transitioned) {
         summary.cancelled++;
       } else {
-        summary.skipped++; // transição vencida por outra instância
+        summary.skipped++; // webhook/admin venceu a corrida
       }
       continue;
     }
 
     if (remote === null) {
-      // Passou pela tolerância + dupla confirmação, ambos null: ausência
-      // definitiva — cancela com estoque livre.
-      if (await cancelOrder(db, order.id, "Reserva expirada: sem cobrança no provedor (dupla confirmação após tolerância)")) {
-        summary.cancelled++;
-      } else {
-        summary.skipped++; // transição vencida por outra instância
-      }
+      // Passou pela tolerância + duas observações independentes, ambos
+      // null: ausência definitiva — cancela com estoque livre (acima).
+      summary.skipped++;
       continue;
     }
 
@@ -262,29 +295,70 @@ export async function expireStaleReservations(
   return summary;
 }
 
-async function cancelOrder(db: Db, orderId: string, reason: string): Promise<boolean> {
-  let transitioned = false;
-  await db.transaction(async (tx) => {
-    const outcome = await transitionOrderInTx(tx as unknown as Db, {
-      orderId,
-      to: "cancelado",
-      reason,
-      actorLabel: "expiry:auto",
-    });
-    transitioned = outcome.transitioned;
+/**
+ * Revisão v5 (item 5): decisão de expiração ATÔMICA. Consulta externa ao
+ * gateway NÃO participa (já aconteceu, fora da transação). Dentro de UMA
+ * transação: pagamento lockado (FOR UPDATE) e revalidado como `pendente`
+ * → update do pagamento → transição do pedido com lock FOR UPDATE
+ * (ordem canônica pagamento→pedido, sem deadlocks com o webhook) →
+ * auditoria DENTRO da transação. Crash em qualquer ponto = rollback
+ * total: sem pagamento atualizado com pedido parado, sem estoque liberado
+ * sem pedido cancelado, sem auditoria órfã.
+ */
+async function finalizeExpiry(
+  db: Db,
+  input: {
+    paymentId: string;
+    orderId: string;
+    paymentStatus: "aprovado" | "autorizado" | "expirado" | "recusado" | "estornado";
+    authorizedCents?: number | null;
+    captured?: boolean;
+    toOrderStatus: OrderStatus | null;
+    reason: string;
+    auditAction?: string;
+    auditAfter?: unknown;
+  },
+): Promise<{ paymentSettled: boolean; transitioned: boolean }> {
+  return db.transaction(async (tx): Promise<{ paymentSettled: boolean; transitioned: boolean }> => {
+    const payRows = await tx.select().from(schema.payments).where(eq(schema.payments.id, input.paymentId)).for("update");
+    const payment = payRows[0];
+    if (!payment || payment.status !== "pendente") {
+      // Webhook/admin resolveu na janela entre consulta e transação — este
+      // caminho NÃO toca o estado (o dono da resolução já audita).
+      return { paymentSettled: false, transitioned: false };
+    }
+    await tx
+      .update(schema.payments)
+      .set({
+        status: input.paymentStatus,
+        authorizedCents: input.paymentStatus === "autorizado" ? (input.authorizedCents ?? null) : null,
+        capturedAt: input.captured ? new Date() : null,
+      })
+      .where(eq(schema.payments.id, payment.id));
+
+    let transitioned = false;
+    if (input.toOrderStatus) {
+      const outcome = await transitionOrderInTx(tx as unknown as Db, {
+        orderId: input.orderId,
+        to: input.toOrderStatus,
+        reason: input.reason,
+        actorLabel: "expiry:auto",
+      });
+      transitioned = outcome.transitioned;
+    }
+
+    // Auditoria DENTRO da transação — registro e estado entram/saem juntos.
+    if (transitioned || input.auditAction) {
+      await audit(tx as unknown as Db, {
+        action: input.auditAction ?? "expiry.cancelled",
+        entity: "order",
+        entityId: input.orderId,
+        actorLabel: "expiry:auto",
+        after: input.auditAfter ?? { reason: input.reason, paymentStatus: input.paymentStatus },
+      });
+    }
+    return { paymentSettled: true, transitioned };
   });
-  // Audita somente quem transicionou — segunda instância em corrida vê
-  // transitioned=false e não duplica auditoria.
-  if (transitioned) {
-    await audit(db, {
-      action: "expiry.cancelled",
-      entity: "order",
-      entityId: orderId,
-      actorLabel: "expiry:auto",
-      after: { reason },
-    });
-  }
-  return transitioned;
 }
 
 /**

@@ -666,6 +666,11 @@ export async function migrate(db: Db) {
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_token" varchar(64);
   `).catch(() => {});
+  // Revisão v5 (item 4): primeira observação `null` persistida — confirmação
+  // de ausência exige consultas em passadas distintas.
+  await db.execute(sql`
+    ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "not_found_first_seen_at" timestamptz;
+  `).catch(() => {});
   // Revisão v5: lease de manutenção entre INSTÂNCIAS (exclusão no banco,
   // não no processo) — uma instância varre por vez.
   await db.execute(sql`

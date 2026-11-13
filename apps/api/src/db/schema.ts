@@ -500,6 +500,11 @@ export const payments = pgTable(
     payload: text("payload"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     capturedAt: timestamp("captured_at", { withTimezone: true }),
+    // Revisão v5 (item 4): primeira observação `null` do provedor, PERSISTIDA.
+    // A dupla confirmação de ausência passa a exigir consultas em passadas
+    // DISTINTAS (janela = intervalo de manutenção) — dois `null` na mesma
+    // passada, próximos, não são confirmação independente.
+    notFoundFirstSeenAt: timestamp("not_found_first_seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [
