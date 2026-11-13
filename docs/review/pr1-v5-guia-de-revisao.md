@@ -2,96 +2,109 @@
 
 > **Status:** v5 NÃO publicável. v4 (`1cdf48f`) permanece a versão publicada no PR #1. Produção, migrations e SQLs de hardening intocados.
 >
-> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (gerado de `git diff 1cdf48f..a1e0a1f`, 168 KB, 8 arquivos).
+> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..f9e5d8d`).
 >
-> Commits na branch (7): `b184d5d` (schema+token, rascunho) · `7b4e895` (itens 1-2) · `f9b0250` (item 3) · `001b011` (limpeza tsbuildinfo) · `54f9f51` (itens 4-5) · `eb7abcc` (testes dos critérios) · `a1e0a1f` (docs) — e o commit de endurecimento pós-revisão preliminar (invalidação de observação + aborto cooperativo).
+> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza).
+
+## Rodada de correção (`68445bb`) — resultado da revisão v5.1
+
+A revisão apontou 3 problemas (1 CRÍTICO, 2 ALTO) e 2 MÉDIO. Todos corrigidos com prova vermelha → verde:
+
+| # | Correção | Aceite exigido | Como provado |
+| --- | --- | --- | --- |
+| 1 | `finalizeExpiry` decide POR ESTADO DO PEDIDO | Pagamento aprovado nunca confirmado com pedido cancelado sem `refund_required` durável | 3 testes novos com flip de estado mid-flight (gancho em `queryPaymentByOrder`) |
+| 2 | Migrations sem `catch(() => {})` no DDL obrigatório | Falha real de DDL interrompe o boot; idempotência não esconde erro | Teste: `DROP COLUMN` em tx + `migrate` DEVE rejeitar; rollback restaura |
+| 3 | Heartbeat com 3 estados + margem por TTL | Incerteza prolongada impede novas fases | Teste: sem renovação confirmada por ≥ TTL ⇒ `lost()` true (sem recusa alguma) |
+| 4 | `deadLetter` guarda ESTRITA de token | Token divergente OU persistido NULL bloqueiam | Teste: token limpo mid-flight + `amount_mismatch` + `maxAttempts=1` ⇒ NÃO marca |
+| 5 | Auditorias do webhook DENTRO da transação | Mutação e registro compartilham a tx | Implementação; os 3 sites (`regression_ignored`, `order_missing`, `late_payment`) agora `audit(tx)` |
+| 6 | Testes/docs regenerados dos resultados reais | Números = execução | 281/281 e 86/86 medidos nesta rodada (ver Gates) |
+
+### Detalhe da correção 1 (CRÍTICO)
+
+`transitionOrderInTx` LANÇA `conflict` em transição inválida (não devolve `transitioned=false`) — na v5 original isso escanava a exceção para fora do varrimento (estado veneno matava a passada inteira) e, no caso `from === to`, commitava o pagamento com auditoria de confirmação tardia como se tivesse transicionado. Agora `finalizeExpiry` lê o pedido SOB LOCK (após o pagamento — ordem canônica) e decide ANTES de qualquer escrita:
+
+- **cancelado + aprovado no provedor** → pagamento tardio: assenta o pagamento com `capturedAt`, pedido NÃO reabre, registro durável `order.late_payment` com `decision: "refund_required"` (mesma semântica da rota de webhook), NENHUMA transição, contador `summary.latePayment`.
+- **transição obrigatória recusada** (estado não-transicionável, ex.: `enviado`) → NADA é assentado: pagamento permanece `pendente`, retorno `refused` + auditoria operacional `expiry.skipped_invalid_order_state` (a recusa ocorre antes de qualquer escrita — nada a desfazer).
+- **pedido já no alvo** (`from === to`) → reconciliação: pagamento assentado, SEM transição no histórico, auditoria própria `expiry.payment_reconciled` (nunca `late_confirmation`).
+- **transição possível** → comportamento v5 original (atômico, audita `late_confirmation`/`expiry.cancelled` somente quando transicionou).
+
+### Detalhe da correção 3 (ALTO)
+
+`withSystemLock` agora distingue `owned` (renovação confirmada) / `lost` (recusa — token não é mais o dono) / `uncertain` (renovação sem resposta). A aquisição conta como primeira confirmação; renovações confirmadas rearmam a margem. `ctx.lost()` devolve true quando `ownerLost` OU quando nenhuma renovação é confirmada por ≥ `ttlMs` — ultrapassado o TTL sem confirmação, o lease no banco já expirou e o worker não continua manutenção na dúvida. Incerteza não é declarada como perda definitiva, mas não pode durar indefinidamente.
 
 ## Mapa por arquivo
 
 | Arquivo | Conteúdo da v5 |
 | --- | --- |
 | `apps/api/src/db/schema.ts` | `payment_events.lease_token`; tabela drizzle `system_locks`; `payments.not_found_first_seen_at` |
-| `apps/api/src/db/migrate.ts` | ALTERs idempotentes + `DROP DEFAULT` de `processed_at` (linha 652) |
-| `apps/api/src/services/payments/webhook-events.ts` | `LeaseLostError` (l. 39), pré-checagem (l. 249), `markProcessed` (l. 297), claim com token (l. 631), catch no recovery (l. 711) |
-| `apps/api/src/services/payments/system-locks.ts` | NOVO — `acquireSystemLock`/`renewSystemLock`/`releaseSystemLock`/`withSystemLock` |
-| `apps/api/src/services/payments/expiry.ts` | observação persistida (l. 162), janela (l. 202), `finalizeExpiry` (l. 311), manutenção sob lock (l. 392) |
+| `apps/api/src/db/migrate.ts` | ALTERs idempotentes + `DROP DEFAULT` de `processed_at`; DDL obrigatório da v5 SEM catch silencioso |
+| `apps/api/src/services/payments/webhook-events.ts` | `LeaseLostError`; pré-checagem; `markProcessed` guardado; claim com token; `deadLetter` com guarda ESTRITA; auditorias NA transação |
+| `apps/api/src/services/payments/system-locks.ts` | NOVO — locks entre instâncias; heartbeat com owned/lost/uncertain + margem TTL |
+| `apps/api/src/services/payments/expiry.ts` | observação persistida; janela; `finalizeExpiry` com decisão por estado do pedido; `latePayment` no summary |
 | `apps/api/index.ts` | boot sob `withSystemLock`; `runMaintenance` com aborto entre fases |
-| `apps/api/src/services/payments-integrity.test.ts` | +13 testes (53 no arquivo) |
+| `apps/api/src/services/payments-integrity.test.ts` | 62 testes no arquivo (13 v5 originais + 9 da correção) |
 
-## Respostas aos 5 pontos da revisão
+## Respostas aos 5 pontos da revisão (atualizadas)
 
-### 1. Fencing efetivo — todas as mutações, não só `processed_at`
+### 1. Fencing efetivo — rollback total por transação
 
-O mecanismo não é guarda por campo — é **rollback total por transação**:
+- `applyPaymentEvent` com `leaseToken`: pré-checagem sem lock (otimização) → transação única: pagamento FOR UPDATE → pedido FOR UPDATE → estoque/história → `markProcessed()` como ÚLTIMA escrita.
+- `markProcessed` com token: `UPDATE ... WHERE lease_token = ours AND processed_at IS NULL` + re-leitura; divergência ⇒ `LeaseLostError` ⇒ rollback total.
+- **Auditorias DENTRO da transação (correção 5):** as três auditorias da rota (`payment.regression_ignored`, `payment.order_missing`, `order.late_payment`) agora executam com `audit(tx)` — mutação e registro compartilham a transação; auditoria que falha reverte a mutação, nunca o contrário. Não confundir com histórico de transição (`order_status_history`, já na tx desde a v4).
+- `deadLetter`: tx própria, lock da linha, guarda de estado e guarda ESTRITA por token (`fresh.leaseToken !== leaseToken` bloqueia — inclusive quando o persistido é NULL). Auditoria dentro da tx.
+- `finalizeExpiry`: fencing por revalidação de status sob lock (a expiração não usa lease de evento) + decisão por estado do pedido (correção 1).
+- Prova mid-flight: `GUARDA na marcação` (hook `StealAdapter` troca o token entre a pré-checagem e a marcação ⇒ rollback total) e `FENCING × EXPIRAÇÃO em paralelo` (ladrão assume; webhook aborta; expiração assenta exatamente uma vez).
+- Ordem canônica de locks: pagamento → pedido → evento; a marcação é a última escrita DE PROPÓSITO (lockar o evento antes inverteria a ordem e deadlockaria com a rota de webhook).
 
-- `applyPaymentEvent` com `leaseToken`: pré-checagem sem lock (l. 249, otimização) → transação única com pagamento FOR UPDATE → pedido FOR UPDATE → estoque/história → `markProcessed()` como ÚLTIMA escrita (l. 297).
-- `markProcessed` com token: `UPDATE ... WHERE lease_token = ours AND processed_at IS NULL` + **re-leitura**. Qualquer divergência (token trocado, já processado) ⇒ `throw new LeaseLostError()` ⇒ a transação inteira desfaz pagamento, pedido, estoque, história e marcação. **Nada comuta sem posse válida no instante da marcação.**
-- A rota de auditoria (`pendingAudits`) roda FORA da tx, mas só executa se a tx commitou — lease perdido ⇒ sem commit ⇒ nenhuma auditoria órfã.
-- `deadLetter` (l. 568): própria tx com lock da linha + guarda de estado + guarda por token — auditoria DENTRO da tx.
-- `finalizeExpiry` (expiry.ts l. 311): mesmo desenho, com fencing por revalidação de status sob lock (`SELECT payment FOR UPDATE` + `status='pendente'`), porque a expiração não usa lease de evento.
-- Teste que prova a mecanica mid-flight: `GUARDA na marcação` — um hook na consulta ao gateway troca o token ENTRE a pré-checagem e a marcação; resultado observável: pagamento `pendente`, pedido `aguardando_pagamento`, estoque reservado, zero entradas de transição, token da linha = dono ladrão.
+### 2. Locks distribuídos — renovação, expiração, liberação e heartbeat
 
-**Ponto explícito de diseño:** a marcação é a última escrita de propósito. Isso coloca a guarda DEPOIS da ordem canônica de locks (pagamento→pedido→evento) — lockar o evento antes inverteria a ordem e deadlockaria com a rota de webhook.
+- Aquisição atômica (`INSERT ... ON CONFLICT ... WHERE expirado RETURNING`); renovação e liberação somente pelo dono; expiração pelo relógio do BANCO.
+- **Heartbeat (correção 3):** `lost()` = recusa confirmada OU ausência de confirmação ≥ TTL. Falha transitória não declara perda definitiva — mas a incerteza é limitada pela margem de segurança. Aborto cooperativo entre fases (`runMaintenance` checa `lost()` entre recuperação → reparo → expiração).
+- Residual honesto: aborto é cooperativo (grau de fase); operações das fases têm guarda própria no banco (claim `SKIP LOCKED`, `finalizeExpiry` revalidado sob lock, reparo por junção) — sobreposição residual degrada a contenção, não a integridade. O lock distribuído é camada de CONTENÇÃO; as garantias transacionais de cada operação são independentes.
 
-### 2. Locks distribuídos — renovação, expiração, liberação e heartbeat falho
+### 3. Expiração — observação persistida, invalidação e decisão por estado
 
-`system-locks.ts` (117 linhas, sem dependências):
+- Primeira observação `null` persistida (`payments.not_found_first_seen_at`) + auditada; confirmação independente exige observações em passadas distintas (`confirmWindowMs`, default 15 min).
+- Invalidação no assentamento: webhook (`webhook-events.ts`) e `finalizeExpiry` limpam a observação na transação.
+- **Decisão por estado do pedido (correção 1)** — ver detalhe acima. Garantia reformulada com precisão: pagamento aprovado é confirmado com pedido cancelado SOMENTE com registro durável de `refund_required`; recusa de transição não assenta nada.
 
-- Aquisição atômica: `INSERT ... ON CONFLICT (name) DO UPDATE ... WHERE lease_expires_at IS NULL OR <= now() RETURNING` — corrida de N instâncias: exatamente 0 ou 1 vencedor.
-- Renovação (`renewSystemLock`): `UPDATE ... WHERE name = ? AND lease_token = ?` — intruso não renova (teste cobre).
-- Liberação (`releaseSystemLock`): idempotente por token; intruso é no-op (teste cobre).
-- Expiração: pelo relógio do BANCO (`now()` no SQL) — sem relógio de worker.
-- **Heartbeat falho (ponto da revisão):** recusa na renovação (token não é mais o dono) seta `ownerLost` e `ctx.lost()` passa a devolver `true` (system-locks.ts l. 98-105). `runMaintenance` (index.ts) checa `lost()` ENTRE as fases (recuperação → reparo → expiração) e aborta a passada — o worker não continua manutenção após perder o lock. Falha TRANSITÓRIA de rede na renovação NÃO marca perda (o token ainda é nosso; o próximo heartbeat renova). Teste: `PERDA de lock confirmada pelo heartbeat`.
-- Residual honesto: aborto é cooperativo (grau de fase). As operações das fases são em si guardadas (claim `SKIP LOCKED`, `finalizeExpiry` revalidado, reparo por junção), então sobreposição residual degrada a contenção, não a integridade. Aborto forçado (kill da promise) não existe em JS — o limite é documentado.
+### 4. Migração — idempotência SEM silêncio
 
-### 3. Expiração — invalidação da observação e anti-reuso
+- `DROP DEFAULT` de `processed_at`: reexecução é no-op no PostgreSQL (não precisa de catch para idempotência); `ADD COLUMN IF NOT EXISTS` e `CREATE TABLE IF NOT EXISTS` idem.
+- **Correção 2:** os cinco statements obrigatórios da v5 NÃO têm mais `catch(() => {})` — falha real (permissão, banco indisponível, sintaxe) propaga e interrompe o boot. Teste: `DROP COLUMN processed_at` em transação + `migrate` DEVE rejeitar; rollback restaura a coluna. Idempotência preservada (migrate reexecutado é no-op — testado).
+- Sem reclassificação de histórico; compatível com rollback (nenhum caminho v4 insere sem `processed_at` explícito). Eventos nascidos processados entre baseline e v5 não são detectáveis automaticamente — investigação por `processed_at = created_at` sem correspondência em `audit_logs`, sem correção automática.
+- NOTA: `migrate.ts` roda no boot da API; execução em produção exige autorização explícita (produção congelada).
 
-- Primeira observação `null` persistida (`payments.not_found_first_seen_at`) + auditada (`expiry.notfound_first_seen`, expiry.ts l. 162).
-- Janela `confirmWindowMs` (default 15 min = intervalo de manutenção): decisão só na passada SEGUNTE — dois `null` na mesma passada nunca decidem (l. 202).
-- **Invalidação (ponto da revisão, endurecido nesta rodada):** webhook que assenta o pagamento limpa `notFoundFirstSeenAt` na MESMA transação (`webhook-events.ts` l. 350) e `finalizeExpiry` idem (expiry.ts l. 341). Nenhuma observação sobrevive a mudança de estado.
-- Barreira estrutural adicional: a varredura da expiração só considera `payments.status = 'pendente'` — e o pagamento NUNCA volta a `pendente` (proteção de regressão v2). Observação antiga não reutilizável por construção; a limpeza na fonte remove o estado obsoleto.
-- Cobrança viva após a janela ⇒ reserva preservada (teste cobre: `CONFIRMAÇÃO ASSÍNCRONA divergente`).
+### 5. Recuperação — qualificada
 
-### 4. Migração — idempotência, ordem, rollback e histórico
+- Lock permanente: impossível por construção — release no `finally`; crash deixa o lease, que expira sozinho pelo relógio do banco (TTL 5 min).
+- Evento preso: o lease do evento expira sozinho (2 min) e volta à fila; backoff não bloqueia indefinidamente; dead-letter por idade só para PARKED; `LeaseLostError` deixa o evento como está. **Qualificação (revisão):** "não deixa preso" é uma propriedade do desenho (lease expirável + backoff), demonstrada pelos testes de recuperação — ela NÃO substitui verificação operacional de retomada após indisponibilidade prolongada do banco ou reinicialização; monitorar `scanned/applied/parked/skippedLease` no log de manutenção.
+- Falha de manutenção: engolida pela passada (não derruba o processo); a passada seguinte re-tenta com aquisição ativa.
 
-- `DROP DEFAULT` de `payment_events.processed_at` (migrate.ts l. 652): idempotente (ALTER repetido é no-op), SEM reclassificação de linhas existentes — `processed_at` de eventos históricos não é tocado.
-- **Atenção especial pedida pela revisão:** o DEFAULT `now()` do baseline fazia evento novo nascer processado (`processed_at = createdAt`). Em produção com PostgreSQL pré-existente, o mesmo default está vivo — a migração v5 o elimina nos dois bancos. Eventos que NASCERAM processados entre o baseline e esta correção não são detectáveis automaticamente (indistinguível de evento aplicado de verdade); investigação, se necessária, por auditoria: eventos com `processed_at = created_at` sem correspondência em `audit_logs`.
-- Compatibilidade com rollback: nenhum caminho v4 insere evento sem `processed_at` explícito (a rota grava `processedAt: null`) — o código v4 roda corretamente com OU sem o default. Rollback da branch não exige desfazer o ALTER.
-- Ordem das alterações: colunas novas com `ADD COLUMN IF NOT EXISTS`; `system_locks` com `CREATE TABLE IF NOT EXISTS` + seed `ON CONFLICT DO NOTHING` — roda N vezes, migra N bancos.
-- NOTA para produção real: `migrate.ts` roda no boot da API. Os ALTERs são DDL leves (sem reescrita de tabela). Ainda assim, execução em produção segue exigindo autorização explícita (produção congelada).
-
-### 5. Recuperação — sem lock permanente, sem evento preso
-
-- **Lock permanente:** impossível por construção — `withSystemLock` libera no `finally` (l. 115); crash do processo deixa o lease, que expira sozinho pelo relógio do banco (ttl 5 min); `system_locks` não tem dono eterno.
-- **Evento preso:** impossível por construção — o lease do evento expira sozinho (2 min) e volta à fila no próximo `recoverPendingEvents`; backoff (`last_attempt_at` + `minBackoffMs`) não bloqueia indefinidamente; dead-letter por idade (30 d) só para PARKED, e parked sai por idade, nunca por tentativas (v4, mantido). `LeaseLostError` deixa o evento exatamente como estava — o dono atual o processa na mesma ou na próxima passada.
-- Falha de manutenção: `startPaymentMaintenance` engole a falha da passada (não derruba o processo) e a próxima passada re-tenta, com aquisição de lock ativa.
-
-## Gates (executados nesta rodada)
+## Gates (executados nesta rodada — números medidos, não presumidos)
 
 | Gate | Resultado |
 | --- | --- |
-| `npx tsc --noEmit` | exit 0 (3× consecutivas) |
-| `npm test` (apps/api) | **272/272**, 33 arquivos |
-| PostgreSQL real (`node scripts/pg-integration.mjs`, da raiz) | **77/77**, 4 arquivos |
+| `npx tsc --noEmit` (api, store, admin) | exit 0 ×3 |
+| `npm test` (apps/api) | **281/281**, 33 arquivos |
+| PostgreSQL real (`node scripts/pg-integration.mjs`, da raiz) | **86/86**, 4 arquivos |
 
-## Cenários novos cobertos (v5, 13 testes)
+## Cenários novos (v5.1 correção, 9 testes — todos com fase vermelha documentada)
 
-1. Pré-checagem: token de outro worker ⇒ `lease_lost`, nada aplicado.
-2. Guarda mid-flight: token trocado durante a aplicação ⇒ `LeaseLostError` ⇒ rollback total.
-3. Recovery: lease perdido ⇒ `leaseLost` contado, dono atual assume.
-4. Claims distintos; dono legítimo nunca bloqueado.
-5. Lock vigente: 2ª instância não adquire.
-6. Lease vencido devolve o lock.
-7. Renovação só pelo dono; intruso não rouba nem libera.
-8. `withSystemLock` em contenção: 1 execução, 2ª pula.
-9. Perda de lock confirmada por heartbeat ⇒ `ctx.lost()` (aborto cooperativo).
-10. 2 instâncias de `startPaymentMaintenance`: passadas nunca se sobrepõem.
-11. Confirmação assíncrona: 1ª passada persiste e não cancela; cobrança viva após janela não cancela.
-12. Webhook positivo invalida a observação de ausência.
-13. Webhook × expiração em paralelo (1 aprovação) e falha transacional (rollback total, CHECK constraint determinística).
+1. `PEDIDO CANCELADO + provedor aprovado` → pagamento tardio assentado + `order.late_payment` com `refund_required` durável + sem reabrir pedido + passada sobrevive + `latePayment=1`.
+2. `PEDIDO JÁ NO ALVO` → reconciliado, ZERO transições no histórico, SEM `late_confirmation`, COM `expiry.payment_reconciled`.
+3. `TRANSIÇÃO recusada (enviado)` → nada assentado, pagamento pendente, `expiry.skipped_invalid_order_state`.
+4. `INCERTEZA prolongada` → sem renovação confirmada ≥ TTL ⇒ `lost()` true (vermelho na v5 original).
+5. `Dentro da margem` → `lost()` permanece false.
+6. `FALHA de DDL obrigatório` → migrate rejeita (vermelho: engolia); rollback restaura schema.
+7. `IDEMPOTÊNCIA` → migrate reexecutado é no-op.
+8. `deadLetter token NULL + token informado` → BLOQUEADA (vermelho: marcava); `rejected=1`, evento na fila.
+9. `FENCING × EXPIRAÇÃO em paralelo` → webhook aborta com `LeaseLostError`; expiração assenta UMA vez; evento fica para o dono atual.
+
+Endurecido: `CLAIM único` agora captura e compara os tokens (não nulos e distintos) — comprova unicidade, não só processamento.
 
 ## Pendências para publicação
 
-1. Aprovação humana deste diff (não há merge/push sem ela).
+1. Aprovação humana do diff da correção (`118f69c..f9e5d8d`).
 2. Decisão: push da `wip/v5-fencing` no PR #1 (substituindo a v4) ou PR novo.
 3. SQLs de hardening e homologação com gateway real continuam bloqueados (produção congelada).

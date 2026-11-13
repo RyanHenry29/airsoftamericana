@@ -280,14 +280,14 @@ A v5 endereça os 4 detalhes técnicos levantados na revisão da v4. Base: `wip/
 
 ## Testes v5 (critério de conclusão)
 
-`apps/api/src/services/payments-integrity.test.ts` — 51 testes no arquivo; novos cenários:
+`apps/api/src/services/payments-integrity.test.ts` — **62 testes no arquivo** (13 v5 + 9 da correção pós-revisão); cenários:
 
 | Cenário | Teste | Resultado |
 | --- | --- | --- |
 | Worker antigo com token de outro → `lease_lost` sem aplicar | pré-checagem | ✅ |
 | Token trocado DURANTE a aplicação (hook na consulta ao gateway) ⇒ `LeaseLostError` ⇒ rollback total | guarda na marcação | ✅ |
 | Recovery: lease perdido ⇒ `leaseLost` contado, evento para o dono atual | RECOVER | ✅ |
-| Claims distintos, dono legítimo não é bloqueado | CLAIM único | ✅ |
+| Claims distintos — tokens capturados, não nulos e DIFERENTES | CLAIM único | ✅ |
 | Lock vigente: 2ª instância não adquire | aquisição atômica | ✅ |
 | Lease vencido devolve o lock | expiração | ✅ |
 | Renovação só pelo dono; intruso não rouba nem libera | renovação | ✅ |
@@ -297,14 +297,26 @@ A v5 endereça os 4 detalhes técnicos levantados na revisão da v4. Base: `wip/
 | Webhook × expiração em paralelo: UMA aprovação, sem estado parcial | corrida | ✅ |
 | Falha transacional (CHECK constraint) ⇒ rollback total: estoque, histórico, auditoria intactos | falha determinística | ✅ |
 
-## Gates v5 executados
+### Correção pós-revisão (`68445bb`) — 9 cenários novos, com prova vermelha documentada
 
-- `npx tsc --noEmit` ×3 — exit 0.
-- `npm test` (apps/api) — **270/270**, 33 arquivos.
-- PostgreSQL real (`node scripts/pg-integration.mjs` da raiz) — **75/75**, 4 arquivos.
+| Correção | Cenário de prova | Antes (vermelho) | Depois |
+| --- | --- | --- | --- |
+| `finalizeExpiry` por estado do pedido | pedido cancelado + provedor aprovado (flip mid-flight) | exceção não-tratada matava a passada | pagamento tardio + `refund_required` durável, pedido não reabre |
+| idem | pedido já no alvo (`from === to`) | commitava com `late_confirmation` sem transição | reconciliado + `expiry.payment_reconciled`, zero transições |
+| idem | transição recusada (`enviado`) | exceção | nada assentado, pagamento pendente, auditoria operacional |
+| Migrations | `DROP COLUMN` + `migrate` em tx | engolia (resolve) | rejeita; rollback restaura |
+| Heartbeat | sem renovação confirmada ≥ TTL | `lost()` false | `lost()` true (margem de segurança) |
+| `deadLetter` | token persistido NULL + token informado | marcava | bloqueia; evento na fila |
+| Fencing × expiração | ladrão assume durante aplicação; expiração paralela | — (cobertura nova) | webhook aborta; expiração assenta 1×; evento para o dono atual |
+
+## Gates v5 executados (números medidos nesta rodada)
+
+- `npx tsc --noEmit` (api, store, admin) — exit 0 ×3.
+- `npm test` (apps/api) — **281/281**, 33 arquivos.
+- PostgreSQL real (`node scripts/pg-integration.mjs` da raiz) — **86/86**, 4 arquivos.
 
 ## Pendente para a v5 sair do status NÃO PUBLICÁVEL
 
-1. Revisão humana dos diffs `ba22fa9..wip/v5-fencing` (7 commits).
+1. Revisão humana do diff da correção (`118f69c..f9e5d8d`) — a v5 original foi REPROVADA pela revisão (3 problemas + 2 endurecimentos); a correção os endereça com prova vermelha→verde.
 2. Decisão explícita do revisor sobre publicar no PR #1 (push da branch) ou substituir.
 3. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
