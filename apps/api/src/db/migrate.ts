@@ -638,12 +638,16 @@ export async function migrate(db: Db) {
   // checkout×webhook (cobrança criada, INSERT local ainda não commitado)
   // fica estacionado sem paymentId e é aplicado depois pelo checkout
   // (applyPendingEventsForPayment). processed_at também fica NULL até aplicar.
+  // DDLs OBRIGATÓRIOS (correção pós-revisão): SEM catch silencioso —
+  // DROP NOT NULL repetido é no-op no PostgreSQL (a coluna já aceita NULL),
+  // então a reexecução não falha; falha REAL (permissão, conexão) propaga e
+  // interrompe o boot: schema pela metade não é inicialização.
   await db.execute(sql`
     ALTER TABLE "payment_events" ALTER COLUMN "payment_id" DROP NOT NULL;
-  `).catch(() => {});
+  `);
   await db.execute(sql`
     ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP NOT NULL;
-  `).catch(() => {});
+  `);
   // Revisão v5: o BASELINE criava a coluna com DEFAULT now() — evento novo
   // nascia "processado" (processed_at = createdAt) sem passar por nenhum
   // caminho de aplicação. O DROP NOT NULL da v4 não remove o default;
@@ -657,22 +661,24 @@ export async function migrate(db: Db) {
   `);
   // Revisão v3 (ponto A): fila de recuperação com tentativas, backoff e
   // dead-letter. ALTER idempotentes — produção só com autorização.
+  // DDLs OBRIGATÓRIOS (correção pós-revisão): SEM catch silencioso —
+  // ADD COLUMN IF NOT EXISTS cobre a idempotência; falha REAL propaga.
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0;
-  `).catch(() => {});
+  `);
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "last_attempt_at" timestamptz;
-  `).catch(() => {});
+  `);
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "last_error" text;
-  `).catch(() => {});
+  `);
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "dead_letter" boolean NOT NULL DEFAULT false;
-  `).catch(() => {});
+  `);
   // Revisão v4: lease do claim (exclusão de reivindicação entre instâncias).
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_expires_at" timestamptz;
-  `).catch(() => {});
+  `);
   // Revisão v5: fencing token do lease — conclusão exige posse atual.
   // DDL OBRIGATÓRIO: falha real propaga (IF NOT EXISTS cobre a idempotência).
   await db.execute(sql`

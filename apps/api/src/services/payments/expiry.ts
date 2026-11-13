@@ -36,6 +36,7 @@ import { getAdapter, type PaymentAdapter, type QueryPaymentResult } from "./type
 import { initAdapters } from "./index.js";
 import { transitionOrderInTx } from "../orders.js";
 import { audit } from "../../lib/audit.js";
+import { conflict } from "../../lib/errors.js";
 import { withSystemLock } from "./system-locks.js";
 import { canTransition, type OrderStatus } from "@airsoft/shared";
 
@@ -62,6 +63,10 @@ export interface ExpirySummary {
    *  ocorrência tem registro individual `expiry.skipped_invalid_order_state`
    *  em audit_logs; este contador alimenta alertas no log de manutenção. */
   skippedInvalidState: number;
+  /** Pagamentos pendentes cujo pedido NÃO EXISTE mais (estado cirúrgico/
+   *  legado) — divergência financeira TRATÁVEL, nunca reconciliada
+   *  automaticamente. Registro individual: `expiry.skipped_order_missing`. */
+  skippedOrderMissing: number;
 }
 
 const QUERY_RETRIES = 2;
@@ -129,6 +134,7 @@ export async function expireStaleReservations(
     skippedConfirmWindow: 0,
     latePayment: 0,
     skippedInvalidState: 0,
+    skippedOrderMissing: 0,
   };
 
   for (const { order, payment } of stale) {
@@ -238,6 +244,24 @@ export async function expireStaleReservations(
       });
       if (settled.transitioned) {
         summary.cancelled++;
+      } else if (settled.orderMissing) {
+        // Pagamento pendente sem pedido correspondente — divergência
+        // financeira TRATÁVEL (âncora: registro no pagamento; o id do
+        // pedido não existe mais). Nunca assenta, nunca reconcilia.
+        summary.skipped++;
+        summary.skippedOrderMissing++;
+        await audit(db, {
+          action: "expiry.skipped_order_missing",
+          entity: "payment",
+          entityId: payment.id,
+          actorLabel: "expiry:auto",
+          after: {
+            orderId: order.id,
+            provider: payment.provider,
+            providerStatus: "expirado",
+            reason: "pagamento pendente sem pedido correspondente — divergência financeira tratável; investigação humana",
+          },
+        });
       } else if (settled.refused) {
         // Estado do pedido não permite cancelamento automático — pagamento
         // permanece `pendente`; sinal operacional para investigação humana.
@@ -282,6 +306,24 @@ export async function expireStaleReservations(
         summary.latePayment++;
       } else if (settled.transitioned) {
         summary.approved++;
+      } else if (settled.orderMissing) {
+        // Pagamento pendente sem pedido correspondente — divergência
+        // financeira TRATÁVEL (âncora: registro no pagamento; o id do
+        // pedido não existe mais). Nunca assenta, nunca reconcilia.
+        summary.skipped++;
+        summary.skippedOrderMissing++;
+        await audit(db, {
+          action: "expiry.skipped_order_missing",
+          entity: "payment",
+          entityId: payment.id,
+          actorLabel: "expiry:auto",
+          after: {
+            orderId: order.id,
+            provider: payment.provider,
+            providerStatus: remote.status,
+            reason: "pagamento pendente sem pedido correspondente — divergência financeira tratável; investigação humana",
+          },
+        });
       } else if (settled.refused) {
         // Estado do pedido não permite assentamento automático — pagamento
         // permanece `pendente`; sinal operacional para investigação humana.
@@ -317,6 +359,24 @@ export async function expireStaleReservations(
       });
       if (settled.transitioned) {
         summary.cancelled++;
+      } else if (settled.orderMissing) {
+        // Pagamento pendente sem pedido correspondente — divergência
+        // financeira TRATÁVEL (âncora: registro no pagamento; o id do
+        // pedido não existe mais). Nunca assenta, nunca reconcilia.
+        summary.skipped++;
+        summary.skippedOrderMissing++;
+        await audit(db, {
+          action: "expiry.skipped_order_missing",
+          entity: "payment",
+          entityId: payment.id,
+          actorLabel: "expiry:auto",
+          after: {
+            orderId: order.id,
+            provider: payment.provider,
+            providerStatus: remote.status,
+            reason: "pagamento pendente sem pedido correspondente — divergência financeira tratável; investigação humana",
+          },
+        });
       } else if (settled.refused) {
         // Estado do pedido não permite cancelamento automático — pagamento
         // permanece `pendente`; sinal operacional para investigação humana.
@@ -397,9 +457,9 @@ async function finalizeExpiry(
     auditAction?: string;
     auditAfter?: unknown;
   },
-): Promise<{ paymentSettled: boolean; transitioned: boolean; latePayment?: boolean; refused?: boolean; orderStatus?: OrderStatus | null }> {
+): Promise<{ paymentSettled: boolean; transitioned: boolean; latePayment?: boolean; refused?: boolean; orderMissing?: boolean; orderStatus?: OrderStatus | null }> {
   return db.transaction(
-    async (tx): Promise<{ paymentSettled: boolean; transitioned: boolean; latePayment?: boolean; refused?: boolean; orderStatus?: OrderStatus | null }> => {
+    async (tx): Promise<{ paymentSettled: boolean; transitioned: boolean; latePayment?: boolean; refused?: boolean; orderMissing?: boolean; orderStatus?: OrderStatus | null }> => {
       const payRows = await tx.select().from(schema.payments).where(eq(schema.payments.id, input.paymentId)).for("update");
       const payment = payRows[0];
       if (!payment || payment.status !== "pendente") {
@@ -410,13 +470,20 @@ async function finalizeExpiry(
 
       // Ordem canônica de locks: pagamento lockado → pedido lockado. A
       // DECISÃO acontece com o estado real sob lock, ANTES de qualquer
-      // escrita — recusa não tem nada a desfazer.
-      let order: typeof schema.orders.$inferSelect | null = null;
-      if (input.toOrderStatus) {
-        const rows = await tx.select().from(schema.orders).where(eq(schema.orders.id, input.orderId)).for("update");
-        order = rows[0] ?? null;
-      }
+      // escrita — recusa não tem nada a desfazer. O pedido é SEMPRE
+      // lockado (os três callers informam orderId) — pedido inexistente
+      // é decisão própria, nunca "reconciliação".
+      const rows = await tx.select().from(schema.orders).where(eq(schema.orders.id, input.orderId)).for("update");
+      const order = rows[0] ?? null;
       const from = (order?.status ?? null) as OrderStatus | null;
+
+      // Pedido INEXISTENTE (estado cirúrgico/legado — a FK payments→orders
+      // impede que surja por operação normal): NADA é assentado. Dinheiro
+      // sem pedido é divergência financeira TRATÁVEL por humano — nunca
+      // classificada automaticamente como reconciliação.
+      if (!order) {
+        return { paymentSettled: false, transitioned: false, refused: true, orderMissing: true, orderStatus: null };
+      }
 
       // Pagamento tardio: pedido cancelado + dinheiro entrou. Estado NÃO
       // reabre; registro durável de refund_required DENTRO da transação.
@@ -454,7 +521,13 @@ async function finalizeExpiry(
           reason: input.reason,
           actorLabel: "expiry:auto",
         });
-        transitioned = outcome.transitioned;
+        // Fail-closed (revisão): uma transição OBRIGATÓRIA que não ocorreu
+        // NUNCA convive com pagamento assentado — aqui é impossível por
+        // construção (from ≠ alvo garantido acima, mesma linha lockada na
+        // mesma transação), e a guarda garante que permaneça impossível:
+        // qualquer recusa inesperada reverte TUDO.
+        if (!outcome.transitioned) throw conflict("invalid_transition", "transição obrigatória não ocorreu — nada é assentado");
+        transitioned = true;
       }
 
       if (transitioned) {
