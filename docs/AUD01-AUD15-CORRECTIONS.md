@@ -326,8 +326,30 @@ A v5 endereça os 4 detalhes técnicos levantados na revisão da v4. Base: `wip/
 
 Indicador operacional: `ExpirySummary.skippedInvalidState` (log de manutenção) + `expiry.skipped_invalid_order_state` em `audit_logs` por pedido.
 
+### Rodada final pós-revisão condicionada (`1dc5c2f`) — 4 testes novos
+
+| Teste | Prova |
+| --- | --- |
+| Pedido INEXISTENTE: NADA é assentado | Cirurgia de FK (nome descoberto via `pg_constraint`, drop + DELETE, restauração): pagamento pendente sem pedido permanece `pendente`, NUNCA "reconciliado"; auditoria `expiry.skipped_order_missing` (âncora `orderId`) + `skippedOrderMissing`. Guarda fail-closed: recusa inesperada de transição obrigatória reverte tudo (`conflict("invalid_transition")`). |
+| Exceção REAL na renovação ⇒ fases 2-3 NÃO rodam | `ALTER TABLE "system_locks" RENAME` derruba toda renovação (engolida = incerteza). TTL 3000 ms, 3 exceções, 0 recusas, 0 confirmações ⇒ margem vence ⇒ fases bloqueadas. |
+| Recuperação: falha transitória + renovação confirmada | Banco volta aos 1500 ms; heartbeat aos ~2000 ms renova ⇒ margem rearma, fases 2-3 rodam. Lock não é perdido indevidamente. |
+| deadLetter: token DIVERGENTE preenchido | Espelho do caso NULL: hook `SET lease_token = 'worker-b'` ⇒ dead-letter BLOQUEADA, evento na fila. Os dois casos exigidos pela revisão ficam explícitos. |
+
+Migrações: os 7 `.catch(() => {})` residuais removidos — todos os DDLs obrigatórios do boot propagam falha real (idempotência preservada por construção). **AUD-03 permanece pendente** (arquitetura independente).
+
+Operacional `refund_required`: responsável (operação financeira), agenda diária, SLA 24 h úteis (escalonamento 48 h), resolução registrada como `order.late_payment_resolved` em `audit_logs` (INSERT permitido; trigger bloqueia só UPDATE/DELETE), query de monitoramento `docs/sql/late-payment-monitor.sql`.
+
+CI: `.github/workflows/api-gates.yml` — tsc ×3 + `npm test` + `node scripts/pg-integration.mjs` no push/PR (execução independente a partir da publicação).
+
+## Gates v5 executados (números medidos após `1dc5c2f`, tree somente-v5)
+
+- `npx tsc --noEmit` (api, store, admin) — exit 0 ×3.
+- `npm test` (apps/api) — **289/289**, 33 arquivos (70 no arquivo de integridade).
+- PostgreSQL real (`node scripts/pg-integration.mjs` da raiz) — **94/94**, 4 arquivos.
+
 ## Pendente para a v5 sair do status NÃO PUBLICÁVEL
 
-1. Revisão humana do diff da correção (`118f69c..f9e5d8d`) — a v5 original foi REPROVADA pela revisão (3 problemas + 2 endurecimentos); a correção os endereça com prova vermelha→verde.
-2. Decisão explícita do revisor sobre publicar no PR #1 (push da branch) ou substituir.
-3. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
+1. Veredito final do revisor sobre a rodada de correção condicionada (`b0b8d14..1dc5c2f`): os 5 pendências (2 ALTO, 3 MÉDIO) endereçados com evidência.
+2. Decisão explícita do revisor sobre publicar no PR #1 (push da branch) ou substituir; o CI executa os gates de forma independente no push.
+3. AUD-03 (ledger, checksum, coordenação de migrations) — pendente por decisão de arquitetura, fora do escopo da v5.
+4. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
