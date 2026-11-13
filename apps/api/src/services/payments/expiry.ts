@@ -600,7 +600,7 @@ async function settleExpiryPayment(
  */
 export function startPaymentMaintenance(
   db: Db,
-  runOnce: (ctx: { lost: () => boolean }) => Promise<unknown>,
+  runOnce: (ctx: { lost: () => boolean; lockName: string; leaseToken: string }) => Promise<unknown>,
   opts: { intervalMs?: number; lockTtlMs?: number; lockName?: string } = {},
 ): { stop: () => void } {
   const intervalMs = opts.intervalMs ?? 15 * 60 * 1000;

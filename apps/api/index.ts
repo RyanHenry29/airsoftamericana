@@ -124,22 +124,34 @@ async function getFastifyApp() {
       // estados parciais legados (pagamento atualizado, pedido não). Não
       // fatal — falha de recuperação não impede a API de subir.
       try {
-        const { recoverPendingEvents, repairPartialApplications } = await import("./src/services/payments/webhook-events.js");
+        const { recoverPendingEvents, repairPartialApplications, LeaseLostError } = await import("./src/services/payments/webhook-events.js");
         const { expireStaleReservations, startPaymentMaintenance } = await import("./src/services/payments/expiry.js");
-        const runMaintenance = async (lockCtx?: { lost: () => boolean }) => {
+        const runMaintenance = async (lockCtx?: { lost: () => boolean; lockName?: string; leaseToken?: string }) => {
           // Revisão v5 (item 5): perda do lock confirmada pelo heartbeat ⇒
           // aborta entre fases — não executa manutenção sem ser o dono.
           if (lockCtx?.lost()) return { aborted: true };
-          const recovery = await recoverPendingEvents(db);
-          if (lockCtx?.lost()) return { aborted: true, recovery };
-          const repair = await repairPartialApplications(db);
-          if (lockCtx?.lost()) return { aborted: true, recovery, repair };
-          // Expiração SEGURA de reservas: só libera estoque após confirmar o
-          // estado da cobrança no provedor (com tolerância e dupla
-          // confirmação) — cobrança viva nunca é cancelada.
-          const expiry = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 24 * 60 });
-          app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
-          return { recovery, repair, expiry };
+          try {
+            const recovery = await recoverPendingEvents(db);
+            if (lockCtx?.lost()) return { aborted: true, recovery };
+            const repair = await repairPartialApplications(db, {
+              lockName: lockCtx?.lockName ?? "payment_maintenance",
+              leaseToken: lockCtx?.leaseToken,
+              lost: lockCtx?.lost,
+            });
+            if (lockCtx?.lost()) return { aborted: true, recovery, repair };
+            // Expiração SEGURA de reservas: só libera estoque após confirmar o
+            // estado da cobrança no provedor (com tolerância e dupla
+            // confirmação) — cobrança viva nunca é cancelada.
+            const expiry = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 24 * 60 });
+            app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
+            return { recovery, repair, expiry };
+          } catch (err) {
+            if (err instanceof LeaseLostError) {
+              app.log.warn({ err: err.message, phase: "payment_maintenance" }, "manutenção abortada: lease perdido");
+              return { aborted: true };
+            }
+            throw err;
+          }
         };
         await withSystemLock(db, "payment_maintenance", 5 * 60 * 1000, runMaintenance).then((r) => {
           // r.ok=false = outra instância detém o lease e conduz a passada.
