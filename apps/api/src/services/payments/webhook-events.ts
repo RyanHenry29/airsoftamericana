@@ -25,7 +25,7 @@
  *  - Reparo de estados parciais legados (v1 pré-transação): pagamento já
  *    atualizado + pedido não — consertado na inicialização.
  */
-import { and, eq, isNull, inArray, lte, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, inArray, lte, or, sql } from "drizzle-orm";
 import type { Db } from "../../db/index.js";
 import { schema } from "../../db/index.js";
 import type { NormalizedWebhookEvent } from "./types.js";
@@ -299,12 +299,16 @@ export async function applyPaymentEvent(
                 eq(schema.paymentEvents.id, input.eventRowId),
                 eq(schema.paymentEvents.leaseToken, input.leaseToken),
                 isNull(schema.paymentEvents.processedAt),
+                gt(schema.paymentEvents.leaseExpiresAt, new Date()),
               )
-            : eq(schema.paymentEvents.id, input.eventRowId),
+            : and(
+                eq(schema.paymentEvents.id, input.eventRowId),
+                isNull(schema.paymentEvents.processedAt),
+              ),
         );
       if (input.leaseToken) {
         const [after] = await tx.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, input.eventRowId));
-        if (!after || !after.processedAt || after.leaseToken !== input.leaseToken) {
+        if (!after || !after.processedAt || after.leaseToken !== input.leaseToken || !(after.leaseExpiresAt && after.leaseExpiresAt > new Date())) {
           throw new LeaseLostError();
         }
       }
@@ -501,6 +505,56 @@ export async function applyPendingEventsForPayment(
  *    estacionado INDEPENDENTE do número de tentativas e só sai por IDADE
  *    (`maxAgeDays`, default 30). Tentativas nunca descartam um parked.
  */
+
+/**
+ * Dead-letter (v5): transação com lock da linha, guarda de estado e
+ * FENCING — com token, só o dono atual do lease marca. Auditoria DENTRO
+ * da transação (falha no registro reverte a marcação; boot repete).
+ * Exportada para testes de cerca (validade temporal do lease).
+ * Devolve true se ESTE worker marcou.
+ */
+export async function deadLetterEvent(
+  db: Db,
+  row: typeof schema.paymentEvents.$inferSelect,
+  reason: string,
+  detail?: unknown,
+  leaseToken?: string,
+): Promise<boolean> {
+  let marked = false;
+  await db.transaction(async (tx) => {
+    const conditions = [
+      eq(schema.paymentEvents.id, row.id),
+      isNull(schema.paymentEvents.processedAt),
+      eq(schema.paymentEvents.deadLetter, false),
+    ];
+    if (leaseToken) conditions.push(gt(schema.paymentEvents.leaseExpiresAt, new Date()));
+    const locked = await tx
+      .select()
+      .from(schema.paymentEvents)
+      .where(and(...conditions))
+      .for("update");
+    const fresh = locked[0];
+    if (!fresh) return; // já marcado/lettered por outra passada
+    // Guarda ESTRITA (correção pós-revisão): com token informado, a
+    // correspondência é EXATA — token divergente OU persistido NULL
+    // bloqueiam. Um worker sem posse comprovável não finaliza o evento.
+    if (leaseToken && fresh.leaseToken !== leaseToken) return;
+    await tx
+      .update(schema.paymentEvents)
+      .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null, leaseToken: null })
+      .where(eq(schema.paymentEvents.id, fresh.id));
+    marked = true;
+    await audit(tx as unknown as Db, {
+      action: "payment.event_dead_letter",
+      entity: "payment_event",
+      entityId: row.id,
+      actorLabel: "recovery:boot",
+      after: { provider: row.provider, eventId: row.eventId, type: row.type, reason, detail, attempts: fresh.attempts },
+    });
+  });
+  return marked;
+}
+
 export async function recoverPendingEvents(
   db: Db,
   opts: {
@@ -539,58 +593,11 @@ export async function recoverPendingEvents(
   let applied = 0;
   let rejected = 0;
   let parked = 0;
+
   let deadLettered = 0;
   let skippedBackoff = 0;
   let skippedLease = 0;
   let leaseLost = 0;
-
-  /**
-   * Dead-letter (v5): transação com lock da linha, guarda de estado e
-   * FENCING — com token, só o dono atual do lease marca. Auditoria DENTRO
-   * da transação (falha no registro reverte a marcação; boot repete).
-   * Devolve true se ESTE worker marcou.
-   */
-  const deadLetter = async (
-    row: typeof schema.paymentEvents.$inferSelect,
-    reason: string,
-    detail?: unknown,
-    leaseToken?: string,
-  ): Promise<boolean> => {
-    let marked = false;
-    await db.transaction(async (tx) => {
-      const locked = await tx
-        .select()
-        .from(schema.paymentEvents)
-        .where(
-          and(
-            eq(schema.paymentEvents.id, row.id),
-            isNull(schema.paymentEvents.processedAt),
-            eq(schema.paymentEvents.deadLetter, false),
-          ),
-        )
-        .for("update");
-      const fresh = locked[0];
-      if (!fresh) return; // já marcado/lettered por outra passada
-      // Guarda ESTRITA (correção pós-revisão): com token informado, a
-      // correspondência é EXATA — token divergente OU persistido NULL
-      // bloqueiam. Um worker sem posse comprovável não finaliza o evento.
-      if (leaseToken && fresh.leaseToken !== leaseToken) return;
-      await tx
-        .update(schema.paymentEvents)
-        .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null, leaseToken: null })
-        .where(eq(schema.paymentEvents.id, fresh.id));
-      marked = true;
-      await audit(tx as unknown as Db, {
-        action: "payment.event_dead_letter",
-        entity: "payment_event",
-        entityId: row.id,
-        actorLabel: "recovery:boot",
-        after: { provider: row.provider, eventId: row.eventId, type: row.type, reason, detail, attempts: fresh.attempts },
-      });
-    });
-    if (marked) deadLettered++;
-    return marked;
-  };
 
   for (const row of pending) {
     // ---- Parse: invalidade PERMANENTE vai para dead-letter SEM disputar
@@ -598,17 +605,17 @@ export async function recoverPendingEvents(
     let event: NormalizedWebhookEvent | null = null;
     let adapter = getAdapter(row.provider);
     if (!adapter) {
-      await deadLetter(row, "unknown_provider");
+      if (await deadLetterEvent(db, row, "unknown_provider")) deadLettered++;
       continue;
     }
     try {
       event = adapter.parseWebhook(JSON.stringify(row.payload));
     } catch (e) {
-      await deadLetter(row, "invalid_payload", e instanceof Error ? e.message : String(e));
+      if (await deadLetterEvent(db, row, "invalid_payload", e instanceof Error ? e.message : String(e))) deadLettered++;
       continue;
     }
     if (!event.providerTransactionId) {
-      await deadLetter(row, "missing_transaction_reference");
+      if (await deadLetterEvent(db, row, "missing_transaction_reference")) deadLettered++;
       continue;
     }
 
@@ -677,7 +684,7 @@ export async function recoverPendingEvents(
     if (!payment) {
       const tooOld = Date.now() - row.createdAt.getTime() > maxAgeDays * 24 * 60 * 60 * 1000;
       if (tooOld) {
-        await deadLetter(row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts }, claim.leaseToken);
+        if (await deadLetterEvent(db, row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts }, claim.leaseToken)) deadLettered++;
       } else {
         parked++;
       }
@@ -722,7 +729,7 @@ export async function recoverPendingEvents(
       // próprio bem-sucedido — se outro worker segurasse o lease, esta
       // passada teria pulado em `locked_by_other` antes de processar.
       if (claim.attempts >= maxAttempts) {
-        await deadLetter(row, `max_attempts_${outcome.reason}`, undefined, claim.leaseToken);
+        if (await deadLetterEvent(db, row, `max_attempts_${outcome.reason}`, undefined, claim.leaseToken)) deadLettered++;
       }
     } else {
       // already_applied / noop: evento saiu da fila (marcado na transação).
