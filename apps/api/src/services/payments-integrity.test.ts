@@ -394,7 +394,7 @@ import {
   recoverPendingEvents,
   repairPartialApplications,
 } from "./payments/webhook-events.js";
-import { registerAdapter, type PaymentAdapter } from "./payments/types.js";
+import { registerAdapter, getAdapter, type PaymentAdapter } from "./payments/types.js";
 import {
   resetSandboxCharges,
 } from "./payments/sandbox.js";
@@ -1151,9 +1151,13 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
     });
     const orderId = await staleOrder("exp-none", variant.id, customerId);
 
-    // notFoundGraceMinutes: 0 → pedido de 3 h está bem além da tolerância;
-    // 1ª e 2ª consultas confirmam null → ausência definitiva.
-    const summary = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0 });
+    // Revisão v5 (item 4): confirmação independente exige observações em
+    // passadas distintas. Passada 1 persiste a primeira observação; passada
+    // 2 (janela decorrida) decide.
+    const firstPass = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0 });
+    expect(firstPass.firstSeenRecorded).toBe(1);
+    expect(firstPass.cancelled).toBe(0);
+    const summary = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0, confirmWindowMs: 0 });
     expect(summary.cancelled).toBe(1);
 
     const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
@@ -1192,9 +1196,10 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
     expect(auditRow).toBeTruthy();
   });
 
-  it("DUPLA CONFIRMAÇÃO divergente: 1ª consulta null, 2ª reports cobrança viva → NÃO cancela", async () => {
+  it("CONFIRMAÇÃO ASSÍNCRONA divergente: 1ª passada null persiste observação e não cancela; cobrança viva após a janela NÃO cancela", async () => {
     // 1ª chamada: null (ausência aparente); 2ª: pendente (apareceu) —
-    // simula consistência eventual do provedor.
+    // simula consistência eventual do provedor. Revisão v5 (item 4): a
+    // dupla consulta imediata virou observações em PASSADAS DISTINTAS.
     class LateAppearAdapter extends AliveChargeAdapter {
       readonly provider = "exp-late";
       private calls = 0;
@@ -1216,14 +1221,25 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
     });
     const orderId = await staleOrder("exp-late", variant.id, customerId);
 
-    const summary = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0 });
-    expect(summary.cancelled).toBe(0);
-    expect(summary.skipped).toBe(1); // 2ª consulta: cobrança viva
+    // Passada 1: null → observação persistida; janela ainda não decorrida
+    // → NÃO cancela mesmo com grace=0.
+    const first = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0 });
+    expect(first.cancelled).toBe(0);
+    expect(first.firstSeenRecorded).toBe(1);
+    expect(first.skippedConfirmWindow).toBe(1);
+
+    // Passada 2 (janela decorrida — confirmWindowMs: 0): consulta reports
+    // cobrança VIVA → reserva preservada, sem cancelamento.
+    const second = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0, confirmWindowMs: 0 });
+    expect(second.cancelled).toBe(0);
+    expect(second.skipped).toBe(1);
 
     const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
     expect(order!.status).toBe("aguardando_pagamento");
     const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
     expect(inv.reserved).toBe(1);
+    const [firstSeenRow] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+    expect(firstSeenRow!.notFoundFirstSeenAt).toBeTruthy();
   });
 
   it("expiração IDEMPOTENTE: segunda passada não re-aprova, não re-cancela, não duplica auditoria", async () => {
@@ -1267,9 +1283,16 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
     });
     const orderId = await staleOrder("exp-none", variant.id, customerId);
 
+    // Revisão v5 (item 4): primeira observação já persistida (passada
+    // anterior) — as duas instâncias partem do estado confirmável.
+    await db
+      .update(schema.payments)
+      .set({ notFoundFirstSeenAt: new Date(Date.now() - 30 * 60 * 1000) })
+      .where(eq(schema.payments.orderId, orderId));
+
     const [r1, r2] = await Promise.all([
-      expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0 }),
-      expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0 }),
+      expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0, confirmWindowMs: 0 }),
+      expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0, confirmWindowMs: 0 }),
     ]);
     expect(r1.cancelled + r2.cancelled).toBe(1);
 
@@ -1501,3 +1524,456 @@ describe("vinculação da conta do estabelecimento (revisão v3, ponto D)", () =
     expect(outcome.reason).toBe("account_mismatch");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Revisão v5 — fencing token (itens 1-2), lease de manutenção multi-instância
+// (item 3), expiração assíncrona com estado persistido (item 4) e decisão
+// atômica da expiração (item 5).
+// ---------------------------------------------------------------------------
+
+import { LeaseLostError } from "./payments/webhook-events.js";
+import {
+  acquireSystemLock,
+  renewSystemLock,
+  releaseSystemLock,
+  withSystemLock,
+} from "./payments/system-locks.js";
+import { startPaymentMaintenance } from "./payments/expiry.js";
+
+/**
+ * SandboxAdapter com provider renomeado: subclasses de SandboxAdapter não
+ * podem redeclarar `provider` (literal "sandbox" na base). Sobrevive ao
+ * re-registro de `initAdapters` (que só regrava "sandbox").
+ */
+class RenamedSandboxAdapter extends SandboxAdapter {
+  constructor(providerName: string) {
+    super();
+    (this as unknown as { provider: string }).provider = providerName;
+  }
+}
+
+describe("fencing token do lease (revisão v5, itens 1-2)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+    registerAdapter(new SandboxAdapter());
+  });
+
+  /** Gateway "fence-*": sobrevive ao re-registro de initAdapters. */
+  async function fenceCheckout(provider: string) {
+    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider,
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const result = await handleCheckout(
+      db,
+      { items: [{ variantId: variant.id, quantity: 1 }], address: addr(), paymentMethod: "pix", acceptedTerms: true, ageConfirmed: true } as any,
+      { customerId, ip: "127.0.0.1" },
+    );
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
+    return { pay, orderId: result.orderId, variant };
+  }
+
+  async function insertEvent(provider: string, pay: any, opts: { leaseToken?: string; leaseExpiresAt?: Date | null } = {}) {
+    const raw = JSON.stringify({
+      id: "fence-1",
+      type: "payment.approved",
+      data: { transactionId: pay.providerTransactionId },
+      // SEM amountCents — valida via gateway (ponto de virada do teste).
+    });
+    const adapter = getAdapter(provider);
+    const parsed = adapter!.parseWebhook(raw);
+    const inserted = await db
+      .insert(schema.paymentEvents)
+      .values({
+        provider,
+        eventId: parsed.eventId,
+        type: "payment.approved",
+        payload: JSON.parse(raw),
+        signatureValid: true,
+        processedAt: null,
+        leaseToken: opts.leaseToken ?? null,
+        leaseExpiresAt: opts.leaseExpiresAt ?? null,
+      })
+      .returning();
+    return inserted[0]!;
+  }
+
+  it("pré-checagem: lease pertence a OUTRO worker → lease_lost, nada é aplicado", async () => {
+    const { pay, orderId, variant } = await fenceCheckout("fence-pre");
+    const row = await insertEvent("fence-pre", pay, {
+      leaseToken: "worker-b",
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+    });
+
+    const [orderBefore] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    const outcome = await applyPaymentEvent(db, {
+      provider: "fence-pre",
+      event: getAdapter("fence-pre")!.parseWebhook(JSON.stringify({
+        id: "fence-1",
+        type: "payment.approved",
+        data: { transactionId: pay.providerTransactionId, amountCents: pay.amountCents, currency: "BRL" },
+      })),
+      payment: pay,
+      eventRowId: row.id,
+      leaseToken: "worker-a",
+      signatureValid: true,
+    });
+
+    expect(outcome.applied).toBe(false);
+    expect(outcome.reason).toBe("lease_lost");
+    const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
+    expect(payAfter!.status).toBe("pendente");
+    const [orderAfter] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(orderAfter!.status).toBe(orderBefore!.status); // aguardando_pagamento
+    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, row.id));
+    expect(evtAfter!.processedAt).toBeNull();
+  });
+
+  it("GUARDA na marcação: token trocado durante a aplicação → LeaseLostError, rollback TOTAL", async () => {
+    const { pay, orderId, variant } = await fenceCheckout("fence-guard");
+
+    // Evento com lease EXPIRADO do worker-a — legítimo para o ladrão.
+    const row = await insertEvent("fence-guard", pay, {
+      leaseToken: "worker-a",
+      leaseExpiresAt: new Date(Date.now() - 1_000),
+    });
+
+    // O ladrão vence o lease expirado e reivindica DURANTE a aplicação do
+    // worker-a — no ponto de consulta ao gateway (fora da transação).
+    class StealAdapter extends RenamedSandboxAdapter {
+      constructor(eventRowId: string) {
+        super("fence-guard");
+        this.eventRowId = eventRowId;
+      }
+      private eventRowId: string;
+      async queryPayment(providerTransactionId: string): Promise<QueryPaymentResult> {
+        await db
+          .update(schema.paymentEvents)
+          .set({ leaseToken: "worker-b", leaseExpiresAt: new Date(Date.now() + 60_000) })
+          .where(eq(schema.paymentEvents.id, this.eventRowId));
+        return super.queryPayment(providerTransactionId);
+      }
+    }
+    registerAdapter(new StealAdapter(row.id) as unknown as PaymentAdapter);
+
+    let caught: unknown = null;
+    try {
+      await applyPaymentEvent(db, {
+        provider: "fence-guard",
+        event: getAdapter("fence-guard")!.parseWebhook(JSON.stringify({
+          id: "fence-1",
+          type: "payment.approved",
+          data: { transactionId: pay.providerTransactionId },
+        })),
+        payment: pay,
+        eventRowId: row.id,
+        leaseToken: "worker-a",
+        signatureValid: true,
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    // LeaseLostError ABORTA a transação — o worker antigo não conclui.
+    expect(caught).toBeInstanceOf(LeaseLostError);
+
+    const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
+    expect(payAfter!.status).toBe("pendente"); // rollback total
+    const [orderAfter] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(orderAfter!.status).toBe("aguardando_pagamento");
+    const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+    expect(inv.reserved).toBe(1);
+    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, row.id));
+    expect(evtAfter!.processedAt).toBeNull();
+    expect(evtAfter!.leaseToken).toBe("worker-b"); // o dono atual
+    // Rollback total: NENHUMA transição de aprovação no histórico
+    // (a entrada de criação do pedido é a única permitida).
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(0);
+  });
+
+  it("RECOVER: lease perdido durante a aplicação → leaseLost contado, dono atual assume", async () => {
+    const { pay, orderId } = await fenceCheckout("fence-recover");
+    const row = await insertEvent("fence-recover", pay, {
+      leaseToken: "worker-a",
+      leaseExpiresAt: new Date(Date.now() - 1_000),
+    });
+
+    class StealAdapter extends RenamedSandboxAdapter {
+      constructor(eventRowId: string) {
+        super("fence-recover");
+        this.eventRowId = eventRowId;
+      }
+      private eventRowId: string;
+      async queryPayment(providerTransactionId: string): Promise<QueryPaymentResult> {
+        // Simula o OUTRO recoverPendingEvents vencendo o lease expirado:
+        // claim atômico grava um token NOVO (não "worker-b" fixo).
+        await db
+          .update(schema.paymentEvents)
+          .set({ leaseToken: `claim-${crypto.randomUUID()}`, leaseExpiresAt: new Date(Date.now() + 120_000) })
+          .where(eq(schema.paymentEvents.id, this.eventRowId));
+        return super.queryPayment(providerTransactionId);
+      }
+    }
+    registerAdapter(new StealAdapter(row.id) as unknown as PaymentAdapter);
+
+    const summary = await recoverPendingEvents(db, { minBackoffMs: 0 });
+
+    expect(summary.leaseLost).toBe(1);
+    expect(summary.applied).toBe(0);
+    expect(summary.deadLettered).toBe(0);
+    const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
+    expect(payAfter!.status).toBe("pendente");
+    const [orderAfter] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(orderAfter!.status).toBe("aguardando_pagamento");
+    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, row.id));
+    expect(evtAfter!.processedAt).toBeNull();
+  });
+
+  it("CLAIM único: cada reivindicação gera um token DIFERENTE", async () => {
+    const { pay } = await fenceCheckout("fence-token");
+    const row1 = await insertEvent("fence-token", pay, { leaseExpiresAt: null });
+
+    // 1º claim: recovery aplica e conclui — token gravado.
+    await recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 });
+
+    // Evento novo para 2º claim sobre o MESMO caminho.
+    const raw = JSON.stringify({ id: "fence-2", type: "payment.approved", data: { transactionId: pay.providerTransactionId } });
+    const parsed = (getAdapter("fence-token") as PaymentAdapter)!.parseWebhook(raw);
+    await db.insert(schema.paymentEvents).values({
+      provider: "fence-token",
+      eventId: parsed.eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    });
+    const second = await recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 });
+
+    // A guarda NÃO bloqueia o dono legítimo: ambos concluídos com claims
+    // próprios (tokens gerados por reivindicação, não reutilizados).
+    const [evt1] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, row1.id));
+    const [evt2] = await db.select().from(schema.paymentEvents).where(and(eq(schema.paymentEvents.provider, "fence-token"), eq(schema.paymentEvents.eventId, parsed.eventId)));
+    expect(second.applied).toBe(1);
+    expect(evt1!.processedAt).toBeTruthy();
+    expect(evt2!.processedAt).toBeTruthy();
+  });
+});
+
+describe("lease de manutenção multi-instância (revisão v5, item 3)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    await db.execute(`DELETE FROM "system_locks"`).catch(() => {});
+    await db.execute(`INSERT INTO "system_locks" ("name") VALUES ('payment_maintenance') ON CONFLICT DO NOTHING`);
+  });
+
+  it("aquisição atômica: 2ª instância NÃO adquire lock vigente", async () => {
+    const t1 = await acquireSystemLock(db, "test-lock", 60_000);
+    expect(t1).toBeTruthy();
+    const t2 = await acquireSystemLock(db, "test-lock", 60_000);
+    expect(t2).toBeNull();
+  });
+
+  it("expiração: lease vencido devolve o lock à próxima instância", async () => {
+    const t1 = await acquireSystemLock(db, "test-lock", 30);
+    expect(t1).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 60));
+    const t2 = await acquireSystemLock(db, "test-lock", 60_000);
+    expect(t2).toBeTruthy();
+    expect(t2).not.toBe(t1);
+  });
+
+  it("renovação SOMENTE pelo dono; release por não-dono é no-op", async () => {
+    const owner = await acquireSystemLock(db, "test-lock", 60_000);
+    expect(await renewSystemLock(db, "test-lock", owner!, 60_000)).toBe(true);
+    expect(await renewSystemLock(db, "test-lock", "intruso", 60_000)).toBe(false);
+    expect(await releaseSystemLock(db, "test-lock", "intruso")).toBe(false);
+    // Dono não perdeu a posse com a tentativa de intruso.
+    expect(await renewSystemLock(db, "test-lock", owner!, 60_000)).toBe(true);
+    expect(await releaseSystemLock(db, "test-lock", owner!)).toBe(true);
+    // Liberado: próxima aquisição obtém novo token.
+    const next = await acquireSystemLock(db, "test-lock", 60_000);
+    expect(next).toBeTruthy();
+  });
+
+  it("withSystemLock em contenção: UMA execução, 2ª instância pula a passada", async () => {
+    let running = 0;
+    let maxConcurrent = 0;
+    const job = async (ms: number) =>
+      withSystemLock(db, "contention-lock", 60_000, async () => {
+        running++;
+        maxConcurrent = Math.max(maxConcurrent, running);
+        await new Promise((r) => setTimeout(r, ms));
+        running--;
+        return "done";
+      });
+
+    const [r1, r2] = await Promise.all([job(50), job(50)]);
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(false); // pulou: 1ª detém o lease
+    expect(maxConcurrent).toBe(1);
+  });
+
+  it("startPaymentMaintenance com 2 instâncias: passadas NUNCA se sobrepõem", async () => {
+    let active = 0;
+    let maxConcurrent = 0;
+    let passes = 0;
+    const runOnce = async () => {
+      active++;
+      maxConcurrent = Math.max(maxConcurrent, active);
+      await new Promise((r) => setTimeout(r, 20));
+      passes++;
+      active--;
+    };
+    const a = startPaymentMaintenance(db, runOnce, { intervalMs: 30, lockTtlMs: 60_000, lockName: "maintenance-itest" });
+    const b = startPaymentMaintenance(db, runOnce, { intervalMs: 30, lockTtlMs: 60_000, lockName: "maintenance-itest" });
+    await new Promise((r) => setTimeout(r, 250));
+    a.stop();
+    b.stop();
+    await db.execute(`DELETE FROM "system_locks" WHERE "name" = 'maintenance-itest'`);
+    expect(passes).toBeGreaterThanOrEqual(1);
+    expect(maxConcurrent).toBe(1); // exclusão entre INSTÂNCIAS no banco
+  });
+});
+
+describe("atomicidade da expiração e corrida com webhook (revisão v5, item 5)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+    registerAdapter(new SandboxAdapter());
+  });
+
+  /** Pedido antigo com pagamento pendente, provider trocado — alvo da expiração. */
+  async function staleOrder(provider: string, variantId: string, customerId: string) {
+    registerAdapter(new SandboxAdapter());
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider,
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const created = await handleCheckout(
+      db,
+      { items: [{ variantId, quantity: 1 }], address: addr(), paymentMethod: "pix", acceptedTerms: true, ageConfirmed: true } as any,
+      { customerId, ip: "127.0.0.1" },
+    );
+    await db.update(schema.orders).set({ createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }).where(eq(schema.orders.id, created.orderId));
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, created.orderId));
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
+    return created.orderId;
+  }
+
+  /** Adapter aprovado: cobrança confirmada no provedor. */
+  class ApprovedExpiryAdapter extends RenamedSandboxAdapter {
+    constructor(providerName: string) {
+      super(providerName);
+    }
+    async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+      return { status: "aprovado", amountCents: 10000, currency: "BRL" };
+    }
+  }
+
+  it("WEBHOOK × EXPIRAÇÃO em paralelo: UMA aprovação de pedido, sem estado parcial", async () => {
+    const provider = "race-we";
+    registerAdapter(new ApprovedExpiryAdapter(provider) as unknown as PaymentAdapter);
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const orderId = await staleOrder(provider, variant.id, customerId);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+
+    // Webhook approved (evento persistido) corre com a expiração que
+    // consultou o MESMO pagamento aprovado no provedor.
+    const raw = JSON.stringify({ id: "race-1", type: "payment.approved", data: { transactionId: pay.providerTransactionId, amountCents: pay.amountCents, currency: "BRL" } });
+    const parsed = getAdapter(provider)!.parseWebhook(raw);
+    const [evt] = await db
+      .insert(schema.paymentEvents)
+      .values({ provider, eventId: parsed.eventId, type: "payment.approved", payload: JSON.parse(raw), signatureValid: true })
+      .returning();
+
+    const webhook = applyPaymentEvent(db, {
+      provider,
+      event: parsed,
+      payment: pay,
+      eventRowId: evt.id,
+      leaseToken: undefined,
+      signatureValid: true,
+    });
+    const [expiryResult, webhookOutcome] = await Promise.all([
+      expireStaleReservations(db, { olderThanMinutes: 60 }),
+      webhook,
+    ]);
+
+    // Independente da ordem: o pedido vira pagamento_aprovado EXATAMENTE
+    // uma vez — sem dupla transição, sem estoque liberado em cancelamento.
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+    const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, orderId));
+    expect(history.filter((h: any) => h.toStatus === "pagamento_aprovado").length).toBe(1);
+    const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
+    expect(payAfter!.status).toBe("aprovado");
+    expect(expiryResult.cancelled).toBe(0);
+    // As duas vias convergem: quem perdeu a corrida registra skip/no-op.
+    expect(expiryResult.approved + (webhookOutcome.applied ? 1 : 0)).toBeGreaterThanOrEqual(1);
+    // Auditoria de expiração só quando A expiração transicionou.
+    const confirmAudits = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.entityId, orderId), eq(schema.auditLogs.action, "expiry.late_confirmation")));
+    if (expiryResult.approved === 1) expect(confirmAudits.length).toBe(1);
+    else expect(confirmAudits.length).toBe(0);
+  });
+
+  it("FALHA transacional na expiração: rollback TOTAL — nada parcial (estoque, histórico, auditoria)", async () => {
+    const provider = "fail-exp";
+    registerAdapter(new ApprovedExpiryAdapter(provider) as unknown as PaymentAdapter);
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const orderId = await staleOrder(provider, variant.id, customerId);
+
+    // Gatilho determinístico de falha: captura é proibida enquanto a
+    // constraint existe — o update do pagamento explode DENTRO da
+    // transação de finalizeExpiry.
+    await db.execute(`ALTER TABLE "payments" ADD CONSTRAINT test_forbid_capture CHECK ("captured_at" IS NULL) NOT VALID`);
+    try {
+      let threw: unknown = null;
+      try {
+        await expireStaleReservations(db, { olderThanMinutes: 60 });
+      } catch (err) {
+        threw = err;
+      }
+      expect(threw).toBeTruthy(); // finalizeExpiry falhou e o erro subiu
+      // Sem atualização parcial: pedido, pagamento, histórico, estoque e
+      // auditoria permanecem no estado anterior.
+      const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+      expect(order!.status).toBe("aguardando_pagamento");
+      const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+      expect(payAfter!.status).toBe("pendente");
+      expect(payAfter!.capturedAt).toBeNull();
+      // Rollback total: NENHUMA transição de aprovação/cancelamento além da
+      // entrada de criação do pedido.
+      const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, orderId));
+      expect(history.filter((h: any) => h.toStatus !== "aguardando_pagamento").length).toBe(0);
+      const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+      expect(inv.reserved).toBe(1);
+      const lateAudits = await db
+        .select()
+        .from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.action, "expiry.late_confirmation"), eq(schema.auditLogs.entityId, orderId)));
+      expect(lateAudits.length).toBe(0);
+    } finally {
+      await db.execute(`ALTER TABLE "payments" DROP CONSTRAINT IF EXISTS test_forbid_capture`);
+    }
+  });
+});
+

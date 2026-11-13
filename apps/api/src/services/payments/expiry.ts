@@ -196,7 +196,10 @@ export async function expireStaleReservations(
       }
       // Janela de confirmação: a observação persistida é recente — este
       // `null` não é independente do primeiro; a passada seguinte decide.
-      const firstSeen = payment.notFoundFirstSeenAt?.getTime() ?? 0;
+      // RE-LEITURA: o scan leu a linha ANTES de persistir a primeira
+      // observação — a janela julga o estado real do banco.
+      const [freshPayment] = await db.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
+      const firstSeen = freshPayment?.notFoundFirstSeenAt?.getTime() ?? 0;
       if (Date.now() - firstSeen < confirmWindowMs) {
         summary.skippedConfirmWindow++;
         await audit(db, {
@@ -207,7 +210,7 @@ export async function expireStaleReservations(
           after: {
             provider: payment.provider,
             reason: "segunda observação antes da janela de confirmação — decisão adiada para a passada seguinte",
-            firstSeenAt: payment.notFoundFirstSeenAt,
+            firstSeenAt: freshPayment?.notFoundFirstSeenAt ?? null,
             confirmWindowMs,
           },
         });
