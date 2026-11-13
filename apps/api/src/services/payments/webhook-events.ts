@@ -35,6 +35,19 @@ import { transitionOrderInTx } from "../orders.js";
 import { audit } from "../../lib/audit.js";
 import { PAYMENT_PENDING_STATUSES, type OrderStatus } from "@airsoft/shared";
 
+/**
+ * Fencing (v5): o worker perdeu o lease do evento (expirou e foi
+ * reivindicado por outro). Lançada DENTRO da transação de aplicação —
+ * rollback TOTAL (pagamento, pedido, estoque, auditoria); o evento
+ * permanece pendente para o dono atual do lease.
+ */
+export class LeaseLostError extends Error {
+  constructor() {
+    super("lease perdido: evento reivindicado por outro worker");
+    this.name = "LeaseLostError";
+  }
+}
+
 export interface ApplyEventResult {
   applied: boolean;
   reason?: string;
@@ -317,23 +330,13 @@ export async function applyPaymentEvent(
       });
       // Evento CONSISTENTE com estado atual (já aprovado) é marcado como
       // processado — reentrega não pode reprocessar eternamente.
-      if (input.eventRowId) {
-        await tx
-          .update(schema.paymentEvents)
-          .set({ paymentId: fresh.id, processedAt: new Date() })
-          .where(eq(schema.paymentEvents.id, input.eventRowId));
-      }
+      await markProcessed();
       return { applied: false, reason: "payment_regression_ignored", paymentStatus: fresh.status } as ApplyEventResult;
     }
 
     // Idempotência financeira: já no estado alvo.
     if (fresh.status === targetPaymentStatus && event.type !== "payment.refunded") {
-      if (input.eventRowId) {
-        await tx
-          .update(schema.paymentEvents)
-          .set({ paymentId: fresh.id, processedAt: new Date() })
-          .where(eq(schema.paymentEvents.id, input.eventRowId));
-      }
+      await markProcessed();
       return { applied: false, reason: "already_applied", paymentStatus: fresh.status } as ApplyEventResult;
     }
 
@@ -359,12 +362,7 @@ export async function applyPaymentEvent(
         actorLabel,
         after: { providerEvent: event.eventId },
       });
-      if (input.eventRowId) {
-        await tx
-          .update(schema.paymentEvents)
-          .set({ paymentId: fresh.id, processedAt: new Date() })
-          .where(eq(schema.paymentEvents.id, input.eventRowId));
-      }
+      await markProcessed();
       return { applied: true, reason: "order_not_found", paymentStatus: targetPaymentStatus } as ApplyEventResult;
     }
     const from = order.status as OrderStatus;
@@ -383,12 +381,7 @@ export async function applyPaymentEvent(
           decision: "refund_required",
         },
       });
-      if (input.eventRowId) {
-        await tx
-          .update(schema.paymentEvents)
-          .set({ paymentId: fresh.id, processedAt: new Date() })
-          .where(eq(schema.paymentEvents.id, input.eventRowId));
-      }
+      await markProcessed();
       return { applied: true, paymentStatus: "aprovado", latePayment: true } as ApplyEventResult;
     }
 
@@ -398,12 +391,7 @@ export async function applyPaymentEvent(
       targetPaymentStatus === "aprovado" &&
       (from === "em_analise_antifraude" || from === "aguardando_revisao_manual")
     ) {
-      if (input.eventRowId) {
-        await tx
-          .update(schema.paymentEvents)
-          .set({ paymentId: fresh.id, processedAt: new Date() })
-          .where(eq(schema.paymentEvents.id, input.eventRowId));
-      }
+      await markProcessed();
       return { applied: true, paymentStatus: "aprovado", reason: "awaiting_human_review" } as ApplyEventResult;
     }
 
@@ -436,12 +424,7 @@ export async function applyPaymentEvent(
       }
       // 6) Evento marcado como processado NA MESMA transação — crash aqui
       //    desfaz pagamento, pedido, histórico, estoque e a marcação juntos.
-      if (input.eventRowId) {
-        await tx
-          .update(schema.paymentEvents)
-          .set({ paymentId: fresh.id, processedAt: new Date() })
-          .where(eq(schema.paymentEvents.id, input.eventRowId));
-      }
+      await markProcessed();
       return {
         applied: true,
         paymentStatus: targetPaymentStatus,
@@ -449,12 +432,7 @@ export async function applyPaymentEvent(
       } as ApplyEventResult;
     }
 
-    if (input.eventRowId) {
-      await tx
-        .update(schema.paymentEvents)
-        .set({ paymentId: fresh.id, processedAt: new Date() })
-        .where(eq(schema.paymentEvents.id, input.eventRowId));
-    }
+    await markProcessed();
     return { applied: true, paymentStatus: targetPaymentStatus } as ApplyEventResult;
   });
 
@@ -713,15 +691,26 @@ export async function recoverPendingEvents(
       continue;
     }
 
-    const outcome = await applyPaymentEvent(db, {
-      provider: row.provider,
-      event,
-      payment,
-      actorLabel: "recovery:boot",
-      eventRowId: row.id,
-      signatureValid: row.signatureValid ?? undefined,
-      leaseToken: claim.leaseToken,
-    });
+    let outcome: ApplyEventResult;
+    try {
+      outcome = await applyPaymentEvent(db, {
+        provider: row.provider,
+        event,
+        payment,
+        actorLabel: "recovery:boot",
+        eventRowId: row.id,
+        signatureValid: row.signatureValid ?? undefined,
+        leaseToken: claim.leaseToken,
+      });
+    } catch (err) {
+      if (err instanceof LeaseLostError) {
+        // Fencing (v5): rollback total já aconteceu — nada aplicado. O dono
+        // atual do lease processa; este worker segue a fila.
+        leaseLost++;
+        continue;
+      }
+      throw err;
+    }
     if (outcome.applied) {
       applied++;
     } else if (outcome.reason === "lease_lost") {
