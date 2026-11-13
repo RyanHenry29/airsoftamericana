@@ -2,9 +2,9 @@
 
 > **Status:** v5 NÃO publicável. v4 (`1cdf48f`) permanece a versão publicada no PR #1. Produção, migrations e SQLs de hardening intocados.
 >
-> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..f9e5d8d`).
+> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..<SHA-final-da-rodada>`).
 >
-> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**).
+> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**).
 
 ## Rodada de correção (`68445bb`) — resultado da revisão v5.1
 
@@ -81,13 +81,14 @@ A revisão apontou 3 problemas (1 CRÍTICO, 2 ALTO) e 2 MÉDIO. Todos corrigidos
 - Evento preso: o lease do evento expira sozinho (2 min) e volta à fila; backoff não bloqueia indefinidamente; dead-letter por idade só para PARKED; `LeaseLostError` deixa o evento como está. **Qualificação (revisão):** "não deixa preso" é uma propriedade do desenho (lease expirável + backoff), demonstrada pelos testes de recuperação — ela NÃO substitui verificação operacional de retomada após indisponibilidade prolongada do banco ou reinicialização; monitorar `scanned/applied/parked/skippedLease` no log de manutenção.
 - Falha de manutenção: engolida pela passada (não derruba o processo); a passada seguinte re-tenta com aquisição ativa.
 
-## Gates (executados após `3313667`, tree somente-v5 — números medidos, não presumidos)
+## Gates (executados após `1dc5c2f`, tree somente-v5 — números medidos, não presumidos)
 
 | Gate | Resultado |
 | --- | --- |
 | `npx tsc --noEmit` (api, store, admin) | exit 0 ×3 |
-| `npm test` (apps/api) | **285/285**, 33 arquivos (66 no arquivo de integridade) |
-| PostgreSQL real (`node scripts/pg-integration.mjs`, da raiz) | **90/90**, 4 arquivos |
+| `npm test` (apps/api) | **289/289**, 33 arquivos (70 no arquivo de integridade) |
+| PostgreSQL real (`node scripts/pg-integration.mjs`, da raiz) | **94/94**, 4 arquivos |
+| CI independente | `.github/workflows/api-gates.yml` criado — ativa ao publicar a branch |
 
 ## Cenários novos (v5.1 correção, 9 testes — todos com fase vermelha documentada)
 
@@ -116,6 +117,16 @@ Endereçam as duas lacunas apontadas na revisão condicionada:
 
 Indicador operacional (revisão, item C): `ExpirySummary.skippedInvalidState` conta as recusas de transição automática — vai para o log de manutenção (`app.log.info({ recovery, repair, expiry })` no boot) com registro individual `expiry.skipped_invalid_order_state` em `audit_logs` por pedido. Durabilidade do `refund_required` (item B): registro `order.late_payment` com `decision: "refund_required"` nas duas vias (webhook e expiração), append-only, DENTRO da transação financeira.
 
+## Rodada final (pós-revisão condicionada, `1dc5c2f`) — os 5 pendências endereçados
+
+| Prioridade | Pendência do veredito | Correção entregue |
+| --- | --- | --- |
+| ALTO | Pagamento pode ser liquidado sem pedido correspondente | `finalizeExpiry` SEMPRE locka o pedido (os três callers informam `orderId`). Pedido inexistente ⇒ retorno `refused`/`orderMissing`: NADA é assentado, pagamento permanece `pendente`, auditoria `expiry.skipped_order_missing` (entity "payment", âncora `orderId` no payload) + contador `skippedOrderMissing`. Guarda fail-closed pós-transição: `if (!outcome.transitioned) throw conflict("invalid_transition", ...)` — recusa inesperada reverte TUDO. Teste com fase vermelha documentada: vermelho revelou assentamento escrito → `transitionOrderInTx` lança `notFound` → rollback mas exceção matava a passada inteira. FK descoberta dinamicamente via `pg_constraint` (não hardcodada). |
+| ALTO | Heartbeat sem teste de exceção de rede real | Dois testes novos com exceção REAL: `ALTER TABLE "system_locks" RENAME` derruba toda renovação (engolida = incerteza). (a) banco fora por ≥ TTL (3000 ms, 3 exceções, 0 recusas, 0 confirmações) ⇒ fases 2-3 NÃO rodam; (b) falha transitória 0→1500 ms + renovação CONFIRMADA aos ~2000 ms ⇒ margem rearma, lock NÃO perdido indevidamente, fases 2-3 rodam. Restore no `finally`. |
+| MÉDIO | DDL obrigatório ainda com erro silencioso | Os 7 `.catch(() => {})` residuais removidos (`payment_id`/`processed_at` DROP NOT NULL; `attempts`, `last_attempt_at`, `last_error`, `dead_letter`, `lease_expires_at`). Todos idempotentes por construção (reexecução é no-op); falha REAL (permissão, conexão) propaga e interrompe o boot. **AUD-03 (ledger, checksum, coordenação de migrations) permanece explicitamente pendente** — item de arquitetura independente. |
+| MÉDIO | `refund_required` sem procedimento operacional | Seção "Procedimento operacional" abaixo: responsável, agenda, SLA por tipo de item (24 h úteis; escalonamento 48 h), resolução registrada como `order.late_payment_resolved` (INSERT permitido — trigger bloqueia só UPDATE/DELETE) e query de monitoramento `docs/sql/late-payment-monitor.sql` (fila aberta, totais, resoluções, envelhecimento). |
+| MÉDIO | Gates sem execução independente | `.github/workflows/api-gates.yml`: tsc ×3 (shared/api/store/admin), `npm test` da API, `node scripts/pg-integration.mjs` — em `push`/`pull_request`. Ativa ao publicar a branch; banco efêmero do runner, nada toca produção. |
+
 ## Procedimento operacional — divergências financeiras (`refund_required` e afins) 
 
 O registro `order.late_payment` com `decision: "refund_required"` em `audit_logs` é **evidência durável, não fila de reembolso**. O processamento do reembolso é humano. Este é o procedimento acordado:
@@ -141,13 +152,23 @@ values ('financeiro.joao', 'order.late_payment_resolved', 'order', '<entity_id d
         '{"refund_id":"re_xxx","valor_reembolsado_centavos":10000,"decisao":"reembolso_executado"}');
 ```
 
-As consultas 3 e 1 do `late-payment-monitor.sql` audita as resoluções e exclui da fila aberta o que já tem resolução.
+As consultas 3 e 1 do `late-payment-monitor.sql` auditam as resoluções e excluem da fila aberta o que já tem resolução.
 
 **Alerta automático:** o resumo da passada de expiração (`ExpirySummary`) vai ao log de manutenção do boot com os contadores `latePayment`, `skippedInvalidState` e `skippedOrderMissing` — qualquer valor > 0 gera entrada de log estruturada. Integração com alerta externo (e-mail/Telegram) é melhoria futura, não bloqueio.
 
+## Testes novos da rodada final (`1dc5c2f`) — 4 testes
+
+| Teste | O que prova |
+| --- | --- |
+| `PEDIDO INEXISTENTE: NADA é assentado` | Cirurgia de FK (`pg_constraint` → drop + DELETE do pedido, restauração no fim): pagamento pendente SEM pedido não é assentado, não é "reconciliação"; auditoria `expiry.skipped_order_missing` com âncora `orderId` + `skippedOrderMissing=1`. Vermelho antes do fix: exceção `notFound` matava a passada inteira. |
+| `EXCEÇÃO real na renovação ... fases 2-3 NÃO rodam` | Banco indisponível (RENAME da tabela) ⇒ toda renovação LANÇA (engolida = incerteza). TTL 3000 ms, 3 exceções no heartbeat, margem vence ⇒ fases 2-3 bloqueadas. Nenhuma recusa, nenhuma confirmação — pura incerteza. |
+| `RECUPERAÇÃO: falha transitória + renovação CONFIRMADA antes do limite` | Banco volta aos 1500 ms; heartbeat aos ~2000 ms RENOVA com sucesso ⇒ margem rearma, fases 2-3 rodam. Falha de rede transitória NÃO perde o lock indevidamente. |
+| `deadLetter: token persistido DIVERGENTE preenchido` | Espelho do caso NULL: hook `SET lease_token = 'worker-b'` (worker-b ≠ worker-a) ⇒ dead-letter BLOQUEADA, evento volta à fila (`rejected=1`, `processedAt` NULL). Correspondência EXATA nos dois casos exigidos pela revisão. |
+
 ## Pendências para publicação
 
-1. Aprovação humana das evidências (`c853b07..3313667`) sobre os 3 pontos condicionados: bloqueio de próxima fase, rollback por falha de auditoria, execução dos gates.
-2. Decisão: push da `wip/v5-fencing` no PR #1 (substituindo a v4) ou PR novo.
-3. SQLs de hardening e homologação com gateway real continuam bloqueados (produção congelada).
-4. ATENÇÃO de ambiente: há trabalho paralelo em edição NESTE working tree (assistente IA: `admin-ai.ts`, `ai-assistant.ts`, `page.tsx`, testes `#n`) — NÃO faz parte da v5, não está commitado; os gates da v5 foram executados com esses arquivos temporariamente afastados (stash) e a tree devolvida ao estado encontrado.
+1. Aprovação humana da rodada final (`1dc5c2f`): os 5 pendências do veredito condicionado endereçados — ver seção "Rodada final" acima.
+2. Decisão: push da `wip/v5-fencing` no PR #1 (substituindo a v4) ou PR novo. O CI (`api-gates.yml`) passa a executar os gates de forma independente no push.
+3. **AUD-03 permanece pendente** (ledger, checksum, coordenação de migrations) — item de arquitetura independente, fora do escopo da v5.
+4. SQLs de hardening e homologação com gateway real continuam bloqueados (produção congelada).
+5. ATENÇÃO de ambiente: há trabalho paralelo em edição NESTE working tree (assistente IA: `admin-ai.ts`, `ai-assistant.ts`, `page.tsx`, testes `#n`) — NÃO faz parte da v5, não está commitado; os gates da v5 foram executados com esses arquivos temporariamente afastados (stash) e a tree devolvida ao estado encontrado.
