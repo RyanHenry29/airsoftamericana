@@ -57,6 +57,11 @@ export interface ExpirySummary {
   /** Correção pós-revisão: pagamento tardio (pedido cancelado + dinheiro
    *  entrou) — assentado com registro durável de `refund_required`. */
   latePayment: number;
+  /** Indicador operacional (revisão): pagamentos pendentes cujo pedido não
+   *  aceita mais transição automática — exige investigação humana. Cada
+   *  ocorrência tem registro individual `expiry.skipped_invalid_order_state`
+   *  em audit_logs; este contador alimenta alertas no log de manutenção. */
+  skippedInvalidState: number;
 }
 
 const QUERY_RETRIES = 2;
@@ -123,6 +128,7 @@ export async function expireStaleReservations(
     firstSeenRecorded: 0,
     skippedConfirmWindow: 0,
     latePayment: 0,
+    skippedInvalidState: 0,
   };
 
   for (const { order, payment } of stale) {
@@ -236,6 +242,7 @@ export async function expireStaleReservations(
         // Estado do pedido não permite cancelamento automático — pagamento
         // permanece `pendente`; sinal operacional para investigação humana.
         summary.skipped++;
+        summary.skippedInvalidState++; // indicador operacional (revisão)
         await audit(db, {
           action: "expiry.skipped_invalid_order_state",
           entity: "order",
@@ -279,6 +286,7 @@ export async function expireStaleReservations(
         // Estado do pedido não permite assentamento automático — pagamento
         // permanece `pendente`; sinal operacional para investigação humana.
         summary.skipped++;
+        summary.skippedInvalidState++; // indicador operacional (revisão)
         await audit(db, {
           action: "expiry.skipped_invalid_order_state",
           entity: "order",
@@ -313,6 +321,7 @@ export async function expireStaleReservations(
         // Estado do pedido não permite cancelamento automático — pagamento
         // permanece `pendente`; sinal operacional para investigação humana.
         summary.skipped++;
+        summary.skippedInvalidState++; // indicador operacional (revisão)
         await audit(db, {
           action: "expiry.skipped_invalid_order_state",
           entity: "order",

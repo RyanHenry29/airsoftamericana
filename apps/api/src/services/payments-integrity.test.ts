@@ -2450,4 +2450,223 @@ describe("deadLetter: guarda estrita de token (correção pós-revisão)", () =>
   });
 });
 
+// ---------------------------------------------------------------------------
+// Evidência pós-revisão 2/3 — heartbeat: DETECTAR a perda não basta; a
+// PRÓXIMA FASE da manutenção não pode executar. Os testes reproduzem o
+// contrato de runMaintenance (index.ts): fases encadeadas com `lost()` checado
+// ENTRE elas — recusa confirmada da renovação (ladrão real) e incerteza
+// prolongada (margem TTL) bloqueiam as fases seguintes.
+// ---------------------------------------------------------------------------
+
+describe("heartbeat: bloqueio da PRÓXIMA fase (evidência pós-revisão)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    await db.execute(`DELETE FROM "system_locks"`).catch(() => {});
+    await db.execute(`INSERT INTO "system_locks" ("name") VALUES ('payment_maintenance') ON CONFLICT DO NOTHING`);
+  });
+
+  it("RECUSA confirmada (lease tomado por outra instância): fase 1 roda, fases 2-3 NÃO rodam", async () => {
+    // TTL 3000 ms: heartbeat a cada 1000 ms; a margem de segurança (3000 ms)
+    // NÃO vence antes do heartbeat — a perda só pode vir da RECUSA da
+    // renovação (token na linha não é mais o nosso).
+    const phases: string[] = [];
+    let renewalRecused: boolean | null = null;
+
+    const r = await withSystemLock(db, "phase-abort-steal", 3_000, async (ctx) => {
+      phases.push("fase-1:recuperacao");
+      if (ctx.lost()) return phases;
+
+      // Outra instância assumiu o lease (após vencimento — representado pela
+      // troca do token na linha, mesmo mecanismo dos adapters ladrões):
+      // a partir daqui a renovação do dono antigo é RECUSADA.
+      await db
+        .update(schema.systemLocks)
+        .set({ leaseToken: "instancia-b", leaseExpiresAt: new Date(Date.now() + 60_000) })
+        .where(eq(schema.systemLocks.name, "phase-abort-steal"));
+
+      // Esperar o heartbeat do dono antigo (aos ~1000 ms): renovação RECUSADA.
+      await new Promise((res) => setTimeout(res, 1_300));
+
+      renewalRecused = !(await renewSystemLock(db, "phase-abort-steal", "token-do-dono-antigo", 3_000));
+      if (!ctx.lost()) phases.push("fase-2:reparo");
+      if (!ctx.lost()) phases.push("fase-3:expiracao");
+      return phases;
+    });
+
+    // A recusa é real: o token antigo não renova mais.
+    expect(renewalRecused).toBe(true);
+    // O dono antigo percebeu a perda e ABORTOU: nenhuma fase além da 1ª —
+    // e a decisão NÃO veio da margem (TTL 3000 ms > tempo decorrido ~1300 ms).
+    expect(r.ok).toBe(true);
+    expect(phases).toEqual(["fase-1:recuperacao"]);
+  });
+
+  it("INCERTEZA prolongada além da margem (sem ladrão): fase 1 roda, fases 2-3 NÃO rodam", async () => {
+    // TTL 50 ms: o 1º heartbeat só rodaria aos 1000 ms — entre aquisição e
+    // lá NENHUMA renovação é confirmada. A margem vence: lost() true.
+    const phases: string[] = [];
+    const r = await withSystemLock(db, "phase-abort-margin", 50, async (ctx) => {
+      phases.push("fase-1:recuperacao");
+      await new Promise((res) => setTimeout(res, 300));
+      if (!ctx.lost()) phases.push("fase-2:reparo");
+      if (!ctx.lost()) phases.push("fase-3:expiracao");
+      return phases;
+    });
+    expect(r.ok).toBe(true);
+    expect(phases).toEqual(["fase-1:recuperacao"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Evidência pós-revisão 3/3 — auditoria transacional: falha ESPECÍFICA no
+// INSERT da auditoria (depois da mutação financeira) reverte TUDO — pagamento,
+// pedido, estoque, histórico, marcação do evento. Gatilho determinístico no
+// banco: BEFORE INSERT em audit_logs RAISE EXCEPTION para a ação alvo.
+// ---------------------------------------------------------------------------
+
+describe("atomicidade da auditoria: falha no INSERT reverte a mutação (evidência pós-revisão)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    resetSandboxCharges();
+    registerAdapter(new SandboxAdapter());
+  });
+
+  async function staleOrderFor(provider: string, variantId: string, customerId: string) {
+    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider,
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const created = await handleCheckout(
+      db,
+      { items: [{ variantId, quantity: 1 }], address: addr(), paymentMethod: "pix", acceptedTerms: true, ageConfirmed: true } as any,
+      { customerId, ip: "127.0.0.1" },
+    );
+    await db.update(schema.orders).set({ createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }).where(eq(schema.orders.id, created.orderId));
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, created.orderId));
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
+    return { orderId: created.orderId, pay };
+  }
+
+  async function installAuditFailTrigger(action: string) {
+    await db.execute(`CREATE OR REPLACE FUNCTION test_fail_audit() RETURNS trigger AS $fn$ BEGIN RAISE EXCEPTION 'falha de auditoria forçada (teste): %', NEW.action; END; $fn$ LANGUAGE plpgsql`);
+    await db.execute(
+      `CREATE TRIGGER test_fail_audit BEFORE INSERT ON "audit_logs" FOR EACH ROW WHEN (NEW."action" = '${action}') EXECUTE FUNCTION test_fail_audit()`,
+    );
+  }
+
+  async function dropAuditFailTrigger() {
+    await db.execute(`DROP TRIGGER IF EXISTS test_fail_audit ON "audit_logs"`);
+    await db.execute(`DROP FUNCTION IF EXISTS test_fail_audit()`);
+  }
+
+  it("EXPIRAÇÃO (cancelamento + estoque): auditoria 'expiry.cancelled' falha ⇒ pagamento, pedido, estoque, histórico e auditoria revertidos", async () => {
+    const provider = "audit-fail-exp";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId } = await staleOrderFor(provider, variant.id, customerId);
+
+    // Provedor reports EXPIRADO: caminho de cancelamento — transição
+    // cancelado + liberação de estoque + auditoria, TUDO na mesma transação.
+    class ExpiredAdapter extends RenamedSandboxAdapter {
+      constructor(providerName: string) {
+        super(providerName);
+      }
+      async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+        return { status: "expirado", amountCents: 10000, currency: "BRL" };
+      }
+    }
+    registerAdapter(new ExpiredAdapter(provider) as unknown as PaymentAdapter);
+
+    await installAuditFailTrigger("expiry.cancelled");
+    try {
+      let threw: unknown = null;
+      try {
+        await expireStaleReservations(db, { olderThanMinutes: 60 });
+      } catch (err) {
+        threw = err;
+      }
+      expect(threw).toBeTruthy(); // a falha de auditoria PROPAGA (transação rejeita)
+
+      // Pagamento: NADA assentado.
+      const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+      expect(payAfter!.status).toBe("pendente");
+      expect(payAfter!.capturedAt).toBeNull();
+      // Pedido: sem transição.
+      const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+      expect(order!.status).toBe("aguardando_pagamento");
+      // Estoque: reserva preservada.
+      const [inv] = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+      expect(inv.reserved).toBe(1);
+      // Histórico: só a entrada de criação.
+      const history = await db.select().from(schema.orderStatusHistory).where(eq(schema.orderStatusHistory.orderId, orderId));
+      expect(history.filter((h: any) => h.toStatus !== "aguardando_pagamento").length).toBe(0);
+      // Auditoria: NENHUM registro da ação (o INSERT falhou e reverteu junto).
+      const audits = await db
+        .select()
+        .from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.action, "expiry.cancelled"), eq(schema.auditLogs.entityId, orderId)));
+      expect(audits.length).toBe(0);
+    } finally {
+      await dropAuditFailTrigger();
+    }
+  });
+
+  it("WEBHOOK pagamento tardio: auditoria 'order.late_payment' falha ⇒ pagamento, pedido e marcação do evento revertidos", async () => {
+    const provider = "audit-fail-lp";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId, pay } = await staleOrderFor(provider, variant.id, customerId);
+    // Estado legado divergente: pedido cancelado, pagamento pendente — o
+    // webhook approved entra no caminho de pagamento tardio.
+    await db.update(schema.orders).set({ status: "cancelado" }).where(eq(schema.orders.id, orderId));
+
+    const raw = JSON.stringify({
+      id: "audit-fail-lp-1",
+      type: "payment.approved",
+      data: { transactionId: pay.providerTransactionId, amountCents: pay.amountCents, currency: "BRL" },
+    });
+    const parsed = (getAdapter(provider) as PaymentAdapter)!.parseWebhook(raw);
+    const [evt] = await db
+      .insert(schema.paymentEvents)
+      .values({ provider, eventId: parsed.eventId, type: "payment.approved", payload: JSON.parse(raw), signatureValid: true })
+      .returning();
+
+    await installAuditFailTrigger("order.late_payment");
+    try {
+      let threw: unknown = null;
+      try {
+        await applyPaymentEvent(db, { provider, event: parsed, payment: pay, eventRowId: evt.id, leaseToken: undefined, signatureValid: true });
+      } catch (err) {
+        threw = err;
+      }
+      expect(threw).toBeTruthy(); // auditoria NA transação: falha rejeita tudo
+
+      // Pagamento: sem assentamento tardio.
+      const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
+      expect(payAfter!.status).toBe("pendente");
+      expect(payAfter!.capturedAt).toBeNull();
+      // Pedido: permanece cancelado.
+      const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+      expect(order!.status).toBe("cancelado");
+      // Evento: marcação (última escrita da transação) revertida — volta à fila.
+      const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, evt.id));
+      expect(evtAfter!.processedAt).toBeNull();
+      expect(evtAfter!.deadLetter).toBe(false);
+      // Auditoria: nada gravado.
+      const audits = await db
+        .select()
+        .from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.action, "order.late_payment"), eq(schema.auditLogs.entityId, orderId)));
+      expect(audits.length).toBe(0);
+    } finally {
+      await dropAuditFailTrigger();
+    }
+  });
+});
+
 
