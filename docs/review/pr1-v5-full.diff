@@ -251,10 +251,10 @@ index b9fe14f..e6b593f 100644
    id: uuid("id").defaultRandom().primaryKey(),
    paymentId: uuid("payment_id").notNull().references(() => payments.id),
 diff --git a/apps/api/src/services/payments-integrity.test.ts b/apps/api/src/services/payments-integrity.test.ts
-index 0daadc4..e68aba4 100644
+index 0daadc4..ccda3d7 100644
 --- a/apps/api/src/services/payments-integrity.test.ts
 +++ b/apps/api/src/services/payments-integrity.test.ts
-@@ -3,7 +3,7 @@
+@@ -3,13 +3,13 @@
  // idempotência de webhook, regressão, pagamento tardio e corrida checkout×webhook.
  import { describe, it, expect, beforeAll, beforeEach } from "vitest";
  import crypto from "node:crypto";
@@ -263,7 +263,19 @@ index 0daadc4..e68aba4 100644
  import { migrate } from "../db/migrate.js";
  import { schema } from "../db/index.js";
  import { handleCheckout } from "./checkout.js";
-@@ -394,7 +394,7 @@ import {
+ import { applyPaymentEvent, applyPendingEventsForPayment } from "./payments/webhook-events.js";
+ import { SandboxAdapter } from "./payments/sandbox.js";
+-import { and, eq } from "drizzle-orm";
++import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
+ import type { NormalizedWebhookEvent } from "./payments/types.js";
+ 
+ const customerEmail = "integridade@demo.com";
+@@ -391,10 +391,12 @@ describe("integridade de pagamentos (AUD-01/AUD-15)", () => {
+ // ---------------------------------------------------------------------------
+ 
+ import {
++  ApplyEventResult,
++  deadLetterEvent,
    recoverPendingEvents,
    repairPartialApplications,
  } from "./payments/webhook-events.js";
@@ -272,7 +284,7 @@ index 0daadc4..e68aba4 100644
  import {
    resetSandboxCharges,
  } from "./payments/sandbox.js";
-@@ -1151,9 +1151,13 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
+@@ -1151,9 +1153,13 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
      });
      const orderId = await staleOrder("exp-none", variant.id, customerId);
  
@@ -289,7 +301,7 @@ index 0daadc4..e68aba4 100644
      expect(summary.cancelled).toBe(1);
  
      const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
-@@ -1192,9 +1196,10 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
+@@ -1192,9 +1198,10 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
      expect(auditRow).toBeTruthy();
    });
  
@@ -302,7 +314,7 @@ index 0daadc4..e68aba4 100644
      class LateAppearAdapter extends AliveChargeAdapter {
        readonly provider = "exp-late";
        private calls = 0;
-@@ -1216,14 +1221,25 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
+@@ -1216,14 +1223,25 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
      });
      const orderId = await staleOrder("exp-late", variant.id, customerId);
  
@@ -331,7 +343,7 @@ index 0daadc4..e68aba4 100644
    });
  
    it("expiração IDEMPOTENTE: segunda passada não re-aprova, não re-cancela, não duplica auditoria", async () => {
-@@ -1267,9 +1283,16 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
+@@ -1267,9 +1285,16 @@ describe("expiração segura de reservas (revisão v3, ponto C)", () => {
      });
      const orderId = await staleOrder("exp-none", variant.id, customerId);
  
@@ -350,7 +362,7 @@ index 0daadc4..e68aba4 100644
      ]);
      expect(r1.cancelled + r2.cancelled).toBe(1);
  
-@@ -1501,3 +1524,1331 @@ describe("vinculação da conta do estabelecimento (revisão v3, ponto D)", () =
+@@ -1501,3 +1526,1570 @@ describe("vinculação da conta do estabelecimento (revisão v3, ponto D)", () =
      expect(outcome.reason).toBe("account_mismatch");
    });
  });
@@ -1681,22 +1693,262 @@ index 0daadc4..e68aba4 100644
 +  });
 +});
 +
++describe("cercas de arrendamento: validade temporal (revisão do revisor)", () => {
++  beforeEach(async () => {
++    await clearTables();
++    await db.execute(`DELETE FROM "system_locks"`).catch(() => {});
++    await db.execute(`DELETE FROM "payment_events"`).catch(() => {});
++    resetSandboxCharges();
++    registerAdapter(new SandboxAdapter());
++  });
++
++  async function installAuditFailTrigger(action: string) {
++    await db.execute(`CREATE OR REPLACE FUNCTION test_fail_audit() RETURNS trigger AS $fn$ BEGIN RAISE EXCEPTION 'falha de auditoria forçada (teste): %', NEW.action; END; $fn$ LANGUAGE plpgsql`);
++    await db.execute(
++      `CREATE TRIGGER test_fail_audit BEFORE INSERT ON "audit_logs" FOR EACH ROW WHEN (NEW."action" = '${action}') EXECUTE FUNCTION test_fail_audit()`,
++    );
++  }
++
++  async function dropAuditFailTrigger() {
++    await db.execute(`DROP TRIGGER IF EXISTS test_fail_audit ON "audit_logs"`);
++    await db.execute(`DROP FUNCTION IF EXISTS test_fail_audit()`);
++  }
++
++  async function staleOrderFor(provider: string, variantId: string, customerId: string) {
++    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
++    await db.insert(schema.gatewayConfigs).values({
++      id: crypto.randomUUID(),
++      provider,
++      enabled: true,
++      isDefault: true,
++      methods: ["pix"],
++      pixDiscountPercent: 0,
++    });
++    const created = await handleCheckout(
++      db,
++      { items: [{ variantId, quantity: 1 }], address: addr(), paymentMethod: "pix", acceptedTerms: true, ageConfirmed: true } as any,
++      { customerId, ip: "127.0.0.1" },
++    );
++    await db.update(schema.orders).set({ createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }).where(eq(schema.orders.id, created.orderId));
++    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, created.orderId));
++    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
++    return { orderId: created.orderId, paymentId: pay.id };
++  }
++
++  it("renovação NÃO renova lease já expirado (mesmo token, sem substituição de token)", async () => {
++    const token = await acquireSystemLock(db, "loc-expirado", 1_000);
++    expect(token).not.toBeNull();
++
++    // Expira o lease no banco SEM trocar o token — relógio do banco é a
++    // autoridade de expiração.
++    await db.execute(`UPDATE "system_locks" SET "lease_expires_at" = now() - interval '1 second' WHERE "name" = 'loc-expirado'`);
++
++    const renovou = await renewSystemLock(db, "loc-expirado", token!, 1_000);
++    expect(renovou).toBe(false); // lease expirado não se renova nem pelo próprio dono
++
++    // Outra instância adquire normalmente.
++    const outro = await acquireSystemLock(db, "loc-expirado", 1_000);
++    expect(outro).not.toBeNull();
++    expect(outro).not.toBe(token);
++  });
++
++  it("marcação de evento BLOQUEADA após expiração do lease, token ainda igual (sem substituição)", async () => {
++    const provider = "mark-exp";
++    const customerId = await getCustomerId();
++    const variant = await getVariant();
++    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
++    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
++    await db.update(schema.payments).set({ provider, providerTransactionId: "tx-mark-exp-1" }).where(eq(schema.payments.id, pay.id));
++
++    const parsed: NormalizedWebhookEvent = {
++      eventId: "mark-exp-1",
++      type: "payment.recused",
++      providerTransactionId: "tx-mark-exp-1",
++      amountCents: 10000,
++      raw: { id: "mark-exp-1", type: "payment.recused", data: { transactionId: "tx-mark-exp-1" } },
++    };
++    const [evt] = await db.insert(schema.paymentEvents).values({
++      provider,
++      eventId: parsed.eventId,
++      type: parsed.type,
++      payload: JSON.stringify(parsed.raw),
++      signatureValid: true,
++      processedAt: null,
++      leaseToken: "worker-a",
++      // Lease expirado, token NÃO trocado — simula worker antigo depois do TTL.
++      // Data certamente no passado em ambos os relógios (host e banco).
++      leaseExpiresAt: new Date("2020-01-01T00:00:00.000Z"),
++    }).returning();
++
++    let threw: unknown = null;
++    let outcome: ApplyEventResult | null = null;
++    try {
++      outcome = await applyPaymentEvent(db, {
++        provider,
++        event: parsed,
++        payment: pay,
++        eventRowId: evt.id,
++        leaseToken: "worker-a",
++        signatureValid: true,
++      });
++    } catch (err) {
++      threw = err;
++    }
++    // O worker antigo não conclui o evento: bloqueado por fencing (exceção
++    // ou retorno lease_lost) ou por validação anterior — em nenhum caso
++    // marca o evento.
++    const bloqueado = threw instanceof LeaseLostError || outcome?.reason === "lease_lost";
++    expect(bloqueado || outcome === null || outcome?.applied === false).toBe(true);
++
++    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
++    expect(evtAfter!.processedAt).toBeNull();
++    expect(evtAfter!.deadLetter).toBe(false);
++    expect(evtAfter!.processedAt).toBeNull(); // nada marcado
++    expect(evtAfter!.deadLetter).toBe(false);
++  });
++
++  it("dead-letter não marca quando o lease expirou (mesmo token informado)", async () => {
++    const provider = "dl-exp";
++    const customerId = await getCustomerId();
++    const variant = await getVariant();
++    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
++
++    const raw = JSON.stringify({ id: "dl-exp-1", type: "payment.approved", data: { transactionId: paymentId } });
++    const parsed = (getAdapter(provider) as PaymentAdapter)!.parseWebhook(raw);
++    await db.insert(schema.paymentEvents).values({
++      provider,
++      eventId: parsed.eventId,
++      type: "payment.approved",
++      payload: JSON.parse(raw),
++      signatureValid: true,
++      processedAt: null,
++      deadLetter: false,
++      leaseToken: "worker-a",
++      leaseExpiresAt: new Date(Date.now() - 1_000),
++    });
++
++    const [row] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
++    const marked = await deadLetterEvent(db, row!, "max_attempts_amount_mismatch", undefined, "worker-a");
++    expect(marked).toBe(false); // lease expirado: não dead-lettera
++
++    const [rowAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
++    expect(rowAfter!.deadLetter).toBe(false);
++    expect(rowAfter!.processedAt).toBeNull();
++  });
++
++  it("primeira observação null: falha de auditoria reverte a persistência (mesma transação)", async () => {
++    const provider = `null-audit-cerca-${crypto.randomUUID().slice(0, 6)}`;
++    const customerId = await getCustomerId();
++    const variant = await getVariant();
++    registerAdapter(new NoChargeAdapter());
++    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
++    // Sobrescreve o adapter do provider: provedor confirma AUSÊNCIA de cobrança.
++    registerAdapter(
++      new (class extends RenamedSandboxAdapter {
++        async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
++          return null;
++        }
++      })(provider) as unknown as PaymentAdapter,
++    );
++    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, paymentId));
++
++    await installAuditFailTrigger("expiry.notfound_first_seen");
++    try {
++      let threw: unknown = null;
++      try {
++        await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0, confirmWindowMs: 0 });
++      } catch (err) {
++        threw = err;
++      }
++      expect(threw).toBeTruthy(); // falha de auditoria PROPAGA
++
++      // Rollback da transação interna: nada persistido.
++      const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, paymentId));
++      expect(payAfter!.notFoundFirstSeenAt).toBeNull();
++      expect(payAfter!.status).toBe("pendente");
++
++      // Nenhuma auditoria gravada (o INSERT falhou e reverteu junto).
++      const audits = await db
++        .select()
++        .from(schema.auditLogs)
++        .where(and(eq(schema.auditLogs.action, "expiry.notfound_first_seen"), eq(schema.auditLogs.entityId, orderId)));
++      expect(audits.length).toBe(0);
++    } finally {
++      await dropAuditFailTrigger();
++    }
++  });
++
++  it("reparo de falhas parciais é idempotente sob concorrência (uma divergence, duas instâncias)", async () => {
++    const provider = "repair-conc";
++    const customerId = await getCustomerId();
++    const variant = await getVariant();
++    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
++
++    // Divergence legado: pagamento definitivo, pedido ainda aguardando.
++    await db.update(schema.orders).set({ status: "aguardando_pagamento" }).where(eq(schema.orders.id, orderId));
++    await db.update(schema.payments).set({ status: "aprovado" }).where(eq(schema.payments.id, paymentId));
++
++    const [r1, r2] = await Promise.all([repairPartialApplications(db), repairPartialApplications(db)]);
++    expect(r1.repaired + r2.repaired).toBe(1); // apenas uma transita; a outra vê transitioned=false
++
++    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
++    expect(order!.status).toBe("pagamento_aprovado");
++  });
++
++  it("duas instâncias competem pelo mesmo evento: apenas uma aplica (claim atômico SKIP LOCKED)", async () => {
++    const provider = "conc-event";
++    const customerId = await getCustomerId();
++    const variant = await getVariant();
++    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
++    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
++    await db.update(schema.payments).set({ providerTransactionId: "tx-conc-1" }).where(eq(schema.payments.id, paymentId));
++
++    const parsed: NormalizedWebhookEvent = {
++      eventId: "conc-1",
++      type: "payment.approved",
++      providerTransactionId: "tx-conc-1",
++      amountCents: 10000,
++      raw: { id: "conc-1", type: "payment.approved", data: { transactionId: "tx-conc-1" } },
++    };
++    await db.insert(schema.paymentEvents).values({
++      provider,
++      eventId: parsed.eventId,
++      type: "payment.approved",
++      payload: JSON.stringify(parsed.raw),
++      signatureValid: true,
++      processedAt: null,
++    });
++
++    // Duas instâncias chamam a recuperação no mesmo evento em paralelo.
++    const [s1, s2] = await Promise.all([
++      recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 }),
++      recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 }),
++    ]);
++    // Apenas uma instância segura o claim (SKIP LOCKED); a outra pula.
++    expect(s1.skippedLease + s2.skippedLease).toBe(1);
++    // O evento fica marcado (processado por quem deteve o claim).
++    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, "conc-1"));
++    expect(evtAfter!.processedAt).not.toBeNull();
++  });
++});
++
 +
 diff --git a/apps/api/src/services/payments/expiry.ts b/apps/api/src/services/payments/expiry.ts
-index 70ab2ea..c98ddba 100644
+index 70ab2ea..9529411 100644
 --- a/apps/api/src/services/payments/expiry.ts
 +++ b/apps/api/src/services/payments/expiry.ts
-@@ -36,6 +36,9 @@ import { getAdapter, type PaymentAdapter, type QueryPaymentResult } from "./type
+@@ -36,6 +36,10 @@ import { getAdapter, type PaymentAdapter, type QueryPaymentResult } from "./type
  import { initAdapters } from "./index.js";
  import { transitionOrderInTx } from "../orders.js";
  import { audit } from "../../lib/audit.js";
 +import { conflict } from "../../lib/errors.js";
 +import { withSystemLock } from "./system-locks.js";
++import { randomUUID } from "node:crypto";
 +import { canTransition, type OrderStatus } from "@airsoft/shared";
  
  export interface ExpirySummary {
    scanned: number;
-@@ -46,6 +49,24 @@ export interface ExpirySummary {
+@@ -46,6 +50,24 @@ export interface ExpirySummary {
    skippedUnknown: number;
    /** `null` do provedor dentro da tolerância — reserva preservada. */
    skippedNotFoundGrace: number;
@@ -1721,7 +1973,7 @@ index 70ab2ea..c98ddba 100644
  }
  
  const QUERY_RETRIES = 2;
-@@ -72,11 +93,20 @@ async function queryWithRetry(
+@@ -72,11 +94,20 @@ async function queryWithRetry(
  
  export async function expireStaleReservations(
    db: Db,
@@ -1743,7 +1995,7 @@ index 70ab2ea..c98ddba 100644
  
    const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
    const graceCutoff = new Date(Date.now() - notFoundGraceMinutes * 60 * 1000);
-@@ -100,6 +130,11 @@ export async function expireStaleReservations(
+@@ -100,6 +131,11 @@ export async function expireStaleReservations(
      skipped: 0,
      skippedUnknown: 0,
      skippedNotFoundGrace: 0,
@@ -1755,7 +2007,7 @@ index 70ab2ea..c98ddba 100644
    };
  
    for (const { order, payment } of stale) {
-@@ -136,8 +171,30 @@ export async function expireStaleReservations(
+@@ -136,8 +172,38 @@ export async function expireStaleReservations(
      let remote = queried.result;
  
      if (remote === null) {
@@ -1766,21 +2018,29 @@ index 70ab2ea..c98ddba 100644
 +      // passada (janela = intervalo de manutenção) reconsulta: só então as
 +      // duas observações são independentes.
 +      if (!payment.notFoundFirstSeenAt) {
-+        await db
-+          .update(schema.payments)
-+          .set({ notFoundFirstSeenAt: new Date() })
-+          .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
-+        summary.firstSeenRecorded++;
-+        await audit(db, {
-+          action: "expiry.notfound_first_seen",
-+          entity: "order",
-+          entityId: order.id,
-+          actorLabel: "expiry:auto",
-+          after: {
-+            provider: payment.provider,
-+            reason: "provedor não conhece a cobrança — observação persistida; confirmação independente na passada seguinte",
-+            graceMinutes: notFoundGraceMinutes,
-+          },
++        // Revalidação atômica: pagamento ainda pendente e ainda sem a
++        // primeira observação. Persistência e auditoria na MESMA
++        // transação — falha de auditoria reverte a marcação, nunca deixa
++        // o campo registrado sem a trilha.
++        await db.transaction(async (tx) => {
++          const [freshPayment] = await tx.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
++          if (!freshPayment || freshPayment.status !== "pendente" || freshPayment.notFoundFirstSeenAt) return;
++          await tx
++            .update(schema.payments)
++            .set({ notFoundFirstSeenAt: new Date() })
++            .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
++          summary.firstSeenRecorded++;
++          await audit(tx as unknown as Db, {
++            action: "expiry.notfound_first_seen",
++            entity: "order",
++            entityId: order.id,
++            actorLabel: "expiry:auto",
++            after: {
++              provider: payment.provider,
++              reason: "provedor não conhece a cobrança — observação persistida; confirmação independente na passada seguinte",
++              graceMinutes: notFoundGraceMinutes,
++            },
++          });
 +        });
 +      }
 +      // Tolerância: dentro do grace, resposta negativa NÃO cancela —
@@ -1788,7 +2048,7 @@ index 70ab2ea..c98ddba 100644
        if (order.createdAt.getTime() > graceCutoff.getTime()) {
          summary.skippedNotFoundGrace++;
          await audit(db, {
-@@ -153,96 +210,200 @@ export async function expireStaleReservations(
+@@ -153,96 +219,200 @@ export async function expireStaleReservations(
          });
          continue;
        }
@@ -1932,7 +2192,8 @@ index 70ab2ea..c98ddba 100644
 +        // pedido não existe mais). Nunca assenta, nunca reconcilia.
 +        summary.skipped++;
 +        summary.skippedOrderMissing++;
-+        await audit(db, {
+         await audit(db, {
+-          action: "expiry.late_confirmation",
 +          action: "expiry.skipped_order_missing",
 +          entity: "payment",
 +          entityId: payment.id,
@@ -1949,8 +2210,7 @@ index 70ab2ea..c98ddba 100644
 +        // permanece `pendente`; sinal operacional para investigação humana.
 +        summary.skipped++;
 +        summary.skippedInvalidState++; // indicador operacional (revisão)
-         await audit(db, {
--          action: "expiry.late_confirmation",
++        await audit(db, {
 +          action: "expiry.skipped_invalid_order_state",
            entity: "order",
            entityId: order.id,
@@ -2049,7 +2309,7 @@ index 70ab2ea..c98ddba 100644
        continue;
      }
  
-@@ -261,48 +422,186 @@ export async function expireStaleReservations(
+@@ -261,50 +431,202 @@ export async function expireStaleReservations(
    return summary;
  }
  
@@ -2262,16 +2522,34 @@ index 70ab2ea..c98ddba 100644
 +    if (running) return; // passada anterior ainda em curso NESTE processo
      running = true;
 -    runOnce()
+-      .catch(() => {
+-        // falha de manutenção não derruba o processo; próxima passada tenta
 +    void withSystemLock(db, lockName, lockTtlMs, runOnce)
-       .catch(() => {
-         // falha de manutenção não derruba o processo; próxima passada tenta
++      .catch((err) => {
++        // Falha de manutenção NÃO derruba o processo; próxima passada tenta.
++        // Nunca silenciar: registro estruturado com nome de fase, id de
++        // execução e pilha higienizada para o log de manutenção.
++        const executionId = randomUUID();
++        const stack = err instanceof Error ? (err.stack ?? "").split("\n").slice(1, 6).join("\n") : String(err);
++        console.error(
++          JSON.stringify({
++            phase: "payment_maintenance",
++            executionId,
++            lockName,
++            error: err instanceof Error ? err.message : String(err),
++            stack,
++            timestamp: new Date().toISOString(),
++          }),
++        );
        })
+       .finally(() => {
+         running = false;
 diff --git a/apps/api/src/services/payments/system-locks.ts b/apps/api/src/services/payments/system-locks.ts
 new file mode 100644
-index 0000000..26e124a
+index 0000000..6469ef4
 --- /dev/null
 +++ b/apps/api/src/services/payments/system-locks.ts
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,141 @@
 +// language: TS, file: apps/api/src/services/payments/system-locks.ts, target: Fastify 5 + drizzle (PGlite | node-postgres)
 +/**
 + * Locks de sistema (revisão v5, item 3): exclusão de manutenção ENTRE
@@ -2327,7 +2605,9 @@ index 0000000..26e124a
 +    UPDATE "system_locks"
 +    SET "lease_expires_at" = now() + ${ttlMs}::bigint * interval '1 millisecond',
 +        "updated_at" = now()
-+    WHERE "name" = ${name} AND "lease_token" = ${token}
++    WHERE "name" = ${name}
++      AND "lease_token" = ${token}
++      AND "lease_expires_at" > now()
 +    RETURNING "name"
 +  `);
 +  const rows = (res as unknown as RawResult<{ name: string }>).rows ?? [];
@@ -2377,7 +2657,10 @@ index 0000000..26e124a
 +  if (!token) return { ok: false };
 +
 +  // A AQUISIÇÃO é a primeira renovação confirmada — a margem começa aqui.
-+  let lastConfirmedAt = Date.now();
++  // Relógio MONOTÔNICO do host mede a decorrência local da margem de
++  // segurança: ajuste do relógio do sistema não a desfaz. O banco continua
++  // autoridade para aquisição, renovação e expiração do lease.
++  let lastConfirmedAt = performance.now();
 +  let ownerLost = false;
 +  // Heartbeat de renovação: ttl/3, unref.
 +  //  - recusa (token não é mais o dono) = perda CONFIRMADA: marca;
@@ -2387,7 +2670,7 @@ index 0000000..26e124a
 +    void renewSystemLock(db, name, token, ttlMs)
 +      .then((renewed) => {
 +        if (renewed) {
-+          lastConfirmedAt = Date.now();
++          lastConfirmedAt = performance.now();
 +        } else {
 +          ownerLost = true;
 +        }
@@ -2400,7 +2683,7 @@ index 0000000..26e124a
 +    return {
 +      ok: true,
 +      value: await fn({
-+        lost: () => ownerLost || Date.now() - lastConfirmedAt > ttlMs,
++        lost: () => ownerLost || performance.now() - lastConfirmedAt > ttlMs,
 +      }),
 +    };
 +  } finally {
@@ -2409,9 +2692,18 @@ index 0000000..26e124a
 +  }
 +}
 diff --git a/apps/api/src/services/payments/webhook-events.ts b/apps/api/src/services/payments/webhook-events.ts
-index cd3cf18..93010f1 100644
+index cd3cf18..1bfb7ff 100644
 --- a/apps/api/src/services/payments/webhook-events.ts
 +++ b/apps/api/src/services/payments/webhook-events.ts
+@@ -25,7 +25,7 @@
+  *  - Reparo de estados parciais legados (v1 pré-transação): pagamento já
+  *    atualizado + pedido não — consertado na inicialização.
+  */
+-import { and, eq, isNull, inArray, lte, or, sql } from "drizzle-orm";
++import { and, eq, gt, isNull, inArray, lte, or, sql } from "drizzle-orm";
+ import type { Db } from "../../db/index.js";
+ import { schema } from "../../db/index.js";
+ import type { NormalizedWebhookEvent } from "./types.js";
 @@ -35,6 +35,19 @@ import { transitionOrderInTx } from "../orders.js";
  import { audit } from "../../lib/audit.js";
  import { PAYMENT_PENDING_STATUSES, type OrderStatus } from "@airsoft/shared";
@@ -2493,7 +2785,7 @@ index cd3cf18..93010f1 100644
    const result = await db.transaction(async (tx) => {
      // Estado FRESCO sob lock — o `payment` de entrada pode estar obsoleto.
      const payRows = await tx
-@@ -256,12 +284,41 @@ export async function applyPaymentEvent(
+@@ -256,12 +284,45 @@ export async function applyPaymentEvent(
        return { applied: false, reason: "payment_not_found" } as ApplyEventResult;
      }
  
@@ -2512,12 +2804,16 @@ index cd3cf18..93010f1 100644
 +                eq(schema.paymentEvents.id, input.eventRowId),
 +                eq(schema.paymentEvents.leaseToken, input.leaseToken),
 +                isNull(schema.paymentEvents.processedAt),
++                gt(schema.paymentEvents.leaseExpiresAt, new Date()),
 +              )
-+            : eq(schema.paymentEvents.id, input.eventRowId),
++            : and(
++                eq(schema.paymentEvents.id, input.eventRowId),
++                isNull(schema.paymentEvents.processedAt),
++              ),
 +        );
 +      if (input.leaseToken) {
 +        const [after] = await tx.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.id, input.eventRowId));
-+        if (!after || !after.processedAt || after.leaseToken !== input.leaseToken) {
++        if (!after || !after.processedAt || after.leaseToken !== input.leaseToken || !(after.leaseExpiresAt && after.leaseExpiresAt > new Date())) {
 +          throw new LeaseLostError();
 +        }
 +      }
@@ -2536,7 +2832,7 @@ index cd3cf18..93010f1 100644
          action: "payment.regression_ignored",
          entity: "payment",
          entityId: fresh.id,
-@@ -270,29 +327,24 @@ export async function applyPaymentEvent(
+@@ -270,29 +331,24 @@ export async function applyPaymentEvent(
        });
        // Evento CONSISTENTE com estado atual (já aprovado) é marcado como
        // processado — reentrega não pode reprocessar eternamente.
@@ -2573,7 +2869,7 @@ index cd3cf18..93010f1 100644
      await tx.update(schema.payments).set(patch).where(eq(schema.payments.id, fresh.id));
  
      // 2) Pedido — mesmo lock, mesmo tx.
-@@ -304,27 +356,22 @@ export async function applyPaymentEvent(
+@@ -304,27 +360,22 @@ export async function applyPaymentEvent(
      const order = orderRows[0];
      if (!order) {
        // Sem pedido, o pagamento atualiza mas o evento é marcado — nada mais
@@ -2605,7 +2901,7 @@ index cd3cf18..93010f1 100644
          action: "order.late_payment",
          entity: "order",
          entityId: order.id,
-@@ -336,12 +383,7 @@ export async function applyPaymentEvent(
+@@ -336,12 +387,7 @@ export async function applyPaymentEvent(
            decision: "refund_required",
          },
        });
@@ -2619,7 +2915,7 @@ index cd3cf18..93010f1 100644
        return { applied: true, paymentStatus: "aprovado", latePayment: true } as ApplyEventResult;
      }
  
-@@ -351,12 +393,7 @@ export async function applyPaymentEvent(
+@@ -351,12 +397,7 @@ export async function applyPaymentEvent(
        targetPaymentStatus === "aprovado" &&
        (from === "em_analise_antifraude" || from === "aguardando_revisao_manual")
      ) {
@@ -2633,7 +2929,7 @@ index cd3cf18..93010f1 100644
        return { applied: true, paymentStatus: "aprovado", reason: "awaiting_human_review" } as ApplyEventResult;
      }
  
-@@ -389,12 +426,7 @@ export async function applyPaymentEvent(
+@@ -389,12 +430,7 @@ export async function applyPaymentEvent(
        }
        // 6) Evento marcado como processado NA MESMA transação — crash aqui
        //    desfaz pagamento, pedido, histórico, estoque e a marcação juntos.
@@ -2647,7 +2943,7 @@ index cd3cf18..93010f1 100644
        return {
          applied: true,
          paymentStatus: targetPaymentStatus,
-@@ -402,27 +434,10 @@ export async function applyPaymentEvent(
+@@ -402,27 +438,10 @@ export async function applyPaymentEvent(
        } as ApplyEventResult;
      }
  
@@ -2676,7 +2972,64 @@ index cd3cf18..93010f1 100644
    return result;
  }
  
-@@ -504,6 +519,8 @@ export async function recoverPendingEvents(
+@@ -486,6 +505,56 @@ export async function applyPendingEventsForPayment(
+  *    estacionado INDEPENDENTE do número de tentativas e só sai por IDADE
+  *    (`maxAgeDays`, default 30). Tentativas nunca descartam um parked.
+  */
++
++/**
++ * Dead-letter (v5): transação com lock da linha, guarda de estado e
++ * FENCING — com token, só o dono atual do lease marca. Auditoria DENTRO
++ * da transação (falha no registro reverte a marcação; boot repete).
++ * Exportada para testes de cerca (validade temporal do lease).
++ * Devolve true se ESTE worker marcou.
++ */
++export async function deadLetterEvent(
++  db: Db,
++  row: typeof schema.paymentEvents.$inferSelect,
++  reason: string,
++  detail?: unknown,
++  leaseToken?: string,
++): Promise<boolean> {
++  let marked = false;
++  await db.transaction(async (tx) => {
++    const conditions = [
++      eq(schema.paymentEvents.id, row.id),
++      isNull(schema.paymentEvents.processedAt),
++      eq(schema.paymentEvents.deadLetter, false),
++    ];
++    if (leaseToken) conditions.push(gt(schema.paymentEvents.leaseExpiresAt, new Date()));
++    const locked = await tx
++      .select()
++      .from(schema.paymentEvents)
++      .where(and(...conditions))
++      .for("update");
++    const fresh = locked[0];
++    if (!fresh) return; // já marcado/lettered por outra passada
++    // Guarda ESTRITA (correção pós-revisão): com token informado, a
++    // correspondência é EXATA — token divergente OU persistido NULL
++    // bloqueiam. Um worker sem posse comprovável não finaliza o evento.
++    if (leaseToken && fresh.leaseToken !== leaseToken) return;
++    await tx
++      .update(schema.paymentEvents)
++      .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null, leaseToken: null })
++      .where(eq(schema.paymentEvents.id, fresh.id));
++    marked = true;
++    await audit(tx as unknown as Db, {
++      action: "payment.event_dead_letter",
++      entity: "payment_event",
++      entityId: row.id,
++      actorLabel: "recovery:boot",
++      after: { provider: row.provider, eventId: row.eventId, type: row.type, reason, detail, attempts: fresh.attempts },
++    });
++  });
++  return marked;
++}
++
+ export async function recoverPendingEvents(
+   db: Db,
+   opts: {
+@@ -504,6 +573,8 @@ export async function recoverPendingEvents(
    deadLettered: number;
    skippedBackoff: number;
    skippedLease: number;
@@ -2685,40 +3038,30 @@ index cd3cf18..93010f1 100644
  }> {
    await initAdapters(db);
  
-@@ -525,32 +542,54 @@ export async function recoverPendingEvents(
+@@ -522,36 +593,11 @@ export async function recoverPendingEvents(
+   let applied = 0;
+   let rejected = 0;
+   let parked = 0;
++
    let deadLettered = 0;
    let skippedBackoff = 0;
    let skippedLease = 0;
 -
-+  let leaseLost = 0;
-+
-+  /**
-+   * Dead-letter (v5): transação com lock da linha, guarda de estado e
-+   * FENCING — com token, só o dono atual do lease marca. Auditoria DENTRO
-+   * da transação (falha no registro reverte a marcação; boot repete).
-+   * Devolve true se ESTE worker marcou.
-+   */
-   const deadLetter = async (
-     row: typeof schema.paymentEvents.$inferSelect,
-     reason: string,
-     detail?: unknown,
+-  const deadLetter = async (
+-    row: typeof schema.paymentEvents.$inferSelect,
+-    reason: string,
+-    detail?: unknown,
 -  ) => {
-+    leaseToken?: string,
-+  ): Promise<boolean> => {
-+    let marked = false;
-     await db.transaction(async (tx) => {
+-    await db.transaction(async (tx) => {
 -      await tx
 -        .update(schema.paymentEvents)
 -        .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null })
-+      const locked = await tx
-+        .select()
-+        .from(schema.paymentEvents)
-         .where(
-           and(
-             eq(schema.paymentEvents.id, row.id),
-             isNull(schema.paymentEvents.processedAt),
-             eq(schema.paymentEvents.deadLetter, false),
-           ),
+-        .where(
+-          and(
+-            eq(schema.paymentEvents.id, row.id),
+-            isNull(schema.paymentEvents.processedAt),
+-            eq(schema.paymentEvents.deadLetter, false),
+-          ),
 -        );
 -    });
 -    deadLettered++;
@@ -2728,33 +3071,32 @@ index cd3cf18..93010f1 100644
 -      entityId: row.id,
 -      actorLabel: "recovery:boot",
 -      after: { provider: row.provider, eventId: row.eventId, type: row.type, reason, detail, attempts: row.attempts },
-+        )
-+        .for("update");
-+      const fresh = locked[0];
-+      if (!fresh) return; // já marcado/lettered por outra passada
-+      // Guarda ESTRITA (correção pós-revisão): com token informado, a
-+      // correspondência é EXATA — token divergente OU persistido NULL
-+      // bloqueiam. Um worker sem posse comprovável não finaliza o evento.
-+      if (leaseToken && fresh.leaseToken !== leaseToken) return;
-+      await tx
-+        .update(schema.paymentEvents)
-+        .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null, leaseToken: null })
-+        .where(eq(schema.paymentEvents.id, fresh.id));
-+      marked = true;
-+      await audit(tx as unknown as Db, {
-+        action: "payment.event_dead_letter",
-+        entity: "payment_event",
-+        entityId: row.id,
-+        actorLabel: "recovery:boot",
-+        after: { provider: row.provider, eventId: row.eventId, type: row.type, reason, detail, attempts: fresh.attempts },
-+      });
-     });
-+    if (marked) deadLettered++;
-+    return marked;
-   };
+-    });
+-  };
++  let leaseLost = 0;
  
    for (const row of pending) {
-@@ -575,11 +614,13 @@ export async function recoverPendingEvents(
+     // ---- Parse: invalidade PERMANENTE vai para dead-letter SEM disputar
+@@ -559,27 +605,29 @@ export async function recoverPendingEvents(
+     let event: NormalizedWebhookEvent | null = null;
+     let adapter = getAdapter(row.provider);
+     if (!adapter) {
+-      await deadLetter(row, "unknown_provider");
++      if (await deadLetterEvent(db, row, "unknown_provider")) deadLettered++;
+       continue;
+     }
+     try {
+       event = adapter.parseWebhook(JSON.stringify(row.payload));
+     } catch (e) {
+-      await deadLetter(row, "invalid_payload", e instanceof Error ? e.message : String(e));
++      if (await deadLetterEvent(db, row, "invalid_payload", e instanceof Error ? e.message : String(e))) deadLettered++;
+       continue;
+     }
+     if (!event.providerTransactionId) {
+-      await deadLetter(row, "missing_transaction_reference");
++      if (await deadLetterEvent(db, row, "missing_transaction_reference")) deadLettered++;
+       continue;
+     }
  
      // ---- CLAIM ATÔMICO: lock da linha + guarda de lease, SKIP LOCKED.
      // Segundo worker em corrida recebe zero linhas e pula — o primeiro
@@ -2770,7 +3112,7 @@ index cd3cf18..93010f1 100644
      > => {
        const locked = await tx
          .select()
-@@ -605,9 +646,10 @@ export async function recoverPendingEvents(
+@@ -605,9 +653,10 @@ export async function recoverPendingEvents(
            attempts,
            lastAttemptAt: new Date(),
            leaseExpiresAt: new Date(Date.now() + leaseMs),
@@ -2782,12 +3124,12 @@ index cd3cf18..93010f1 100644
      });
  
      if (claim.kind === "locked_by_other") {
-@@ -635,23 +677,40 @@ export async function recoverPendingEvents(
+@@ -635,23 +684,40 @@ export async function recoverPendingEvents(
      if (!payment) {
        const tooOld = Date.now() - row.createdAt.getTime() > maxAgeDays * 24 * 60 * 60 * 1000;
        if (tooOld) {
 -        await deadLetter(row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts });
-+        await deadLetter(row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts }, claim.leaseToken);
++        if (await deadLetterEvent(db, row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts }, claim.leaseToken)) deadLettered++;
        } else {
          parked++;
        }
@@ -2832,16 +3174,16 @@ index cd3cf18..93010f1 100644
      } else if (
        outcome.reason &&
        ["amount_mismatch", "currency_mismatch", "account_mismatch", "account_unverified", "transaction_mismatch", "gateway_query_unavailable", "event_not_authenticated"].includes(outcome.reason)
-@@ -663,7 +722,7 @@ export async function recoverPendingEvents(
+@@ -663,7 +729,7 @@ export async function recoverPendingEvents(
        // próprio bem-sucedido — se outro worker segurasse o lease, esta
        // passada teria pulado em `locked_by_other` antes de processar.
        if (claim.attempts >= maxAttempts) {
 -        await deadLetter(row, `max_attempts_${outcome.reason}`);
-+        await deadLetter(row, `max_attempts_${outcome.reason}`, undefined, claim.leaseToken);
++        if (await deadLetterEvent(db, row, `max_attempts_${outcome.reason}`, undefined, claim.leaseToken)) deadLettered++;
        }
      } else {
        // already_applied / noop: evento saiu da fila (marcado na transação).
-@@ -671,7 +730,7 @@ export async function recoverPendingEvents(
+@@ -671,7 +737,7 @@ export async function recoverPendingEvents(
      }
    }
  
@@ -2999,7 +3341,7 @@ index 179bcf2..1c23c69 100644
 +5. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
 diff --git a/docs/review/pr1-v5-guia-de-revisao.md b/docs/review/pr1-v5-guia-de-revisao.md
 new file mode 100644
-index 0000000..cb90b87
+index 0000000..060b4ea
 --- /dev/null
 +++ b/docs/review/pr1-v5-guia-de-revisao.md
 @@ -0,0 +1,180 @@
@@ -3007,9 +3349,9 @@ index 0000000..cb90b87
 +
 +> **Status:** v5 NÃO publicável. v4 (`1cdf48f`) permanece a versão publicada no PR #1. Produção, migrations e SQLs de hardening intocados.
 +>
-+> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..e270fb3`, sem autorreferência).
++> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..b75b511` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
 +>
-+> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos).
++> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (**CI — SHA alvo da revisão final**).
 +
 +## Rodada de correção (`68445bb`) — resultado da revisão v5.1
 +
