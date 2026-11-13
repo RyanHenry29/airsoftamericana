@@ -36,6 +36,7 @@ import { getAdapter, type PaymentAdapter, type QueryPaymentResult } from "./type
 import { initAdapters } from "./index.js";
 import { transitionOrderInTx } from "../orders.js";
 import { audit } from "../../lib/audit.js";
+import { withSystemLock } from "./system-locks.js";
 
 export interface ExpirySummary {
   scanned: number;
@@ -287,22 +288,28 @@ async function cancelOrder(db: Db, orderId: string, reason: string): Promise<boo
 }
 
 /**
- * Varrimento periódico (v4): boot sozinho não cobre processos longevos —
+ * Varrimento periódico (v5): boot sozinho não cobre processos longevos —
  * reservas abandonadas com a aplicação ligada ficariam sem tratamento.
- * Intervalo default 15 min, com flag de não-reentrância (passada longa não
- * se sobrepõe) e intervalo solto no fim do processo (unref).
+ * Intervalo default 15 min, com flag de não-reentrância local (passada
+ * longa não se sobrepõe no MESMO processo) e LEASE DE BANCO entre
+ * INSTÂNCIAS (`system_locks`, revisão v5 item 3): cada passada adquirirá
+ * o lock `payment_maintenance` ativamente — instância que não o detém
+ * pula a passada inteira; a detentora roda com renovação em heartbeat.
+ * Intervalo solto no fim do processo (unref).
  */
 export function startPaymentMaintenance(
   db: Db,
   runOnce: () => Promise<unknown>,
-  opts: { intervalMs?: number } = {},
+  opts: { intervalMs?: number; lockTtlMs?: number; lockName?: string } = {},
 ): { stop: () => void } {
   const intervalMs = opts.intervalMs ?? 15 * 60 * 1000;
+  const lockTtlMs = opts.lockTtlMs ?? 5 * 60 * 1000;
+  const lockName = opts.lockName ?? "payment_maintenance";
   let running = false;
   const timer = setInterval(() => {
-    if (running) return; // passada anterior ainda em curso — não reentrante
+    if (running) return; // passada anterior ainda em curso NESTE processo
     running = true;
-    runOnce()
+    void withSystemLock(db, lockName, lockTtlMs, runOnce)
       .catch(() => {
         // falha de manutenção não derruba o processo; próxima passada tenta
       })

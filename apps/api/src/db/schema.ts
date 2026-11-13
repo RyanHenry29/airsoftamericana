@@ -541,6 +541,19 @@ export const paymentEvents = pgTable(
   ],
 );
 
+/**
+ * Revisão v5 (item 3): locks de manutenção ENTRE INSTÂNCIAS — exclusão no
+ * banco, não no processo. Aquisição atômica via INSERT ... ON CONFLICT,
+ * renovação só pelo dono (token), expiração automática (crash devolve).
+ * Semeados: `payment_maintenance` (varrimento de eventos/reservas).
+ */
+export const systemLocks = pgTable("system_locks", {
+  name: varchar("name", { length: 64 }).primaryKey(),
+  leaseToken: varchar("lease_token", { length: 64 }),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
 export const refunds = pgTable("refunds", {
   id: uuid("id").defaultRandom().primaryKey(),
   paymentId: uuid("payment_id").notNull().references(() => payments.id),
