@@ -1,0 +1,58 @@
+# language: YAML, file: .github/workflows/api-gates.yml
+# Gates independentes da v5 (revisão: "portões sem execução independente").
+# Executa EXATAMENTE os mesmos portões locais: tsc ×3, suíte da API,
+# integração com PostgreSQL REAL (embedded, porta efêmera, banco descartável).
+# Nada aqui toca produção: banco efêmero em diretório temporário do runner.
+name: api-gates
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # --- Portão 1: TypeScript nos três apps (fail = job falha) ----------
+      - name: typecheck shared
+        run: npx tsc --noEmit -p packages/shared/tsconfig.json
+
+      - name: typecheck api
+        run: npx tsc --noEmit -p apps/api/tsconfig.json
+
+      - name: typecheck store
+        run: npx tsc --noEmit -p apps/store/tsconfig.json
+
+      - name: typecheck admin
+        run: npx tsc --noEmit -p apps/admin/tsconfig.json
+
+      # --- Portão 2: suíte completa da API (PGlite) ------------------------
+      - name: test api
+        working-directory: apps/api
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-secret-apenas-para-suite
+          GATEWAY_SECRETS_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+        run: npm test
+
+      # --- Portão 3: integração com PostgreSQL REAL ------------------------
+      # embedded-postgres sobe instância própria na porta 55432 e derruba
+      # ao final — banco efêmero, sem credenciais reais.
+      - name: integração PostgreSQL real
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-secret-apenas-para-suite
+          GATEWAY_SECRETS_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+        run: node scripts/pg-integration.mjs

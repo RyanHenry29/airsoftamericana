@@ -2161,6 +2161,71 @@ describe("finalizeExpiry: decisão por estado do pedido (correção pós-revisã
     }
   }
 
+  it("PEDIDO INEXISTENTE: NADA é assentado — divergência financeira tratável, nunca reconciliação automática", async () => {
+    const provider = "miss-exp";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
+    let fkName: string | null = null;
+
+    // Cirurgia determinística: pagamento sobrevive, pedido desaparece (só
+    // possível com a FK temporariamente removida — estado legado/cirúrgico;
+    // em produção a FK payments→orders impede esse estado por operação normal).
+    // Nome da constraint descoberto dinamicamente (baseline SQL usa _fkey).
+    class DeleteOrderAdapter extends RenamedSandboxAdapter {
+      constructor() {
+        super(provider);
+      }
+      async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+        const cons = await db.execute(
+          `SELECT conname FROM pg_constraint WHERE conrelid = 'payments'::regclass AND contype = 'f' AND confrelid = 'orders'::regclass`,
+        );
+        fkName = ((cons as any).rows?.[0]?.conname ?? null) as string | null;
+        if (fkName) await db.execute(`ALTER TABLE "payments" DROP CONSTRAINT IF EXISTS "${fkName}"`);
+        await db.execute(`DELETE FROM "orders" WHERE "id" = '${orderId}'`);
+        return { status: "aprovado", amountCents: 10000, currency: "BRL" };
+      }
+    }
+    registerAdapter(new DeleteOrderAdapter() as unknown as PaymentAdapter);
+
+    let threw: unknown = null;
+    let summary: Awaited<ReturnType<typeof expireStaleReservations>> | undefined;
+    try {
+      summary = await expireStaleReservations(db, { olderThanMinutes: 60 });
+    } catch (err) {
+      threw = err;
+    }
+    expect(threw).toBeNull();
+
+    // Pagamento NÃO é assentado — dinheiro sem pedido é divergência a
+    // tratar por humano, não "reconciliação" automática.
+    const [payment] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+    expect(payment!.status).toBe("pendente");
+    expect(payment!.capturedAt).toBeNull();
+
+    // Divergência registrada como TRATÁVEL (âncora no pagamento — o id do
+    // pedido não existe mais).
+    const missing = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "expiry.skipped_order_missing"), eq(schema.auditLogs.entityId, paymentId)));
+    expect(missing.length).toBe(1);
+    expect(JSON.stringify(missing[0]!.afterJson)).toContain(orderId);
+    expect((summary as any)?.skippedOrderMissing).toBe(1);
+
+    // NUNCA reconcilia automaticamente (auditoria antiga classificava como
+    // reconciliação normal — defeito).
+    const recon = await db
+      .select()
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, "expiry.payment_reconciled"), eq(schema.auditLogs.entityId, orderId)));
+    expect(recon.length).toBe(0);
+
+    // Restauração do schema: remove o pagamento órfão e devolve a FK.
+    await db.execute(`DELETE FROM "payments" WHERE "id" = '${paymentId}'`);
+    if (fkName) await db.execute(`ALTER TABLE "payments" ADD CONSTRAINT "${fkName}" FOREIGN KEY ("order_id") REFERENCES "orders"("id")`);
+  });
+
   it("PEDIDO CANCELADO + provedor aprovado: pagamento tardio assentado com refund_required DURÁVEL — sem reabrir pedido, sem matar a passada", async () => {
     const provider = "late-exp";
     const customerId = await getCustomerId();
@@ -2332,6 +2397,53 @@ describe("withSystemLock: incerteza do heartbeat (correção pós-revisão)", ()
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.sawLost).toBe(false);
   });
+
+  it("EXCEÇÃO real na renovação (banco indisponível): incerteza além da margem ⇒ fases 2-3 NÃO rodam", async () => {
+    // Falha de rede REAL: a tabela do lease desaparece — TODA renovação do
+    // heartbeat LANÇA erro (engolido = incerteza). TTL 3000 ms com heartbeat
+    // aos ~1000/2000/3000 ms: três exceções, ZERO recusas, ZERO confirmações.
+    // A margem vence (nenhuma confirmação desde a aquisição) e o worker
+    // NÃO executa as fases seguintes.
+    const phases: string[] = [];
+    try {
+      const r = await withSystemLock(db, "phase-net-fail", 3_000, async (ctx) => {
+        phases.push("fase-1:recuperacao");
+        await db.execute(`ALTER TABLE "system_locks" RENAME TO "system_locks_bak"`);
+        await new Promise((res) => setTimeout(res, 3_200));
+        if (!ctx.lost()) phases.push("fase-2:reparo");
+        if (!ctx.lost()) phases.push("fase-3:expiracao");
+        return phases;
+      });
+      expect(r.ok).toBe(true);
+    } finally {
+      await db.execute(`ALTER TABLE "system_locks_bak" RENAME TO "system_locks"`).catch(() => {});
+    }
+    expect(phases).toEqual(["fase-1:recuperacao"]);
+  });
+
+  it("RECUPERAÇÃO: falha transitória + renovação CONFIRMADA antes do limite ⇒ lock mantido, fases continuam", async () => {
+    // O banco volta ANTES da margem (3000 ms): a linha do lease sobrevive
+    // intacta ao RENAME. Heartbeat aos ~1000 ms falha (incerteza); aos
+    // ~2000 ms RENOVA com sucesso — a margem rearma e o lock NÃO é perdido
+    // indevidamente: fases 2-3 executam normalmente.
+    const phases: string[] = [];
+    try {
+      const r = await withSystemLock(db, "phase-net-recover", 3_000, async (ctx) => {
+        phases.push("fase-1:recuperacao");
+        await db.execute(`ALTER TABLE "system_locks" RENAME TO "system_locks_bak"`);
+        await new Promise((res) => setTimeout(res, 1_500));
+        await db.execute(`ALTER TABLE "system_locks_bak" RENAME TO "system_locks"`);
+        await new Promise((res) => setTimeout(res, 900)); // checagem em ~2400 ms, margem rearmada aos ~2000 ms
+        if (!ctx.lost()) phases.push("fase-2:reparo");
+        if (!ctx.lost()) phases.push("fase-3:expiracao");
+        return phases;
+      });
+      expect(r.ok).toBe(true);
+    } finally {
+      await db.execute(`ALTER TABLE "system_locks_bak" RENAME TO "system_locks"`).catch(() => {});
+    }
+    expect(phases).toEqual(["fase-1:recuperacao", "fase-2:reparo", "fase-3:expiracao"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2444,6 +2556,76 @@ describe("deadLetter: guarda estrita de token (correção pós-revisão)", () =>
       .select()
       .from(schema.paymentEvents)
       .where(and(eq(schema.paymentEvents.provider, provider), eq(schema.paymentEvents.eventId, parsed.eventId)));
+    expect(row!.deadLetter).toBe(false);
+    expect(row!.processedAt).toBeNull();
+    expect(summary.rejected).toBe(1);
+  });
+
+  it("token persistido DIVERGENTE preenchido (worker-b ≠ worker-a): dead-letter BLOQUEADA (evento permanece na fila)", async () => {
+    // Espelho do caso NULL: aqui o evento TEM um lease_token persistido, mas
+    // de OUTRO worker. A guarda exige correspondência exata — token
+    // preenchido e diferente não é menos bloqueante que NULL.
+    const provider = "dl-swap";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider,
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const result = await handleCheckout(
+      db,
+      { items: [{ variantId: variant.id, quantity: 1 }], address: addr(), paymentMethod: "pix", acceptedTerms: true, ageConfirmed: true } as any,
+      { customerId, ip: "127.0.0.1" },
+    );
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, result.orderId));
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
+
+    // Adapter ladrão: sobrescreve o token persistido com o de OUTRO worker
+    // e devolve valor divergente ao gateway ⇒ amount_mismatch ⇒ max_attempts
+    // (1) ⇒ dead-letter com o token do claim — contra persistido 'worker-b'.
+    class SwapTokenAdapter extends RenamedSandboxAdapter {
+      constructor(providerName: string) {
+        super(providerName);
+      }
+      async queryPayment(providerTransactionId: string): Promise<QueryPaymentResult> {
+        await db.execute(`UPDATE "payment_events" SET "lease_token" = 'worker-b' WHERE "provider" = 'dl-swap' AND "processed_at" IS NULL`);
+        return { status: "pendente", amountCents: 1, currency: "BRL" };
+      }
+      async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+        return null;
+      }
+    }
+    registerAdapter(new SwapTokenAdapter(provider) as unknown as PaymentAdapter);
+
+    const raw = JSON.stringify({
+      id: "dl-swap-1",
+      type: "payment.approved",
+      data: { transactionId: pay.providerTransactionId },
+    });
+    const parsed = (getAdapter(provider) as PaymentAdapter)!.parseWebhook(raw);
+    await db.insert(schema.paymentEvents).values({
+      provider,
+      eventId: parsed.eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+    });
+
+    const summary = await recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 });
+
+    // Guarda estrita: token persistido 'worker-b' ≠ token do claim ⇒ NÃO marca.
+    const [row] = await db
+      .select()
+      .from(schema.paymentEvents)
+      .where(and(eq(schema.paymentEvents.provider, provider), eq(schema.paymentEvents.eventId, parsed.eventId)));
+    expect(row!.leaseToken).toBe("worker-b"); // a troca REALMENTE aconteceu
+    expect(summary.deadLettered).toBe(0);
     expect(row!.deadLetter).toBe(false);
     expect(row!.processedAt).toBeNull();
     expect(summary.rejected).toBe(1);

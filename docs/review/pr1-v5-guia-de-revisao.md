@@ -116,6 +116,35 @@ Endereçam as duas lacunas apontadas na revisão condicionada:
 
 Indicador operacional (revisão, item C): `ExpirySummary.skippedInvalidState` conta as recusas de transição automática — vai para o log de manutenção (`app.log.info({ recovery, repair, expiry })` no boot) com registro individual `expiry.skipped_invalid_order_state` em `audit_logs` por pedido. Durabilidade do `refund_required` (item B): registro `order.late_payment` com `decision: "refund_required"` nas duas vias (webhook e expiração), append-only, DENTRO da transação financeira.
 
+## Procedimento operacional — divergências financeiras (`refund_required` e afins) 
+
+O registro `order.late_payment` com `decision: "refund_required"` em `audit_logs` é **evidência durável, não fila de reembolso**. O processamento do reembolso é humano. Este é o procedimento acordado:
+
+**Responsável:** operação financeira da loja (papel `financeiro` no admin). O agente que executa a consulta e triagem diária responde ao dono da operação; a aprovação de cada reembolso é do dono da operação financeira.
+
+**Agenda e monitoramento:** a consulta `docs/sql/late-payment-monitor.sql` roda todo dia útil na abertura do expediente e antes do fechamento de caixa. A consulta 4 (envelhecimento) é a de escalonamento.
+
+**SLA por item aberto:**
+
+| Situação | SLA de resolução | Ação |
+| --- | --- | --- |
+| `order.late_payment` com `refund_required` (dinheiro capturado, pedido cancelado) | 24 h úteis | Reembolso no gateway + registro `order.late_payment_resolved` no `audit_logs` (actor = responsável, `after_json` com id da transação do estorno) |
+| `expiry.skipped_invalid_order_state` (sem captura, pedido em estado inesperado) | 24 h úteis | Investigar o estado do pedido, decidir cancelamento manual ou continuação, registrar resolução |
+| `expiry.skipped_order_missing` (pagamento sem pedido correspondente) | 24 h úteis, escalonamento em 48 h | Investigação obrigatória — estado cirúrgico/legado não deve ocorrer em produção; se ocorrer, é incidente (verificar manipulação direta de banco) |
+| Qualquer item aberto > 48 h | — | Escalar para o dono da operação financeira; bloquear fechamento de caixa do período até resolução |
+
+**Resolução:** cada item tratado recebe um registro `order.late_payment_resolved` em `audit_logs`, com `entity_id` = id do registro original, `actor_label` = responsável e `after_json` documentando a decisão (id do estorno no gateway, ou motivo da dispensa). O registro é feito pelo responsável via SQL (a tabela é append-only: o trigger `prevent_audit_modification` bloqueia UPDATE/DELETE, não INSERT):
+
+```sql
+insert into audit_logs (actor_label, action, entity, entity_id, after_json)
+values ('financeiro.joao', 'order.late_payment_resolved', 'order', '<entity_id do registro original>',
+        '{"refund_id":"re_xxx","valor_reembolsado_centavos":10000,"decisao":"reembolso_executado"}');
+```
+
+As consultas 3 e 1 do `late-payment-monitor.sql` audita as resoluções e exclui da fila aberta o que já tem resolução.
+
+**Alerta automático:** o resumo da passada de expiração (`ExpirySummary`) vai ao log de manutenção do boot com os contadores `latePayment`, `skippedInvalidState` e `skippedOrderMissing` — qualquer valor > 0 gera entrada de log estruturada. Integração com alerta externo (e-mail/Telegram) é melhoria futura, não bloqueio.
+
 ## Pendências para publicação
 
 1. Aprovação humana das evidências (`c853b07..3313667`) sobre os 3 pontos condicionados: bloqueio de próxima fase, rollback por falha de auditoria, execução dos gates.
