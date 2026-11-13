@@ -53,7 +53,9 @@ export async function renewSystemLock(db: Db, name: string, token: string, ttlMs
     UPDATE "system_locks"
     SET "lease_expires_at" = now() + ${ttlMs}::bigint * interval '1 millisecond',
         "updated_at" = now()
-    WHERE "name" = ${name} AND "lease_token" = ${token}
+    WHERE "name" = ${name}
+      AND "lease_token" = ${token}
+      AND "lease_expires_at" > now()
     RETURNING "name"
   `);
   const rows = (res as unknown as RawResult<{ name: string }>).rows ?? [];
@@ -103,7 +105,10 @@ export async function withSystemLock<T>(
   if (!token) return { ok: false };
 
   // A AQUISIÇÃO é a primeira renovação confirmada — a margem começa aqui.
-  let lastConfirmedAt = Date.now();
+  // Relógio MONOTÔNICO do host mede a decorrência local da margem de
+  // segurança: ajuste do relógio do sistema não a desfaz. O banco continua
+  // autoridade para aquisição, renovação e expiração do lease.
+  let lastConfirmedAt = performance.now();
   let ownerLost = false;
   // Heartbeat de renovação: ttl/3, unref.
   //  - recusa (token não é mais o dono) = perda CONFIRMADA: marca;
@@ -113,7 +118,7 @@ export async function withSystemLock<T>(
     void renewSystemLock(db, name, token, ttlMs)
       .then((renewed) => {
         if (renewed) {
-          lastConfirmedAt = Date.now();
+          lastConfirmedAt = performance.now();
         } else {
           ownerLost = true;
         }
@@ -126,7 +131,7 @@ export async function withSystemLock<T>(
     return {
       ok: true,
       value: await fn({
-        lost: () => ownerLost || Date.now() - lastConfirmedAt > ttlMs,
+        lost: () => ownerLost || performance.now() - lastConfirmedAt > ttlMs,
       }),
     };
   } finally {

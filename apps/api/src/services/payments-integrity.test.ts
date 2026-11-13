@@ -9,7 +9,7 @@ import { schema } from "../db/index.js";
 import { handleCheckout } from "./checkout.js";
 import { applyPaymentEvent, applyPendingEventsForPayment } from "./payments/webhook-events.js";
 import { SandboxAdapter } from "./payments/sandbox.js";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
 import type { NormalizedWebhookEvent } from "./payments/types.js";
 
 const customerEmail = "integridade@demo.com";
@@ -391,6 +391,8 @@ describe("integridade de pagamentos (AUD-01/AUD-15)", () => {
 // ---------------------------------------------------------------------------
 
 import {
+  ApplyEventResult,
+  deadLetterEvent,
   recoverPendingEvents,
   repairPartialApplications,
 } from "./payments/webhook-events.js";
@@ -2848,6 +2850,245 @@ describe("atomicidade da auditoria: falha no INSERT reverte a mutação (evidên
     } finally {
       await dropAuditFailTrigger();
     }
+  });
+});
+
+describe("cercas de arrendamento: validade temporal (revisão do revisor)", () => {
+  beforeEach(async () => {
+    await clearTables();
+    await db.execute(`DELETE FROM "system_locks"`).catch(() => {});
+    await db.execute(`DELETE FROM "payment_events"`).catch(() => {});
+    resetSandboxCharges();
+    registerAdapter(new SandboxAdapter());
+  });
+
+  async function installAuditFailTrigger(action: string) {
+    await db.execute(`CREATE OR REPLACE FUNCTION test_fail_audit() RETURNS trigger AS $fn$ BEGIN RAISE EXCEPTION 'falha de auditoria forçada (teste): %', NEW.action; END; $fn$ LANGUAGE plpgsql`);
+    await db.execute(
+      `CREATE TRIGGER test_fail_audit BEFORE INSERT ON "audit_logs" FOR EACH ROW WHEN (NEW."action" = '${action}') EXECUTE FUNCTION test_fail_audit()`,
+    );
+  }
+
+  async function dropAuditFailTrigger() {
+    await db.execute(`DROP TRIGGER IF EXISTS test_fail_audit ON "audit_logs"`);
+    await db.execute(`DROP FUNCTION IF EXISTS test_fail_audit()`);
+  }
+
+  async function staleOrderFor(provider: string, variantId: string, customerId: string) {
+    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
+    await db.insert(schema.gatewayConfigs).values({
+      id: crypto.randomUUID(),
+      provider,
+      enabled: true,
+      isDefault: true,
+      methods: ["pix"],
+      pixDiscountPercent: 0,
+    });
+    const created = await handleCheckout(
+      db,
+      { items: [{ variantId, quantity: 1 }], address: addr(), paymentMethod: "pix", acceptedTerms: true, ageConfirmed: true } as any,
+      { customerId, ip: "127.0.0.1" },
+    );
+    await db.update(schema.orders).set({ createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }).where(eq(schema.orders.id, created.orderId));
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, created.orderId));
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, pay.id));
+    return { orderId: created.orderId, paymentId: pay.id };
+  }
+
+  it("renovação NÃO renova lease já expirado (mesmo token, sem substituição de token)", async () => {
+    const token = await acquireSystemLock(db, "loc-expirado", 1_000);
+    expect(token).not.toBeNull();
+
+    // Expira o lease no banco SEM trocar o token — relógio do banco é a
+    // autoridade de expiração.
+    await db.execute(`UPDATE "system_locks" SET "lease_expires_at" = now() - interval '1 second' WHERE "name" = 'loc-expirado'`);
+
+    const renovou = await renewSystemLock(db, "loc-expirado", token!, 1_000);
+    expect(renovou).toBe(false); // lease expirado não se renova nem pelo próprio dono
+
+    // Outra instância adquire normalmente.
+    const outro = await acquireSystemLock(db, "loc-expirado", 1_000);
+    expect(outro).not.toBeNull();
+    expect(outro).not.toBe(token);
+  });
+
+  it("marcação de evento BLOQUEADA após expiração do lease, token ainda igual (sem substituição)", async () => {
+    const provider = "mark-exp";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
+    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
+    await db.update(schema.payments).set({ provider, providerTransactionId: "tx-mark-exp-1" }).where(eq(schema.payments.id, pay.id));
+
+    const parsed: NormalizedWebhookEvent = {
+      eventId: "mark-exp-1",
+      type: "payment.recused",
+      providerTransactionId: "tx-mark-exp-1",
+      amountCents: 10000,
+      raw: { id: "mark-exp-1", type: "payment.recused", data: { transactionId: "tx-mark-exp-1" } },
+    };
+    const [evt] = await db.insert(schema.paymentEvents).values({
+      provider,
+      eventId: parsed.eventId,
+      type: parsed.type,
+      payload: JSON.stringify(parsed.raw),
+      signatureValid: true,
+      processedAt: null,
+      leaseToken: "worker-a",
+      // Lease expirado, token NÃO trocado — simula worker antigo depois do TTL.
+      // Data certamente no passado em ambos os relógios (host e banco).
+      leaseExpiresAt: new Date("2020-01-01T00:00:00.000Z"),
+    }).returning();
+
+    let threw: unknown = null;
+    let outcome: ApplyEventResult | null = null;
+    try {
+      outcome = await applyPaymentEvent(db, {
+        provider,
+        event: parsed,
+        payment: pay,
+        eventRowId: evt.id,
+        leaseToken: "worker-a",
+        signatureValid: true,
+      });
+    } catch (err) {
+      threw = err;
+    }
+    // O worker antigo não conclui o evento: bloqueado por fencing (exceção
+    // ou retorno lease_lost) ou por validação anterior — em nenhum caso
+    // marca o evento.
+    const bloqueado = threw instanceof LeaseLostError || outcome?.reason === "lease_lost";
+    expect(bloqueado || outcome === null || outcome?.applied === false).toBe(true);
+
+    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
+    expect(evtAfter!.processedAt).toBeNull();
+    expect(evtAfter!.deadLetter).toBe(false);
+    expect(evtAfter!.processedAt).toBeNull(); // nada marcado
+    expect(evtAfter!.deadLetter).toBe(false);
+  });
+
+  it("dead-letter não marca quando o lease expirou (mesmo token informado)", async () => {
+    const provider = "dl-exp";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
+
+    const raw = JSON.stringify({ id: "dl-exp-1", type: "payment.approved", data: { transactionId: paymentId } });
+    const parsed = (getAdapter(provider) as PaymentAdapter)!.parseWebhook(raw);
+    await db.insert(schema.paymentEvents).values({
+      provider,
+      eventId: parsed.eventId,
+      type: "payment.approved",
+      payload: JSON.parse(raw),
+      signatureValid: true,
+      processedAt: null,
+      deadLetter: false,
+      leaseToken: "worker-a",
+      leaseExpiresAt: new Date(Date.now() - 1_000),
+    });
+
+    const [row] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
+    const marked = await deadLetterEvent(db, row!, "max_attempts_amount_mismatch", undefined, "worker-a");
+    expect(marked).toBe(false); // lease expirado: não dead-lettera
+
+    const [rowAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
+    expect(rowAfter!.deadLetter).toBe(false);
+    expect(rowAfter!.processedAt).toBeNull();
+  });
+
+  it("primeira observação null: falha de auditoria reverte a persistência (mesma transação)", async () => {
+    const provider = `null-audit-cerca-${crypto.randomUUID().slice(0, 6)}`;
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    registerAdapter(new NoChargeAdapter());
+    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
+    // Sobrescreve o adapter do provider: provedor confirma AUSÊNCIA de cobrança.
+    registerAdapter(
+      new (class extends RenamedSandboxAdapter {
+        async queryPaymentByOrder(): Promise<QueryPaymentResult | null> {
+          return null;
+        }
+      })(provider) as unknown as PaymentAdapter,
+    );
+    await db.update(schema.payments).set({ provider }).where(eq(schema.payments.id, paymentId));
+
+    await installAuditFailTrigger("expiry.notfound_first_seen");
+    try {
+      let threw: unknown = null;
+      try {
+        await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 0, confirmWindowMs: 0 });
+      } catch (err) {
+        threw = err;
+      }
+      expect(threw).toBeTruthy(); // falha de auditoria PROPAGA
+
+      // Rollback da transação interna: nada persistido.
+      const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, paymentId));
+      expect(payAfter!.notFoundFirstSeenAt).toBeNull();
+      expect(payAfter!.status).toBe("pendente");
+
+      // Nenhuma auditoria gravada (o INSERT falhou e reverteu junto).
+      const audits = await db
+        .select()
+        .from(schema.auditLogs)
+        .where(and(eq(schema.auditLogs.action, "expiry.notfound_first_seen"), eq(schema.auditLogs.entityId, orderId)));
+      expect(audits.length).toBe(0);
+    } finally {
+      await dropAuditFailTrigger();
+    }
+  });
+
+  it("reparo de falhas parciais é idempotente sob concorrência (uma divergence, duas instâncias)", async () => {
+    const provider = "repair-conc";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
+
+    // Divergence legado: pagamento definitivo, pedido ainda aguardando.
+    await db.update(schema.orders).set({ status: "aguardando_pagamento" }).where(eq(schema.orders.id, orderId));
+    await db.update(schema.payments).set({ status: "aprovado" }).where(eq(schema.payments.id, paymentId));
+
+    const [r1, r2] = await Promise.all([repairPartialApplications(db), repairPartialApplications(db)]);
+    expect(r1.repaired + r2.repaired).toBe(1); // apenas uma transita; a outra vê transitioned=false
+
+    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
+    expect(order!.status).toBe("pagamento_aprovado");
+  });
+
+  it("duas instâncias competem pelo mesmo evento: apenas uma aplica (claim atômico SKIP LOCKED)", async () => {
+    const provider = "conc-event";
+    const customerId = await getCustomerId();
+    const variant = await getVariant();
+    registerAdapter(new RenamedSandboxAdapter(provider) as unknown as PaymentAdapter);
+    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
+    await db.update(schema.payments).set({ providerTransactionId: "tx-conc-1" }).where(eq(schema.payments.id, paymentId));
+
+    const parsed: NormalizedWebhookEvent = {
+      eventId: "conc-1",
+      type: "payment.approved",
+      providerTransactionId: "tx-conc-1",
+      amountCents: 10000,
+      raw: { id: "conc-1", type: "payment.approved", data: { transactionId: "tx-conc-1" } },
+    };
+    await db.insert(schema.paymentEvents).values({
+      provider,
+      eventId: parsed.eventId,
+      type: "payment.approved",
+      payload: JSON.stringify(parsed.raw),
+      signatureValid: true,
+      processedAt: null,
+    });
+
+    // Duas instâncias chamam a recuperação no mesmo evento em paralelo.
+    const [s1, s2] = await Promise.all([
+      recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 }),
+      recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 }),
+    ]);
+    // Apenas uma instância segura o claim (SKIP LOCKED); a outra pula.
+    expect(s1.skippedLease + s2.skippedLease).toBe(1);
+    // O evento fica marcado (processado por quem deteve o claim).
+    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, "conc-1"));
+    expect(evtAfter!.processedAt).not.toBeNull();
   });
 });
 

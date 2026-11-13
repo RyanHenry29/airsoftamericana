@@ -38,6 +38,7 @@ import { transitionOrderInTx } from "../orders.js";
 import { audit } from "../../lib/audit.js";
 import { conflict } from "../../lib/errors.js";
 import { withSystemLock } from "./system-locks.js";
+import { randomUUID } from "node:crypto";
 import { canTransition, type OrderStatus } from "@airsoft/shared";
 
 export interface ExpirySummary {
@@ -176,21 +177,29 @@ export async function expireStaleReservations(
       // passada (janela = intervalo de manutenção) reconsulta: só então as
       // duas observações são independentes.
       if (!payment.notFoundFirstSeenAt) {
-        await db
-          .update(schema.payments)
-          .set({ notFoundFirstSeenAt: new Date() })
-          .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
-        summary.firstSeenRecorded++;
-        await audit(db, {
-          action: "expiry.notfound_first_seen",
-          entity: "order",
-          entityId: order.id,
-          actorLabel: "expiry:auto",
-          after: {
-            provider: payment.provider,
-            reason: "provedor não conhece a cobrança — observação persistida; confirmação independente na passada seguinte",
-            graceMinutes: notFoundGraceMinutes,
-          },
+        // Revalidação atômica: pagamento ainda pendente e ainda sem a
+        // primeira observação. Persistência e auditoria na MESMA
+        // transação — falha de auditoria reverte a marcação, nunca deixa
+        // o campo registrado sem a trilha.
+        await db.transaction(async (tx) => {
+          const [freshPayment] = await tx.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
+          if (!freshPayment || freshPayment.status !== "pendente" || freshPayment.notFoundFirstSeenAt) return;
+          await tx
+            .update(schema.payments)
+            .set({ notFoundFirstSeenAt: new Date() })
+            .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
+          summary.firstSeenRecorded++;
+          await audit(tx as unknown as Db, {
+            action: "expiry.notfound_first_seen",
+            entity: "order",
+            entityId: order.id,
+            actorLabel: "expiry:auto",
+            after: {
+              provider: payment.provider,
+              reason: "provedor não conhece a cobrança — observação persistida; confirmação independente na passada seguinte",
+              graceMinutes: notFoundGraceMinutes,
+            },
+          });
         });
       }
       // Tolerância: dentro do grace, resposta negativa NÃO cancela —
@@ -602,8 +611,22 @@ export function startPaymentMaintenance(
     if (running) return; // passada anterior ainda em curso NESTE processo
     running = true;
     void withSystemLock(db, lockName, lockTtlMs, runOnce)
-      .catch(() => {
-        // falha de manutenção não derruba o processo; próxima passada tenta
+      .catch((err) => {
+        // Falha de manutenção NÃO derruba o processo; próxima passada tenta.
+        // Nunca silenciar: registro estruturado com nome de fase, id de
+        // execução e pilha higienizada para o log de manutenção.
+        const executionId = randomUUID();
+        const stack = err instanceof Error ? (err.stack ?? "").split("\n").slice(1, 6).join("\n") : String(err);
+        console.error(
+          JSON.stringify({
+            phase: "payment_maintenance",
+            executionId,
+            lockName,
+            error: err instanceof Error ? err.message : String(err),
+            stack,
+            timestamp: new Date().toISOString(),
+          }),
+        );
       })
       .finally(() => {
         running = false;
