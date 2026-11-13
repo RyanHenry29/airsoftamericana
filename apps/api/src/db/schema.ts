@@ -525,6 +525,10 @@ export const paymentEvents = pgTable(
     lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
     lastError: text("last_error"),
     deadLetter: boolean("dead_letter").notNull().default(false),
+    // Revisão v4: lease do claim — enquanto ativo, nenhum outro worker
+    // reivindica o evento (FOR UPDATE SKIP LOCKED + janela de exclusão).
+    // Expira sozinho: crash do worker devolve o evento à fila.
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [

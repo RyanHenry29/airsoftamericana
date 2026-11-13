@@ -1,12 +1,10 @@
-# AUD-01 + AUD-15 — Correções, Homologação e Rollback (v3)
+# AUD-01 + AUD-15 — Correções, Homologação e Rollback (v4)
 
 Branch: `fix/aud01-aud15-pagamento`
 Base: `master` remoto (`ba22fa9`) — PR reconstruído limpo (ver §2.1)
 Estado: implementação completa e testada — **produção permanece congelada**; nada deste documento foi executado em produção.
 
-A revisão **v2** resolveu os 8 pontos da primeira revisão do PR #1: `processedAt` após a aplicação efetiva (ponto 1), atomicidade financeira em transação única (ponto 2), hash-compare de Idempotency-Key (ponto 3), validação financeira com consulta ao gateway (ponto 4), timeout ambíguo (ponto 5), PR limpo (ponto 6), SQL da Security Definer View (ponto 7) e os 9 cenários de teste obrigatórios + integração com PostgreSQL real (ponto 8).
-
-A revisão **v3** resolve os 4 pontos da segunda revisão: **A** — fila de recuperação multi-instância com backoff, limite de tentativas e dead-letter; **B** — reparo idempotente com auditoria que distingue correção automática de intervenção operacional; **C** — expiração segura de reservas (nunca libera estoque de cobrança confirmável); **D** — ausência de identificador de conta nunca vira aprovação silenciosa. Detalhes em §1.1.
+A revisão **v2** resolveu os 8 pontos da primeira revisão do PR #1. A **v3** resolveu os 4 pontos A–D da segunda revisão. A **v4** endurece os cinco itens apontados na terceira revisão: **1** claim atômico com lease (`FOR UPDATE SKIP LOCKED`) e recuperação de lease expirado; **2** dead-letter nunca descarta referência "ainda não disponível" (parked sai só por idade); **3** reparo atômico incluindo a auditoria na transação; **4** expiração com tolerância (grace) para consistência eventual, dupla confirmação, retentativas e varrimento periódico; **5** exigência estrutural de origem autenticada (assinatura) para qualquer aprovação. Detalhes em §1.1/§1.2.
 
 ---
 
@@ -39,7 +37,7 @@ A revisão **v3** resolve os 4 pontos da segunda revisão: **A** — fila de rec
 
 ### 1.1 Revisão v3 — pontos A–D
 
-**A — Fila de recuperação multi-instância** (`recoverPendingEvents` v3):
+**A — Fila de recuperação multi-instância** (`recoverPendingEvents`):
 
 | Mecanismo | Comportamento |
 |---|---|
@@ -49,19 +47,9 @@ A revisão **v3** resolve os 4 pontos da segunda revisão: **A** — fila de rec
 | Dead-letter | Coluna `dead_letter=true` + `processed_at` gravado + audit `payment.event_dead_letter` com motivo. **Evento permanentemente inválido NUNCA bloqueia a fila.** Motivos: `invalid_payload`, `missing_transaction_reference`, `unknown_provider`, `payment_never_arrived`, `max_attempts_<divergência>`. |
 | Divergência financeira recorrente | `amount_mismatch`/`currency_mismatch`/`account_mismatch`/`account_unverified`/`transaction_mismatch`/`gateway_query_unavailable` além do limite de tentativas ⇒ dead-letter com o motivo na auditoria — nunca reprocessa indefinidamente. |
 
-**B — Reparo idempotente com auditoria tipada**: a divergência é definida pela JUNÇÃO (pagamento definitivo × pedido em `PAYMENT_PENDING_STATUSES`); o primeiro reparo tira o pedido da condição, então passadas seguintes não encontram nada. Instâncias paralelas serializam no `FOR UPDATE` de `transitionOrderInTx` — a segunda vê `transitioned=false` e não audita. Estoque é liberado uma única vez (pedido sai do conjunto divergente no mesmo commit). Audit `payment.partial_repair` carrega `automatic: true`, `kind: "partial_repair"`, `trigger: "boot"`, `actorLabel "recovery:boot"` — intervenção humana usa `order.transition` com actorLabel de usuário. Reparo para `cancelado` passa uma única vez pelo caminho de release.
+**B — Reparo idempotente com auditoria tipada**: a divergência é definida pela JUNÇÃO (pagamento definitivo × pedido em `PAYMENT_PENDING_STATUSES`); o primeiro reparo tira o pedido da condição, então passadas seguintes não encontram nada. Estoque é liberado uma única vez. Audit `payment.partial_repair` carrega `automatic: true`, `kind: "partial_repair"`, `trigger: "boot"`, `actorLabel "recovery:boot"` — intervenção humana usa `order.transition` com actorLabel de usuário.
 
-**C — Expiração segura de reservas** (novo `payments/expiry.ts`, `expireStaleReservations`): única implementação sancionada do vazio do AUD-04 até o job dedicado. Toda decisão automática de cancelamento é precedida de consulta ao provedor (`queryPaymentByOrder`):
-
-| Estado no provedor | Ação |
-|---|---|
-| Cobrança não existe (`null`) | Definitivo: cancela + libera estoque (audit `expiry.cancelled`) |
-| Cobrança expirada/recusada/estornada | Definitivo: cancela + libera estoque |
-| Cobrança aprovada/autorizada | Dinheiro entrou: aplica o resultado real (audit `expiry.late_confirmation`) |
-| Cobrança pendente | **NÃO libera** — cobrança viva pode ser confirmada; webhook/reserva preservada (audit `expiry.skipped_charge_alive`) |
-| Consulta falha ou adapter sem consulta | **NUNCA libera às cegas** (audits `expiry.skipped_unknown` / `expiry.skipped_no_query`) |
-
-Gancho no boot após recuperação (`olderThanMinutes: 60`). Toda liberação passa por `transitionOrderInTx` em transação — mesma atomicidade do resto da máquina financeira.
+**C — Expiração segura de reservas** (novo `payments/expiry.ts`, `expireStaleReservations`): toda decisão automática de cancelamento é precedida de consulta ao provedor (`queryPaymentByOrder`) — pendente/falha/sem consulta nunca liberam; cobrança aprovada durante a reserva é aplicada. Gancho no boot.
 
 **D — Vinculação da conta do estabelecimento** (em `validateFinancialEvent`): um identificador QUE EXISTE não pode ficar sem verificação.
 
@@ -74,11 +62,37 @@ Gancho no boot após recuperação (`olderThanMinutes: 60`). Toda liberação pa
 
 **Requisito de homologação:** gateway real configurado para vincular conta exige `accountId` cadastrado nas credenciais (§6, passo 11).
 
+### 1.2 Revisão v4 — endurecimento dos cinco itens da terceira revisão
+
+**1 — Claim atômico com lease** (`recoverPendingEvents` v4):
+
+| Mecanismo | Comportamento |
+|---|---|
+| Exclusão de reivindicação | Claim em transação curta: `SELECT ... FOR UPDATE SKIP LOCKED` com guarda condicional `lease_expires_at IS NULL OR <= now()`. Segundo worker em corrida recebe ZERO linhas — sem contagem duplicada de tentativas, sem consultas simultâneas ao gateway, sem limite estourado sob processamento alheio (`skipped_lease`). |
+| Recuperação de lease | `lease_expires_at` (default 2 min, `leaseMs`) EXPIRA SOZINHO: crash do worker devolve o evento à fila — testado (lease ativo ⇒ `skipped_lease` 1 e nada aplicado; lease expirado ⇒ evento aplicado). |
+| Dead-letter sem corrida | Decisões de dead-letter por divergência/idade só são alcançadas APÓS claim próprio bem-sucedido (outro worker segurando o lease ⇒ pulado antes de processar). Update de dead-letter com guarda `processed_at IS NULL AND dead_letter=false`. |
+
+**2 — Parked ≠ inválido**: evento cujo pagamento AINDA não existe (corrida checkout×webhook) é "referência ainda não disponível" — permanece estacionado INDEPENDENTE de tentativas (testado: 99 tentativas simuladas, `parked` 1, `deadLettered` 0) e só sai por IDADE (`maxAgeDays`, default 30 dias). `invalid_payload`/`missing_transaction_reference`/`unknown_provider` são invalidade PERMANENTE (nunca se tornarão aplicáveis) — dead-letter imediato sem disputar lease.
+
+**3 — Reparo atômico**: transição + histórico + estoque + AUDITORIA correm na MESMA transação (`audit` recebe o tx). Falha em qualquer ponto = rollback completo; boot seguinte repete — sem janela "pedido movido, auditoria perdida". Captura pendente é intocada: `autorizado` NÃO está no conjunto definitivo (testado). Paralelismo: duas instâncias ⇒ 1 transição, 1 auditoria (testado).
+
+**4 — Expiração endurecida** (`payments/expiry.ts` v4):
+
+| Mecanismo | Comportamento |
+|---|---|
+| Tolerância (grace) | `null` do provedor só é tratado como ausência definitiva APÓS `notFoundGraceMinutes` (default 24 h) da criação do pedido — resposta negativa precoce de provedor com consistência eventual NÃO derruba reserva (audit `expiry.skipped_notfound_grace`). |
+| Dupla confirmação | Após o grace, `null` exige 2ª consulta imediata ainda `null` — blip de consistência não vira cancelamento (testado: 1ª null, 2ª pendente ⇒ skip). |
+| Retentativas | Consultas falhas são retentadas (2×, 500 ms) antes de virarem "desconhecido" — falha transitória não vira decisão. |
+| Idempotência expiração × confirmação tardia | Update do pagamento GUARDADO por `status = 'pendente'` com re-leitura: webhook que resolveu a cobrança na janela vence a expiração; segunda passada encontra `scanned` 0 (testado). |
+| Varrimento periódico | `startPaymentMaintenance` (default 15 min, não-reentrante, `unref`) além do hook de boot — processos longevos têm reservas abandonadas varridas. |
+
+**5 — Origem autenticada (ponto D, v4)**: `applyPaymentEvent` recebe `signatureValid`; `signatureValid === false` rejeita SEM exceção (`event_not_authenticated`) mesmo com transação/valor/moeda válidos (testado). Em produção a rota responde 401 antes de aplicar; o campo torna a exigência estrutural também fora da rota. A advertência do caminho "nenhum dos lados informa conta" registra a evidência de origem (`origin.signatureVerified`, `transactionMatched`, `amountValidated`, `currencyBRL`). A aprovação nesse caminho continua condicionada a: assinatura verificada (401 sem ela), adapter do provider registrado, pagamento localizado por `provider + providerTransactionId`, valor/moeda/referência validados no mesmo fluxo.
+
 ## 2. Arquivos modificados
 
 ```
 packages/shared/src/domain.ts                       — transições + PAYMENT_PENDING_STATUSES
-apps/api/index.ts                                   — recuperação no boot (recoverPendingEvents + repairPartialApplications + expireStaleReservations)
+apps/api/index.ts                                   — recuperação no boot + varrimento periódico (startPaymentMaintenance)
 apps/api/src/services/checkout.ts                   — gateway antes da escrita, idempotência com hash-compare, timeout ambíguo
 apps/api/src/services/orders.ts                     — transitionOrderInTx (núcleo transacional) + transitionOrder
 apps/api/src/services/payments/types.ts             — guardas sandbox; QueryPaymentResult expandido; queryPayment/queryPaymentByOrder
@@ -89,10 +103,12 @@ apps/api/src/services/payments/expiry.ts            — v3 ponto C: expiração 
 apps/api/src/services/payments/webhook-events.ts    — aplicação atômica, validação financeira, fila v3 (claim/backoff/dead-letter) e reparo
 apps/api/src/routes/webhooks.ts                     — insert com processed_at NULL; reentrega reaplica; chargeback atômico
 apps/api/src/routes/index.ts                        — header Idempotency-Key no checkout
-apps/api/src/db/schema.ts                           — payment_events: payment_id/processed_at nullable + colunas de fila v3
-apps/api/src/db/migrate.ts                          — ALTERs idempotentes (nullable + attempts/last_attempt_at/last_error/dead_letter)
+apps/api/src/db/schema.ts                           — payment_events: nullable + colunas de fila (attempts/last_attempt_at/last_error/dead_letter/lease_expires_at)
+apps/api/src/db/migrate.ts                          — ALTERs idempotentes das colunas acima
 apps/api/src/services/checkout.test.ts              — 503, idempotência, concorrência
-apps/api/src/services/payments-integrity.test.ts    — 31 testes (v1+v2+v3: 9 obrigatórios + 13 da segunda revisão + base)
+apps/api/src/services/payments-integrity.test.ts    — 40 testes (9 obrigatórios v1/v2 + 22 dos pontos A–D v3/v4 + base)
+docs/review/pr1-v4-full.diff                        — diff completo `ba22fa9..head` (revisão independente da UI)
+docs/review/pr1-v4-guia-de-revisao.md               — mapa dos hunks por item da revisão
 docs/AUD01-AUD15-CORRECTIONS.md                     — este documento
 docs/sql/harden-gateway-audit-view.sql              — correção SQL (NÃO executada)
 docs/sql/verify-gateway-audit-view.sql              — verificação read-only
@@ -122,10 +138,10 @@ A recuperação roda no boot (`apps/api/index.ts`) e é idempotente — qualquer
 
 | Suíte | Resultado |
 |---|---|
-| API (PGlite) `npm test -w @airsoft/api` | **33 arquivos, 250/250 passed** (13 testes novos da v3) |
+| API (PGlite) `npm test -w @airsoft/api` | **33 arquivos, 259/259 passed** (9 testes novos da v4) |
 | Store/Admin (root `npm test`) | zero arquivos de teste por design (mensagem informativa) |
 | `tsc --noEmit` (api, store, admin) | **exit 0 nos três** |
-| **PostgreSQL REAL** (`scripts/pg-integration.mjs`, embedded-postgres porta 55432) | **4 arquivos (integrity, checkout, orders, price-stock-transactional): 55/55 passed** |
+| **PostgreSQL REAL** (`scripts/pg-integration.mjs`, embedded-postgres porta 55432) | **4 arquivos (integrity, checkout, orders, price-stock-transactional): 64/64 passed** |
 
 Os 9 cenários obrigatórios (todos em `payments-integrity.test.ts`, todos PASS):
 
@@ -182,14 +198,15 @@ Pendência: grants padrão Supabase (`anon`/`authenticated`/`service_role` com A
 7. Timeout de `createPayment`: com `queryPaymentByOrder` (cobrança viva) → pedido preservado; sem cobrança → cancelado.
 8. Timeout de captura → `pagamento_em_processamento` + 503 `capture_unknown_result`.
 9. Pagamento tardio → audit `order.late_payment` + fila manual de estorno.
-10. Restart da API → log `payment event recovery at boot` com os resumos de `recoverPendingEvents`, `repairPartialApplications` e `expireStaleReservations`.
+10. Restart da API → log `payment event recovery at boot` com os resumos de `recoverPendingEvents`, `repairPartialApplications` e `expireStaleReservations`; varrimento periódico a cada 15 min cobre processos longevos.
 11. **Vinculação de conta (v3):** com `accountId` nas credenciais do gateway, evento aprovado sem eco do identificador ⇒ `account_binding_missing` (recusa); claim divergente ⇒ `account_mismatch`. Sem `accountId` em nenhum dos lados ⇒ aprovação segue com advertência auditada — configure o `accountId` antes de homologar um gateway que exige vinculação.
+12. **Origem (v4):** webhook sem assinatura válida ⇒ 401 na rota, evento nunca aplicado; qualquer caminho interno com `signatureValid: false` ⇒ `event_not_authenticated` (recusa).
 
 Critério de saída: estados finais conforme §1, nenhum `payment.regression_ignored`/`payment.event_rejected` inesperado.
 
 ## 7. Plano de rollback
 
-- **Deploy:** código de aplicação + `ALTER`s idempotentes (`payment_events` nullable + colunas de fila v3 com defaults). Rollback = redeploy de `ba22fa9`; colunas novas (`attempts`, `last_attempt_at`, `last_error`, `dead_letter`) são aditivas com default e não quebram o código anterior. Sem reversão de dados.
+- **Deploy:** código de aplicação + `ALTER`s idempotentes (`payment_events` nullable + colunas de fila com defaults, incluindo `lease_expires_at` nullable). Rollback = redeploy de `ba22fa9`; colunas novas são aditivas com default e não quebram o código anterior. Sem reversão de dados.
 - **SQL da view (se executado):** rollback documentado no próprio `harden-gateway-audit-view.sql` (grants restaurados). O `REVOKE` só reduz privilégios — reversão devolve o padrão Supabase.
 - **Config:** a linha `sandbox` de `gateway_configs` não é removida por este PR. Reverter o deploy reabre o AUD-01 (fallback volta a existir) — registrar em incidente.
 - **Estados criados sob a nova máquina:** histórico append-only; nenhum dado migrado.
@@ -198,8 +215,9 @@ Critério de saída: estados finais conforme §1, nenhum `payment.regression_ign
 
 1. **Checkout 503 em produção** até gateway real configurado — intencional (AUD-01), é downtime comercial.
 2. **Estorno de pagamento tardio é manual** — marcado e auditado; reconciliação periódica (AUD-04/10) é o próximo passo para varrê-los.
-3. **Validação de conta v3**: com `accountId` configurado, a vinculação é exigida (`account_binding_missing`/`account_mismatch`/`account_unverified` rejeitam). Provedores sem esse campo em ambos os lados seguem com advertência auditada — dependem de transação/valor/referência. Configuração do `accountId` é passo de homologação obrigatório (§6).
+3. **Validação de conta v4**: com `accountId` configurado, a vinculação é exigida (`account_binding_missing`/`account_mismatch`/`account_unverified` rejeitam). Sem `accountId` em ambos os lados, a aprovação exige origem autenticada (assinatura — `event_not_authenticated` caso contrário), pagamento localizado por provider+transação e valor/moeda/referência validados; advertência auditada registra a evidência. Configuração do `accountId` é passo de homologação obrigatório (§6).
 4. **Cielo `parseWebhook` permissivo** (tipo desconhecido → `payment.approved`) — pré-existente; correção própria em PR futuro (AUD-02 complementar).
-5. **Job de expiração de reservas (AUD-04) fora deste PR** — parcialmente mitigado: `expireStaleReservations` roda no boot e é a única expiração automática sancionada; ela NUNCA libera estoque de cobrança confirmável (consulta ao provedor antes de toda decisão). Job agendado com cadência própria continua sendo o próximo passo.
+5. **Job agendado dedicado do AUD-04** fora deste PR — mitigado: `expireStaleReservations` roda no boot E a cada 15 min (`startPaymentMaintenance`); tolerância (grace 24 h), dupla confirmação e updates guardados impedem liberação de cobrança confirmável. Job com política própria de configuração por provedor é o próximo passo.
+6. **Eventos parked** (corrida checkout×webhook) permanecem estacionados até 30 dias por idade — o varrimento periódico consome tentativas com backoff; monitorar `skipped_lease`/`parked` no log de manutenção.
 6. **`GATEWAY_ACTIVE` default `sandbox` no `config.ts` inalterado** — alterar derrubaria o boot em produção; a barra de runtime (503) cobre o caso.
 7. **Desconhecido sem `queryPaymentByOrder`** mantém reserva indefinidamente até reconciliação/webhook — com adapter sem consulta, o operador precisa acompanhar; os adapters atuais (sandbox; Cielo a implementar no PR seguinte) já expõem o método.

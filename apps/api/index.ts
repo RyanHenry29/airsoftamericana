@@ -124,13 +124,22 @@ async function getFastifyApp() {
       // fatal — falha de recuperação não impede a API de subir.
       try {
         const { recoverPendingEvents, repairPartialApplications } = await import("./src/services/payments/webhook-events.js");
-        const { expireStaleReservations } = await import("./src/services/payments/expiry.js");
-        const recovery = await recoverPendingEvents(db);
-        const repair = await repairPartialApplications(db);
-        // Expiração SEGURA de reservas: só libera estoque após confirmar o
-        // estado da cobrança no provedor — cobrança viva nunca é cancelada.
-        const expiry = await expireStaleReservations(db, { olderThanMinutes: 60 });
-        app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
+        const { expireStaleReservations, startPaymentMaintenance } = await import("./src/services/payments/expiry.js");
+        const runMaintenance = async () => {
+          const recovery = await recoverPendingEvents(db);
+          const repair = await repairPartialApplications(db);
+          // Expiração SEGURA de reservas: só libera estoque após confirmar o
+          // estado da cobrança no provedor (com tolerância e dupla
+          // confirmação) — cobrança viva nunca é cancelada.
+          const expiry = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 24 * 60 });
+          app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
+          return { recovery, repair, expiry };
+        };
+        await runMaintenance();
+        // Varrimento periódico (revisão v4): boot sozinho não cobre processos
+        // longevos — reservas abandonadas com a aplicação ligada precisam do
+        // intervalo. 15 min, não-reentrante, unref.
+        startPaymentMaintenance(db, runMaintenance, { intervalMs: 15 * 60 * 1000 });
       } catch (err) {
         app.log.warn({ err }, "payment event recovery skipped");
       }
