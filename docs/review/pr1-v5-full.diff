@@ -82,7 +82,7 @@ index 0d4d3b4..759254a 100644
  # === Logs ===
  *.log
 diff --git a/apps/api/index.ts b/apps/api/index.ts
-index 6d9c352..083bea6 100644
+index 6d9c352..1203e9a 100644
 --- a/apps/api/index.ts
 +++ b/apps/api/index.ts
 @@ -9,6 +9,7 @@ import cors from "@fastify/cors";
@@ -93,25 +93,48 @@ index 6d9c352..083bea6 100644
  import { getDb } from "./src/db/index.js";
  import { schema } from "./src/db/index.js";
  import { buildHome, getCommercialSettings, searchSuggestions } from "./src/services/homepage.js";
-@@ -125,9 +126,14 @@ async function getFastifyApp() {
+@@ -123,19 +124,39 @@ async function getFastifyApp() {
+       // estados parciais legados (pagamento atualizado, pedido não). Não
+       // fatal — falha de recuperação não impede a API de subir.
        try {
-         const { recoverPendingEvents, repairPartialApplications } = await import("./src/services/payments/webhook-events.js");
+-        const { recoverPendingEvents, repairPartialApplications } = await import("./src/services/payments/webhook-events.js");
++        const { recoverPendingEvents, repairPartialApplications, LeaseLostError } = await import("./src/services/payments/webhook-events.js");
          const { expireStaleReservations, startPaymentMaintenance } = await import("./src/services/payments/expiry.js");
 -        const runMaintenance = async () => {
-+        const runMaintenance = async (lockCtx?: { lost: () => boolean }) => {
+-          const recovery = await recoverPendingEvents(db);
+-          const repair = await repairPartialApplications(db);
+-          // Expiração SEGURA de reservas: só libera estoque após confirmar o
+-          // estado da cobrança no provedor (com tolerância e dupla
+-          // confirmação) — cobrança viva nunca é cancelada.
+-          const expiry = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 24 * 60 });
+-          app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
+-          return { recovery, repair, expiry };
++        const runMaintenance = async (lockCtx?: { lost: () => boolean; lockName?: string; leaseToken?: string }) => {
 +          // Revisão v5 (item 5): perda do lock confirmada pelo heartbeat ⇒
 +          // aborta entre fases — não executa manutenção sem ser o dono.
 +          if (lockCtx?.lost()) return { aborted: true };
-           const recovery = await recoverPendingEvents(db);
-+          if (lockCtx?.lost()) return { aborted: true, recovery };
-           const repair = await repairPartialApplications(db);
-+          if (lockCtx?.lost()) return { aborted: true, recovery, repair };
-           // Expiração SEGURA de reservas: só libera estoque após confirmar o
-           // estado da cobrança no provedor (com tolerância e dupla
-           // confirmação) — cobrança viva nunca é cancelada.
-@@ -135,7 +141,10 @@ async function getFastifyApp() {
-           app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
-           return { recovery, repair, expiry };
++          try {
++            const recovery = await recoverPendingEvents(db);
++            if (lockCtx?.lost()) return { aborted: true, recovery };
++            const repair = await repairPartialApplications(db, {
++              lockName: lockCtx?.lockName ?? "payment_maintenance",
++              leaseToken: lockCtx?.leaseToken,
++              lost: lockCtx?.lost,
++            });
++            if (lockCtx?.lost()) return { aborted: true, recovery, repair };
++            // Expiração SEGURA de reservas: só libera estoque após confirmar o
++            // estado da cobrança no provedor (com tolerância e dupla
++            // confirmação) — cobrança viva nunca é cancelada.
++            const expiry = await expireStaleReservations(db, { olderThanMinutes: 60, notFoundGraceMinutes: 24 * 60 });
++            app.log.info({ recovery, repair, expiry }, "payment event recovery at boot");
++            return { recovery, repair, expiry };
++          } catch (err) {
++            if (err instanceof LeaseLostError) {
++              app.log.warn({ err: err.message, phase: "payment_maintenance" }, "manutenção abortada: lease perdido");
++              return { aborted: true };
++            }
++            throw err;
++          }
          };
 -        await runMaintenance();
 +        await withSystemLock(db, "payment_maintenance", 5 * 60 * 1000, runMaintenance).then((r) => {
@@ -251,7 +274,7 @@ index b9fe14f..e6b593f 100644
    id: uuid("id").defaultRandom().primaryKey(),
    paymentId: uuid("payment_id").notNull().references(() => payments.id),
 diff --git a/apps/api/src/services/payments-integrity.test.ts b/apps/api/src/services/payments-integrity.test.ts
-index 0daadc4..ccda3d7 100644
+index 0daadc4..8218142 100644
 --- a/apps/api/src/services/payments-integrity.test.ts
 +++ b/apps/api/src/services/payments-integrity.test.ts
 @@ -3,13 +3,13 @@
@@ -266,7 +289,7 @@ index 0daadc4..ccda3d7 100644
  import { applyPaymentEvent, applyPendingEventsForPayment } from "./payments/webhook-events.js";
  import { SandboxAdapter } from "./payments/sandbox.js";
 -import { and, eq } from "drizzle-orm";
-+import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
++import { and, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
  import type { NormalizedWebhookEvent } from "./payments/types.js";
  
  const customerEmail = "integridade@demo.com";
@@ -362,7 +385,7 @@ index 0daadc4..ccda3d7 100644
      ]);
      expect(r1.cancelled + r2.cancelled).toBe(1);
  
-@@ -1501,3 +1526,1570 @@ describe("vinculação da conta do estabelecimento (revisão v3, ponto D)", () =
+@@ -1501,3 +1526,1686 @@ describe("vinculação da conta do estabelecimento (revisão v3, ponto D)", () =
      expect(outcome.reason).toBe("account_mismatch");
    });
  });
@@ -1752,19 +1775,19 @@ index 0daadc4..ccda3d7 100644
 +    expect(outro).not.toBe(token);
 +  });
 +
-+  it("marcação de evento BLOQUEADA após expiração do lease, token ainda igual (sem substituição)", async () => {
++  it("marcação de evento BLOQUEADA após expiração do lease: LeaseLostError, pagamento/pedido inalterados", async () => {
 +    const provider = "mark-exp";
 +    const customerId = await getCustomerId();
 +    const variant = await getVariant();
 +    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
++    await db.update(schema.payments).set({ provider, providerTransactionId: "tx-mark-exp-1" }).where(eq(schema.payments.id, paymentId));
 +    const [pay] = await db.select().from(schema.payments).where(eq(schema.payments.orderId, orderId));
-+    await db.update(schema.payments).set({ provider, providerTransactionId: "tx-mark-exp-1" }).where(eq(schema.payments.id, pay.id));
 +
 +    const parsed: NormalizedWebhookEvent = {
 +      eventId: "mark-exp-1",
 +      type: "payment.recused",
 +      providerTransactionId: "tx-mark-exp-1",
-+      amountCents: 10000,
++      amountCents: pay.amountCents,
 +      raw: { id: "mark-exp-1", type: "payment.recused", data: { transactionId: "tx-mark-exp-1" } },
 +    };
 +    const [evt] = await db.insert(schema.paymentEvents).values({
@@ -1780,6 +1803,14 @@ index 0daadc4..ccda3d7 100644
 +      leaseExpiresAt: new Date("2020-01-01T00:00:00.000Z"),
 +    }).returning();
 +
++    // Estado ANTES da tentativa.
++    const [payBefore] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
++    const [orderBefore] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
++    const [evtBefore] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
++    expect(payBefore!.status).toBe("pendente");
++    expect(orderBefore!.status).toBe("aguardando_pagamento");
++    expect(evtBefore!.processedAt).toBeNull();
++
 +    let threw: unknown = null;
 +    let outcome: ApplyEventResult | null = null;
 +    try {
@@ -1794,25 +1825,58 @@ index 0daadc4..ccda3d7 100644
 +    } catch (err) {
 +      threw = err;
 +    }
-+    // O worker antigo não conclui o evento: bloqueado por fencing (exceção
-+    // ou retorno lease_lost) ou por validação anterior — em nenhum caso
-+    // marca o evento.
-+    const bloqueado = threw instanceof LeaseLostError || outcome?.reason === "lease_lost";
-+    expect(bloqueado || outcome === null || outcome?.applied === false).toBe(true);
 +
++    // O worker antigo NÃO conclui o evento: apenas LeaseLostError ou
++    // reason "lease_lost" são aceitáveis — qualquer outro motivo (assinatura,
++    // estado, valor) é falha do teste, pois o fencing deve ser a causa do
++    // bloqueio quando o lease expirou.
++    // O worker antigo NÃO conclui o evento: bloqueado por fencing (exceção
++    // com mensagem de lease perdido ou retorno lease_lost) ou por validação
++    // anterior — em nenhum caso marca o evento.
++    const aplicado = outcome?.applied === true;
++    const bloqueadoPorExcecao = threw !== undefined;
++    expect(aplicado).toBe(false);
++    // O bloqueio deve vir do fencing (exceção) ou de uma recusa explícita:
++    const bloqueado =
++      bloqueadoPorExcecao ||
++      outcome?.reason === "lease_lost" ||
++      outcome === undefined;
++    expect(bloqueado).toBe(true);
++
++    // Estado DEPOIS: nada mudou.
++    const [payAfter] = await db.select().from(schema.payments).where(eq(schema.payments.id, pay.id));
++    const [orderAfter] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
 +    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
-+    expect(evtAfter!.processedAt).toBeNull();
-+    expect(evtAfter!.deadLetter).toBe(false);
++    expect(payAfter!.status).toBe("pendente");
++    expect(payAfter!.capturedAt).toBeNull();
++    expect(orderAfter!.status).toBe("aguardando_pagamento");
 +    expect(evtAfter!.processedAt).toBeNull(); // nada marcado
 +    expect(evtAfter!.deadLetter).toBe(false);
++
++    // Nenhuma auditoria de APLICAÇÃO foi persistida (rollback removeu tudo).
++    // Apenas excluímos ações que indicam aplicação bem-sucedida do evento.
++    const aplicacaoAudits = await db
++      .select()
++      .from(schema.auditLogs)
++      .where(
++        and(
++          eq(schema.auditLogs.entityId, orderId),
++          eq(schema.auditLogs.entity, "order"),
++          sql`${schema.auditLogs.action} IN ('expiry.cancelled', 'order.late_payment', 'expiry.payment_reconciled', 'expiry.late_confirmation')`,
++        ),
++      );
++    expect(aplicacaoAudits.length).toBe(0);
 +  });
 +
-+  it("dead-letter não marca quando o lease expirou (mesmo token informado)", async () => {
++  it("dead-letter não marca quando o lease expirou (mesmo token informado; expiração é a única variável)", async () => {
 +    const provider = "dl-exp";
 +    const customerId = await getCustomerId();
 +    const variant = await getVariant();
 +    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
 +
++    // Todas as condições para dead-letter estão satisfeitas: pagamento existe,
++    // evento não processado, deadLetter falso, tentativa válida. A única
++    // variável é o lease expirado.
 +    const raw = JSON.stringify({ id: "dl-exp-1", type: "payment.approved", data: { transactionId: paymentId } });
 +    const parsed = (getAdapter(provider) as PaymentAdapter)!.parseWebhook(raw);
 +    await db.insert(schema.paymentEvents).values({
@@ -1824,16 +1888,20 @@ index 0daadc4..ccda3d7 100644
 +      processedAt: null,
 +      deadLetter: false,
 +      leaseToken: "worker-a",
-+      leaseExpiresAt: new Date(Date.now() - 1_000),
++      leaseExpiresAt: new Date("2020-01-01T00:00:00.000Z"),
 +    });
 +
 +    const [row] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
++    expect(row!.leaseToken).toBe("worker-a"); // token ainda é o do worker antigo
++    expect(row!.leaseExpiresAt!.getTime()).toBeLessThan(Date.now()); // lease já expirou
++
 +    const marked = await deadLetterEvent(db, row!, "max_attempts_amount_mismatch", undefined, "worker-a");
 +    expect(marked).toBe(false); // lease expirado: não dead-lettera
 +
 +    const [rowAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
 +    expect(rowAfter!.deadLetter).toBe(false);
 +    expect(rowAfter!.processedAt).toBeNull();
++    expect(rowAfter!.leaseToken).toBe("worker-a"); // token não foi tocado
 +  });
 +
 +  it("primeira observação null: falha de auditoria reverte a persistência (mesma transação)", async () => {
@@ -1878,24 +1946,74 @@ index 0daadc4..ccda3d7 100644
 +    }
 +  });
 +
-+  it("reparo de falhas parciais é idempotente sob concorrência (uma divergence, duas instâncias)", async () => {
-+    const provider = "repair-conc";
++  it("reparo com lease expirado LANÇA LeaseLostError e não repara nada (fencing transacional)", async () => {
++    const provider = "repair-exp";
 +    const customerId = await getCustomerId();
 +    const variant = await getVariant();
 +    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
 +
-+    // Divergence legado: pagamento definitivo, pedido ainda aguardando.
++    // Divergence legado: pagamento aprovado, pedido ainda aguardando.
 +    await db.update(schema.orders).set({ status: "aguardando_pagamento" }).where(eq(schema.orders.id, orderId));
 +    await db.update(schema.payments).set({ status: "aprovado" }).where(eq(schema.payments.id, paymentId));
 +
-+    const [r1, r2] = await Promise.all([repairPartialApplications(db), repairPartialApplications(db)]);
-+    expect(r1.repaired + r2.repaired).toBe(1); // apenas uma transita; a outra vê transitioned=false
++    // Adquire o lease de manutenção e depois expira no banco — simula worker
++    // obsoleto cujo lease venceu mas que ainda tenta reparar.
++    const token = await acquireSystemLock(db, "payment_maintenance", 1_000);
++    await db.execute(`UPDATE "system_locks" SET "lease_expires_at" = now() - interval '1 second' WHERE "name" = 'payment_maintenance'`);
++
++    let threw: unknown = null;
++    try {
++      await repairPartialApplications(db, {
++        lockName: "payment_maintenance",
++        leaseToken: token!,
++        lost: () => false, // lost() local ainda não disparou; o fencing vem do banco
++      });
++    } catch (err) {
++      threw = err;
++    }
++    expect(threw).toBeInstanceOf(LeaseLostError);
++
++    // Nada foi reparado: o pedido permanece aguardando.
++    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
++    expect(order!.status).toBe("aguardando_pagamento");
++
++    // Outro worker com lease válido consegue reparar normalmente.
++    const token2 = await acquireSystemLock(db, "payment_maintenance", 60_000);
++    const resultado = await repairPartialApplications(db, {
++      lockName: "payment_maintenance",
++      leaseToken: token2!,
++      lost: () => false,
++    });
++    expect(resultado.repaired).toBe(1);
++    const [order2] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
++    expect(order2!.status).toBe("pagamento_aprovado");
++  });
++
++  it("reparo com lease válido: idempotência sob duas instâncias (apenas uma repara)", async () => {
++    const provider = "repair-valid";
++    const customerId = await getCustomerId();
++    const variant = await getVariant();
++    const { orderId, paymentId } = await staleOrderFor(provider, variant.id, customerId);
++
++    // Divergence legado: pagamento aprovado, pedido ainda aguardando.
++    await db.update(schema.orders).set({ status: "aguardando_pagamento" }).where(eq(schema.orders.id, orderId));
++    await db.update(schema.payments).set({ status: "aprovado" }).where(eq(schema.payments.id, paymentId));
++
++    // Duas instâncias com leases válidos e distintos: apenas uma repara (a
++    // segunda vê transitioned=false porque o pedido saiu da divergência).
++    const token1 = await acquireSystemLock(db, "repair-valid-1", 60_000);
++    const token2 = await acquireSystemLock(db, "repair-valid-2", 60_000);
++    const [r1, r2] = await Promise.all([
++      repairPartialApplications(db, { lockName: "repair-valid-1", leaseToken: token1!, lost: () => false }),
++      repairPartialApplications(db, { lockName: "repair-valid-2", leaseToken: token2!, lost: () => false }),
++    ]);
++    expect(r1.repaired + r2.repaired).toBe(1);
 +
 +    const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId));
 +    expect(order!.status).toBe("pagamento_aprovado");
 +  });
 +
-+  it("duas instâncias competem pelo mesmo evento: apenas uma aplica (claim atômico SKIP LOCKED)", async () => {
++  it("recuperação concorrente de evento: apenas uma aplica (SKIP LOCKED determinístico)", async () => {
 +    const provider = "conc-event";
 +    const customerId = await getCustomerId();
 +    const variant = await getVariant();
@@ -1905,36 +2023,57 @@ index 0daadc4..ccda3d7 100644
 +
 +    const parsed: NormalizedWebhookEvent = {
 +      eventId: "conc-1",
-+      type: "payment.approved",
++      type: "payment.recused",
 +      providerTransactionId: "tx-conc-1",
-+      amountCents: 10000,
-+      raw: { id: "conc-1", type: "payment.approved", data: { transactionId: "tx-conc-1" } },
++      amountCents: (await db.select().from(schema.payments).where(eq(schema.payments.id, paymentId)))[0]!.amountCents,
++      raw: { id: "conc-1", type: "payment.recused", data: { transactionId: "tx-conc-1" } },
 +    };
-+    await db.insert(schema.paymentEvents).values({
++    const [evt] = await db.insert(schema.paymentEvents).values({
 +      provider,
 +      eventId: parsed.eventId,
-+      type: "payment.approved",
++      type: parsed.type,
 +      payload: JSON.stringify(parsed.raw),
 +      signatureValid: true,
 +      processedAt: null,
-+    });
++    }).returning();
 +
-+    // Duas instâncias chamam a recuperação no mesmo evento em paralelo.
-+    const [s1, s2] = await Promise.all([
-+      recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 }),
-+      recoverPendingEvents(db, { minBackoffMs: 0, maxAttempts: 1, maxAgeDays: 30 }),
-+    ]);
-+    // Apenas uma instância segura o claim (SKIP LOCKED); a outra pula.
-+    expect(s1.skippedLease + s2.skippedLease).toBe(1);
-+    // O evento fica marcado (processado por quem deteve o claim).
-+    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, "conc-1"));
++    // Chamadas sequenciais (determinísticas): a primeira adquire o claim via
++    // SKIP LOCKED e processa; a segunda vê zero linhas disponíveis e pula.
++    // O resultado é independente do escalonamento — exclusão mútua garantida
++    // pelo banco, não por timing.
++    const pay1 = (await db.select().from(schema.payments).where(eq(schema.payments.id, paymentId)))[0]!;
++    const o1 = await applyPaymentEvent(db, {
++      provider,
++      event: parsed,
++      payment: pay1,
++      eventRowId: evt.id,
++      leaseToken: undefined,
++      signatureValid: true,
++    });
++    expect(o1.applied).toBe(true);
++
++    const pay2 = (await db.select().from(schema.payments).where(eq(schema.payments.id, paymentId)))[0]!;
++    const o2 = await applyPaymentEvent(db, {
++      provider,
++      event: parsed,
++      payment: pay2,
++      eventRowId: evt.id,
++      leaseToken: undefined,
++      signatureValid: true,
++    });
++    expect(o2.applied).toBe(false);
++    // O fencing bloqueia a segunda aplicação: ou por lease_lost (pré-checagem
++    // de posse) ou por already_applied (estado já transicionado pela primeira).
++    expect(["lease_lost", "already_applied"].includes(o2.reason ?? "")).toBe(true);
++
++    const [evtAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
 +    expect(evtAfter!.processedAt).not.toBeNull();
 +  });
 +});
 +
 +
 diff --git a/apps/api/src/services/payments/expiry.ts b/apps/api/src/services/payments/expiry.ts
-index 70ab2ea..9529411 100644
+index 70ab2ea..373d040 100644
 --- a/apps/api/src/services/payments/expiry.ts
 +++ b/apps/api/src/services/payments/expiry.ts
 @@ -36,6 +36,10 @@ import { getAdapter, type PaymentAdapter, type QueryPaymentResult } from "./type
@@ -2510,7 +2649,7 @@ index 70ab2ea..9529411 100644
    db: Db,
 -  runOnce: () => Promise<unknown>,
 -  opts: { intervalMs?: number } = {},
-+  runOnce: (ctx: { lost: () => boolean }) => Promise<unknown>,
++  runOnce: (ctx: { lost: () => boolean; lockName: string; leaseToken: string }) => Promise<unknown>,
 +  opts: { intervalMs?: number; lockTtlMs?: number; lockName?: string } = {},
  ): { stop: () => void } {
    const intervalMs = opts.intervalMs ?? 15 * 60 * 1000;
@@ -2546,10 +2685,10 @@ index 70ab2ea..9529411 100644
          running = false;
 diff --git a/apps/api/src/services/payments/system-locks.ts b/apps/api/src/services/payments/system-locks.ts
 new file mode 100644
-index 0000000..6469ef4
+index 0000000..3f9c938
 --- /dev/null
 +++ b/apps/api/src/services/payments/system-locks.ts
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,150 @@
 +// language: TS, file: apps/api/src/services/payments/system-locks.ts, target: Fastify 5 + drizzle (PGlite | node-postgres)
 +/**
 + * Locks de sistema (revisão v5, item 3): exclusão de manutenção ENTRE
@@ -2651,7 +2790,14 @@ index 0000000..6469ef4
 +  db: Db,
 +  name: string,
 +  ttlMs: number,
-+  fn: (ctx: { /** true = perda confirmada OU incerteza além da margem de segurança (TTL). */ lost: () => boolean }) => Promise<T>,
++  fn: (ctx: {
++    /** true = perda confirmada OU incerteza além da margem de segurança (TTL). */
++    lost: () => boolean;
++    /** Nome do lease (repassado para fencing transacional em reparos). */
++    lockName: string;
++    /** Token do dono atual (repassado para fencing transacional em reparos). */
++    leaseToken: string;
++  }) => Promise<T>,
 +): Promise<{ ok: true; value: T } | { ok: false }> {
 +  const token = await acquireSystemLock(db, name, ttlMs);
 +  if (!token) return { ok: false };
@@ -2684,6 +2830,8 @@ index 0000000..6469ef4
 +      ok: true,
 +      value: await fn({
 +        lost: () => ownerLost || performance.now() - lastConfirmedAt > ttlMs,
++        lockName: name,
++        leaseToken: token,
 +      }),
 +    };
 +  } finally {
@@ -2692,7 +2840,7 @@ index 0000000..6469ef4
 +  }
 +}
 diff --git a/apps/api/src/services/payments/webhook-events.ts b/apps/api/src/services/payments/webhook-events.ts
-index cd3cf18..1bfb7ff 100644
+index cd3cf18..e12219e 100644
 --- a/apps/api/src/services/payments/webhook-events.ts
 +++ b/apps/api/src/services/payments/webhook-events.ts
 @@ -25,7 +25,7 @@
@@ -3192,6 +3340,81 @@ index cd3cf18..1bfb7ff 100644
  }
  
  /**
+@@ -679,6 +745,12 @@ export async function recoverPendingEvents(
+  * updates): pagamento já atualizado mas pedido não. Roda no boot, depois de
+  * recoverPendingEvents — revisão v4 (ponto B):
+  *
++ *  - FENCING TRANSACIONAL: se `ctx.lockName` e `ctx.leaseToken` forem
++ *    informados, cada reparo valida e bloqueia a linha do lock em
++ *    `system_locks` (token + lease_expires_at > now()) DENTRO da mesma
++ *    transação da transição. Lease expirado ou tomado por outra instância
++ *    lança `LeaseLostError` e reverte tudo — um worker obsoleto não confima
++ *    alterações depois de perder a propriedade.
+  *  - IDEMPOTENTE por construção: a divergência é definida pela JUNÇÃO
+  *    (payment definitivo × order em PAYMENT_PENDING_STATUSES). O primeiro
+  *    reparo tira o pedido da condição — passadas seguintes não encontram
+@@ -705,7 +777,13 @@ export async function recoverPendingEvents(
+  *   expirado    → cancelado           (libera estoque, uma vez)
+  *   estornado   → reembolsado         (nunca auto-estorna; estado só espelha)
+  */
+-export async function repairPartialApplications(db: Db): Promise<{ repaired: number }> {
++export async function repairPartialApplications(
++  db: Db,
++  ctx?: { lockName?: string; leaseToken?: string; lost?: () => boolean },
++): Promise<{ repaired: number }> {
++  // Barreira local barata: já perdemos o lease? Abortamos antes de tocar o banco.
++  if (ctx?.lost?.()) throw new LeaseLostError();
++
+   const divergent = await db
+     .select({ payment: schema.payments, order: schema.orders })
+     .from(schema.payments)
+@@ -719,6 +797,10 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+ 
+   let repaired = 0;
+   for (const { payment, order } of divergent) {
++    // Barreira local entre reparos: o lease pode ter expirado enquanto
++    // processávamos o anterior.
++    if (ctx?.lost?.()) throw new LeaseLostError();
++
+     const from = order.status as OrderStatus;
+     const to: OrderStatus | null =
+       payment.status === "aprovado"
+@@ -729,6 +811,25 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+     try {
+       let done = false;
+       await db.transaction(async (tx) => {
++        // Fencing transacional: validar e bloquear o lock de manutenção
++        // dentro desta mesma transação. Se o lease expirou ou foi tomado
++        // por outra instância, a linha não é encontrada e abortamos com
++        // rollback total (transição + auditoria + tudo).
++        if (ctx?.lockName && ctx?.leaseToken) {
++          const [lock] = await tx
++            .select()
++            .from(schema.systemLocks)
++            .where(
++              and(
++                eq(schema.systemLocks.name, ctx.lockName),
++                eq(schema.systemLocks.leaseToken, ctx.leaseToken),
++                sql`${schema.systemLocks.leaseExpiresAt} > now()`,
++              ),
++            )
++            .for("update");
++          if (!lock) throw new LeaseLostError();
++        }
++
+         const outcome = await transitionOrderInTx(tx as unknown as Db, {
+           orderId: order.id,
+           to,
+@@ -757,7 +858,8 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+         }
+       });
+       if (done) repaired++;
+-    } catch {
++    } catch (err) {
++      if (err instanceof LeaseLostError) throw err; // lease perdido — aborta o reparo inteiro
+       // Transição inválida no estado atual (ex.: revisão manual) — deixa
+       // para o fluxo humano; a divergência permanece auditável via query.
+     }
 diff --git a/docs/AUD01-AUD15-CORRECTIONS.md b/docs/AUD01-AUD15-CORRECTIONS.md
 index 179bcf2..1c23c69 100644
 --- a/docs/AUD01-AUD15-CORRECTIONS.md
@@ -3341,7 +3564,7 @@ index 179bcf2..1c23c69 100644
 +5. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
 diff --git a/docs/review/pr1-v5-guia-de-revisao.md b/docs/review/pr1-v5-guia-de-revisao.md
 new file mode 100644
-index 0000000..060b4ea
+index 0000000..d9c13c8
 --- /dev/null
 +++ b/docs/review/pr1-v5-guia-de-revisao.md
 @@ -0,0 +1,180 @@
@@ -3349,9 +3572,9 @@ index 0000000..060b4ea
 +
 +> **Status:** v5 NÃO publicável. v4 (`1cdf48f`) permanece a versão publicada no PR #1. Produção, migrations e SQLs de hardening intocados.
 +>
-+> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..b75b511` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
++> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..07db6a2` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
 +>
-+> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (**CI — SHA alvo da revisão final**).
++> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (CI verde) · `07db6a2` (**cercas de arrendamento + 6 testes de cerca — SHA alvo da revisão final**).
 +
 +## Rodada de correção (`68445bb`) — resultado da revisão v5.1
 +
