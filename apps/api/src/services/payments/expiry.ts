@@ -37,7 +37,7 @@ import { initAdapters } from "./index.js";
 import { transitionOrderInTx } from "../orders.js";
 import { audit } from "../../lib/audit.js";
 import { withSystemLock } from "./system-locks.js";
-import { type OrderStatus } from "@airsoft/shared";
+import { canTransition, type OrderStatus } from "@airsoft/shared";
 
 export interface ExpirySummary {
   scanned: number;
@@ -54,6 +54,9 @@ export interface ExpirySummary {
    *  consistência ainda não decorrida; confirmação independente virá na
    *  passada seguinte. */
   skippedConfirmWindow: number;
+  /** Correção pós-revisão: pagamento tardio (pedido cancelado + dinheiro
+   *  entrou) — assentado com registro durável de `refund_required`. */
+  latePayment: number;
 }
 
 const QUERY_RETRIES = 2;
@@ -119,6 +122,7 @@ export async function expireStaleReservations(
     skippedNotFoundGrace: 0,
     firstSeenRecorded: 0,
     skippedConfirmWindow: 0,
+    latePayment: 0,
   };
 
   for (const { order, payment } of stale) {
@@ -228,6 +232,21 @@ export async function expireStaleReservations(
       });
       if (settled.transitioned) {
         summary.cancelled++;
+      } else if (settled.refused) {
+        // Estado do pedido não permite cancelamento automático — pagamento
+        // permanece `pendente`; sinal operacional para investigação humana.
+        summary.skipped++;
+        await audit(db, {
+          action: "expiry.skipped_invalid_order_state",
+          entity: "order",
+          entityId: order.id,
+          actorLabel: "expiry:auto",
+          after: {
+            provider: payment.provider,
+            orderStatus: settled.orderStatus,
+            reason: "transição recusada pelo estado do pedido — assentamento automático proibido; investigação humana",
+          },
+        });
       } else {
         summary.skipped++; // webhook/admin venceu a corrida
       }
@@ -250,8 +269,28 @@ export async function expireStaleReservations(
         auditAfter: { providerStatus: remote.status, to: remote.status === "aprovado" ? "pagamento_aprovado" : "pagamento_em_processamento" },
         auditAction: "expiry.late_confirmation",
       });
-      if (settled.transitioned) {
+      if (settled.latePayment) {
+        // Correção pós-revisão: pedido cancelado + dinheiro entrou —
+        // assentado com refund_required durável (dentro de finalizeExpiry).
+        summary.latePayment++;
+      } else if (settled.transitioned) {
         summary.approved++;
+      } else if (settled.refused) {
+        // Estado do pedido não permite assentamento automático — pagamento
+        // permanece `pendente`; sinal operacional para investigação humana.
+        summary.skipped++;
+        await audit(db, {
+          action: "expiry.skipped_invalid_order_state",
+          entity: "order",
+          entityId: order.id,
+          actorLabel: "expiry:auto",
+          after: {
+            provider: payment.provider,
+            providerStatus: remote.status,
+            orderStatus: settled.orderStatus,
+            reason: "transição recusada pelo estado do pedido — assentamento automático proibido; investigação humana",
+          },
+        });
       } else {
         summary.skipped++; // resolvido por webhook/admin na janela
       }
@@ -270,6 +309,22 @@ export async function expireStaleReservations(
       });
       if (settled.transitioned) {
         summary.cancelled++;
+      } else if (settled.refused) {
+        // Estado do pedido não permite cancelamento automático — pagamento
+        // permanece `pendente`; sinal operacional para investigação humana.
+        summary.skipped++;
+        await audit(db, {
+          action: "expiry.skipped_invalid_order_state",
+          entity: "order",
+          entityId: order.id,
+          actorLabel: "expiry:auto",
+          after: {
+            provider: payment.provider,
+            providerStatus: remote.status,
+            orderStatus: settled.orderStatus,
+            reason: "transição recusada pelo estado do pedido — assentamento automático proibido; investigação humana",
+          },
+        });
       } else {
         summary.skipped++; // webhook/admin venceu a corrida
       }
@@ -302,11 +357,23 @@ export async function expireStaleReservations(
  * Revisão v5 (item 5): decisão de expiração ATÔMICA. Consulta externa ao
  * gateway NÃO participa (já aconteceu, fora da transação). Dentro de UMA
  * transação: pagamento lockado (FOR UPDATE) e revalidado como `pendente`
- * → update do pagamento → transição do pedido com lock FOR UPDATE
- * (ordem canônica pagamento→pedido, sem deadlocks com o webhook) →
- * auditoria DENTRO da transação. Crash em qualquer ponto = rollback
- * total: sem pagamento atualizado com pedido parado, sem estoque liberado
- * sem pedido cancelado, sem auditoria órfã.
+ * → DECISÃO pelo estado do pedido (correção pós-revisão), antes de
+ * qualquer escrita → update do pagamento → transição do pedido com lock
+ * FOR UPDATE (ordem canônica pagamento→pedido, sem deadlocks com o
+ * webhook) → auditoria DENTRO da transação. Crash em qualquer ponto =
+ * rollback total.
+ *
+ * Correção pós-revisão — comportamento definido POR ESTADO DO PEDIDO:
+ *  - pedido cancelado + cobrança APROVADA no provedor: pagamento tardio —
+ *    assenta o pagamento (dinheiro entrou) com registro durável de
+ *    `refund_required` (order.late_payment, mesma semântica da rota de
+ *    webhook); pedido NÃO reabre; NENHUMA transição é registrada.
+ *  - transição obrigatória recusada (estado não-transicionável): NADA é
+ *    assentado — pagamento permanece `pendente` para investigação humana
+ *    (a recusa acontece ANTES de qualquer escrita: nada a desfazer).
+ *  - pedido já no status alvo (from === to): reconciliação — pagamento
+ *    assentado SEM registrar transição e SEM auditoria de confirmação
+ *    tardia (ação própria: expiry.payment_reconciled).
  */
 async function finalizeExpiry(
   db: Db,
@@ -321,50 +388,113 @@ async function finalizeExpiry(
     auditAction?: string;
     auditAfter?: unknown;
   },
-): Promise<{ paymentSettled: boolean; transitioned: boolean }> {
-  return db.transaction(async (tx): Promise<{ paymentSettled: boolean; transitioned: boolean }> => {
-    const payRows = await tx.select().from(schema.payments).where(eq(schema.payments.id, input.paymentId)).for("update");
-    const payment = payRows[0];
-    if (!payment || payment.status !== "pendente") {
-      // Webhook/admin resolveu na janela entre consulta e transação — este
-      // caminho NÃO toca o estado (o dono da resolução já audita).
-      return { paymentSettled: false, transitioned: false };
-    }
-    await tx
-      .update(schema.payments)
-      .set({
-        status: input.paymentStatus,
-        authorizedCents: input.paymentStatus === "autorizado" ? (input.authorizedCents ?? null) : null,
-        capturedAt: input.captured ? new Date() : null,
-        // Assentamento invalida a observação de ausência (revisão v5):
-        // sem estado obsoleto reutilizável após mudança de estado.
-        notFoundFirstSeenAt: null,
-      })
-      .where(eq(schema.payments.id, payment.id));
+): Promise<{ paymentSettled: boolean; transitioned: boolean; latePayment?: boolean; refused?: boolean; orderStatus?: OrderStatus | null }> {
+  return db.transaction(
+    async (tx): Promise<{ paymentSettled: boolean; transitioned: boolean; latePayment?: boolean; refused?: boolean; orderStatus?: OrderStatus | null }> => {
+      const payRows = await tx.select().from(schema.payments).where(eq(schema.payments.id, input.paymentId)).for("update");
+      const payment = payRows[0];
+      if (!payment || payment.status !== "pendente") {
+        // Webhook/admin resolveu na janela entre consulta e transação — este
+        // caminho NÃO toca o estado (o dono da resolução já audita).
+        return { paymentSettled: false, transitioned: false };
+      }
 
-    let transitioned = false;
-    if (input.toOrderStatus) {
-      const outcome = await transitionOrderInTx(tx as unknown as Db, {
-        orderId: input.orderId,
-        to: input.toOrderStatus,
-        reason: input.reason,
-        actorLabel: "expiry:auto",
-      });
-      transitioned = outcome.transitioned;
-    }
+      // Ordem canônica de locks: pagamento lockado → pedido lockado. A
+      // DECISÃO acontece com o estado real sob lock, ANTES de qualquer
+      // escrita — recusa não tem nada a desfazer.
+      let order: typeof schema.orders.$inferSelect | null = null;
+      if (input.toOrderStatus) {
+        const rows = await tx.select().from(schema.orders).where(eq(schema.orders.id, input.orderId)).for("update");
+        order = rows[0] ?? null;
+      }
+      const from = (order?.status ?? null) as OrderStatus | null;
 
-    // Auditoria DENTRO da transação — registro e estado entram/saem juntos.
-    if (transitioned || input.auditAction) {
-      await audit(tx as unknown as Db, {
-        action: input.auditAction ?? "expiry.cancelled",
-        entity: "order",
-        entityId: input.orderId,
-        actorLabel: "expiry:auto",
-        after: input.auditAfter ?? { reason: input.reason, paymentStatus: input.paymentStatus },
-      });
-    }
-    return { paymentSettled: true, transitioned };
-  });
+      // Pagamento tardio: pedido cancelado + dinheiro entrou. Estado NÃO
+      // reabre; registro durável de refund_required DENTRO da transação.
+      if (order && from === "cancelado" && input.paymentStatus === "aprovado") {
+        await settleExpiryPayment(tx, input);
+        await audit(tx as unknown as Db, {
+          action: "order.late_payment",
+          entity: "order",
+          entityId: order.id,
+          actorLabel: "expiry:auto",
+          after: {
+            paymentId: payment.id,
+            providerTransactionId: payment.providerTransactionId,
+            amountCents: payment.amountCents,
+            decision: "refund_required",
+            source: "expiry",
+          },
+        });
+        return { paymentSettled: true, transitioned: false, latePayment: true };
+      }
+
+      // Transição obrigatória recusada: NADA é assentado. O pagamento
+      // permanece `pendente` — divergência legada exige investigação humana.
+      if (order && from !== input.toOrderStatus && !canTransition(from!, input.toOrderStatus!)) {
+        return { paymentSettled: false, transitioned: false, refused: true, orderStatus: from };
+      }
+
+      await settleExpiryPayment(tx, input);
+
+      let transitioned = false;
+      if (input.toOrderStatus && from !== input.toOrderStatus) {
+        const outcome = await transitionOrderInTx(tx as unknown as Db, {
+          orderId: input.orderId,
+          to: input.toOrderStatus,
+          reason: input.reason,
+          actorLabel: "expiry:auto",
+        });
+        transitioned = outcome.transitioned;
+      }
+
+      if (transitioned) {
+        // Auditoria DENTRO da transação — registro e estado entram/saem juntos.
+        await audit(tx as unknown as Db, {
+          action: input.auditAction ?? "expiry.cancelled",
+          entity: "order",
+          entityId: input.orderId,
+          actorLabel: "expiry:auto",
+          after: input.auditAfter ?? { reason: input.reason, paymentStatus: input.paymentStatus },
+        });
+      } else if (input.toOrderStatus) {
+        // Assentamento SEM transição (pedido já no alvo ou pedido ausente):
+        // auditoria PRÓPRIA de reconciliação — nunca late_confirmation como
+        // se a transição tivesse ocorrido.
+        await audit(tx as unknown as Db, {
+          action: "expiry.payment_reconciled",
+          entity: "order",
+          entityId: order?.id ?? input.orderId,
+          actorLabel: "expiry:auto",
+          after: { reason: input.reason, paymentStatus: input.paymentStatus, orderStatus: from },
+        });
+      }
+      return { paymentSettled: true, transitioned };
+    },
+  );
+}
+
+/** Assentamento do pagamento dentro da transação (v5, item 5). */
+async function settleExpiryPayment(
+  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
+  input: {
+    paymentId: string;
+    paymentStatus: "aprovado" | "autorizado" | "expirado" | "recusado" | "estornado";
+    authorizedCents?: number | null;
+    captured?: boolean;
+  },
+): Promise<void> {
+  await (tx as unknown as Db)
+    .update(schema.payments)
+    .set({
+      status: input.paymentStatus,
+      authorizedCents: input.paymentStatus === "autorizado" ? (input.authorizedCents ?? null) : null,
+      capturedAt: input.captured ? new Date() : null,
+      // Assentamento invalida a observação de ausência (revisão v5):
+      // sem estado obsoleto reutilizável após mudança de estado.
+      notFoundFirstSeenAt: null,
+    })
+    .where(eq(schema.payments.id, input.paymentId));
 }
 
 /**

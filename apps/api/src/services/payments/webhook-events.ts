@@ -56,14 +56,6 @@ export interface ApplyEventResult {
   latePayment?: boolean;
 }
 
-interface AuditPending {
-  action: string;
-  entity: string;
-  entityId: string | null;
-  actorLabel?: string | null;
-  after?: unknown;
-}
-
 type TargetPaymentStatus = "aprovado" | "recusado" | "expirado" | "estornado";
 
 function targetPaymentStatusFor(type: NormalizedWebhookEvent["type"]): TargetPaymentStatus {
@@ -277,7 +269,9 @@ export async function applyPaymentEvent(
   // ---- Transação única: pagamento + pedido + histórico + estoque + evento.
   // Ordem de locks (v5, canônica em TODO caminho que transiciona pedido com
   // pagamento): pagamento → pedido → linha do evento. Sem deadlocks.
-  const pendingAudits: AuditPending[] = [];
+  // Auditoria DENTRO da transação (correção pós-revisão): registro e
+  // alteração financeira compartilham a transação — auditoria obrigatória
+  // que falha reverte a mutação, nunca o contrário.
   const result = await db.transaction(async (tx) => {
     // Estado FRESCO sob lock — o `payment` de entrada pode estar obsoleto.
     const payRows = await tx
@@ -321,7 +315,10 @@ export async function applyPaymentEvent(
       (fresh.status === "aprovado" || fresh.status === "estornado") &&
       (targetPaymentStatus === "recusado" || targetPaymentStatus === "expirado")
     ) {
-      pendingAudits.push({
+      // Auditoria DENTRO da transação (correção pós-revisão): mutação e
+      // registro entram/saem juntos — a trilha não pode faltar depois do
+      // commit financeiro.
+      await audit(tx as unknown as Db, {
         action: "payment.regression_ignored",
         entity: "payment",
         entityId: fresh.id,
@@ -359,8 +356,8 @@ export async function applyPaymentEvent(
     const order = orderRows[0];
     if (!order) {
       // Sem pedido, o pagamento atualiza mas o evento é marcado — nada mais
-      // a derivar; divergência estrutural vai para auditoria.
-      pendingAudits.push({
+      // a derivar; divergência estrutural vai para auditoria (NA transação).
+      await audit(tx as unknown as Db, {
         action: "payment.order_missing",
         entity: "payment",
         entityId: fresh.id,
@@ -374,7 +371,7 @@ export async function applyPaymentEvent(
 
     // 3) Pagamento tardio: cancelado + dinheiro entrou. Estado NÃO reabre.
     if (from === "cancelado" && targetPaymentStatus === "aprovado") {
-      pendingAudits.push({
+      await audit(tx as unknown as Db, {
         action: "order.late_payment",
         entity: "order",
         entityId: order.id,
@@ -440,18 +437,6 @@ export async function applyPaymentEvent(
     await markProcessed();
     return { applied: true, paymentStatus: targetPaymentStatus } as ApplyEventResult;
   });
-
-  // Auditoria FORA da transação — append-only, não participa do lock. Se o
-  // processo morrer aqui, o estado está correto e falta só o registro.
-  for (const entry of pendingAudits) {
-    await audit(db, {
-      action: entry.action,
-      entity: entry.entity,
-      entityId: entry.entityId,
-      actorLabel: entry.actorLabel ?? undefined,
-      after: entry.after,
-    });
-  }
 
   return result;
 }
@@ -586,7 +571,10 @@ export async function recoverPendingEvents(
         .for("update");
       const fresh = locked[0];
       if (!fresh) return; // já marcado/lettered por outra passada
-      if (leaseToken && fresh.leaseToken && fresh.leaseToken !== leaseToken) return; // lease perdido
+      // Guarda ESTRITA (correção pós-revisão): com token informado, a
+      // correspondência é EXATA — token divergente OU persistido NULL
+      // bloqueiam. Um worker sem posse comprovável não finaliza o evento.
+      if (leaseToken && fresh.leaseToken !== leaseToken) return;
       await tx
         .update(schema.paymentEvents)
         .set({ deadLetter: true, processedAt: new Date(), lastError: reason, leaseExpiresAt: null, leaseToken: null })

@@ -648,9 +648,13 @@ export async function migrate(db: Db) {
   // nascia "processado" (processed_at = createdAt) sem passar por nenhum
   // caminho de aplicação. O DROP NOT NULL da v4 não remove o default;
   // aqui ele é eliminado — processed_at SÓ é gravado por markProcessed.
+  // DDL OBRIGATÓRIO (correção pós-revisão): SEM catch silencioso —
+  // reexecução é no-op (DROP DEFAULT sem default é no-op no PostgreSQL),
+  // mas falha REAL (permissão, banco indisponível, sintaxe) propaga e
+  // interrompe o boot: aplicar o schema pela metade não é inicialização.
   await db.execute(sql`
     ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP DEFAULT;
-  `).catch(() => {});
+  `);
   // Revisão v3 (ponto A): fila de recuperação com tentativas, backoff e
   // dead-letter. ALTER idempotentes — produção só com autorização.
   await db.execute(sql`
@@ -670,14 +674,15 @@ export async function migrate(db: Db) {
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_expires_at" timestamptz;
   `).catch(() => {});
   // Revisão v5: fencing token do lease — conclusão exige posse atual.
+  // DDL OBRIGATÓRIO: falha real propaga (IF NOT EXISTS cobre a idempotência).
   await db.execute(sql`
     ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_token" varchar(64);
-  `).catch(() => {});
+  `);
   // Revisão v5 (item 4): primeira observação `null` persistida — confirmação
   // de ausência exige consultas em passadas distintas.
   await db.execute(sql`
     ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "not_found_first_seen_at" timestamptz;
-  `).catch(() => {});
+  `);
   // Revisão v5: lease de manutenção entre INSTÂNCIAS (exclusão no banco,
   // não no processo) — uma instância varre por vez.
   await db.execute(sql`
@@ -687,10 +692,10 @@ export async function migrate(db: Db) {
       "lease_expires_at" timestamptz,
       "updated_at" timestamptz NOT NULL DEFAULT now()
     );
-  `).catch(() => {});
+  `);
   await db.execute(sql`
     INSERT INTO "system_locks" ("name") VALUES ('payment_maintenance') ON CONFLICT DO NOTHING;
-  `).catch(() => {});
+  `);
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "payment_events_payment_idx" ON "payment_events" ("payment_id");
   `);
