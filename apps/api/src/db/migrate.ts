@@ -644,6 +644,13 @@ export async function migrate(db: Db) {
   await db.execute(sql`
     ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP NOT NULL;
   `).catch(() => {});
+  // Revisão v5: o BASELINE criava a coluna com DEFAULT now() — evento novo
+  // nascia "processado" (processed_at = createdAt) sem passar por nenhum
+  // caminho de aplicação. O DROP NOT NULL da v4 não remove o default;
+  // aqui ele é eliminado — processed_at SÓ é gravado por markProcessed.
+  await db.execute(sql`
+    ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP DEFAULT;
+  `).catch(() => {});
   // Revisão v3 (ponto A): fila de recuperação com tentativas, backoff e
   // dead-letter. ALTER idempotentes — produção só com autorização.
   await db.execute(sql`
