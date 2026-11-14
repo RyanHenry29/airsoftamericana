@@ -3620,7 +3620,7 @@ index 179bcf2..1c23c69 100644
 +5. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
 diff --git a/docs/review/pr1-v5-guia-de-revisao.md b/docs/review/pr1-v5-guia-de-revisao.md
 new file mode 100644
-index 0000000..7611b3a
+index 0000000..0ed5256
 --- /dev/null
 +++ b/docs/review/pr1-v5-guia-de-revisao.md
 @@ -0,0 +1,180 @@
@@ -3628,9 +3628,9 @@ index 0000000..7611b3a
 +
 +> **Status:** v5 NÃO publicável. v4 (`1cdf48f`) permanece a versão publicada no PR #1. Produção, migrations e SQLs de hardening intocados.
 +>
-+> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..2379108` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
++> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..3524eb7` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
 +>
-+> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (CI verde) · `07db6a2` (**cercas de arrendamento + 6 testes de cerca — SHA alvo da revisão final**) · `d9c3d1a` (**fencing transacional no reparo + testes fortalecidos — SHA alvo da revisão final**) · `2379108` (**correções do revisor final: dead-letter com token, relógio do banco, primeira observação atômica, CI alinhado — SHA alvo da revisão final**).
++> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (CI verde) · `07db6a2` (**cercas de arrendamento + 6 testes de cerca — SHA alvo da revisão final**) · `d9c3d1a` (**fencing transacional no reparo + testes fortalecidos — SHA alvo da revisão final**) · `2379108` (**correções do revisor final: dead-letter com token, relógio do banco, primeira observação atômica, CI alinhado — SHA alvo da revisão final**) · `3524eb7` (**correções do revisor: dead-letter com token, relógio do banco, primeira observação atômica, CI PostgreSQL 17 — SHA alvo da revisão final**).
 +
 +## Rodada de correção (`68445bb`) — resultado da revisão v5.1
 +
