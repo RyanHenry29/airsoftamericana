@@ -57,6 +57,7 @@ try {
       "vitest",
       "run",
       "src/services/payments-integrity.test.ts",
+      "src/db/migration-ledger.test.ts",
       "src/services/checkout.test.ts",
       "src/services/orders.test.ts",
       "src/routes/price-stock-transactional.test.ts",

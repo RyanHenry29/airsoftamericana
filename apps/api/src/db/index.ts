@@ -195,6 +195,33 @@ export function setDb(instance: Db): void {
   db = instance;
 }
 
+/**
+ * Sessão EXCLUSIVA para migrations (AUD-03): o advisory lock é por SESSÃO —
+ * executado no pool genérico, cada query pode cair em conexão diferente e a
+ * coordenação multi-instância não serializa nada. Aqui: um cliente dedicado
+ * do pool carrega lock + ledger + DDL do começo ao fim do run.
+ *
+ * SOMENTE para backends com pool (Postgres). PGlite é single-session por
+ * natureza: qualquer query fora do callback de transaction() trava atrás do
+ * BEGIN aberto — passar o db do módulo aqui causaria deadlock quando o
+ * chamador rodar migrate() DENTRO de uma transação (fault-injection, seed).
+ * Nesses casos o motor usa o db recebido (tx-aware), como o blob original.
+ */
+export async function getMigrationSession(): Promise<{ db: Db; release: () => Promise<void> }> {
+  if (poolInstance) {
+    const client = await poolInstance.connect();
+    return {
+      db: drizzlePg(client, { schema }),
+      release: async () => {
+        client.release();
+      },
+    };
+  }
+  throw new Error(
+    "getMigrationSession exige pool (Postgres); PGlite usa o db do chamador (single-session)",
+  );
+}
+
 export async function closeDb(): Promise<void> {
   if (pgliteInstance) await pgliteInstance.close();
   if (poolInstance) await poolInstance.end();

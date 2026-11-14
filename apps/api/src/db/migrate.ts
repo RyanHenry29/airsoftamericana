@@ -1,20 +1,34 @@
+// language: TS, file: apps/api/src/db/migrate.ts
+// Migrações em PASSOS nomeados e coordenados (AUD-03): cada passo tem checksum
+// sha256 automático, execução transacional com registro no migration_ledger,
+// coordenação por advisory lock (multi-instância) e recuperação de passos
+// interrompidos. Cada statement usa IF NOT EXISTS: reexecutar é seguro em
+// dev, test e prod. Compatível com Postgres e PGlite (PG13+).
 import { sql } from "drizzle-orm";
 import type { Db } from "./index.js";
 import { syncSchemaColumns } from "./sync-columns.js";
 import { migrateLegacyRoles } from "./migrate-roles.js";
+import { runMigrationSteps, type MigrationStep, type MigrationRunSummary } from "./migration-ledger.js";
 
 /**
- * Migrações brutas, idempotentes — drizzle-kit não está configurado no pipeline.
- * Cada statement usa IF NOT EXISTS: reexecutar é seguro em dev, test e prod.
- *
- * Compatível com Postgres e PGlite (sem extensions além de gen_random_uuid,
- * que existe nativamente no PG13+ e no PGlite).
- * Enums são criados inline como varchar + CHECK constraints.
+ * Revisões dos passos de código: hash sha256 (truncado) do conteúdo do
+ * módulo no momento do refactor. BUMPE O valor quando alterar o módulo —
+ * o ledger recusa checksum divergente.
  */
+const SYNC_SCHEMA_COLUMNS_REVISION = "sha256:692ddfe4c5c193f5827a348c7dd14767";
+const MIGRATE_LEGACY_ROLES_REVISION = "sha256:6b0b93a4cb957a81c1d18cf5c72c87b3";
 
-export async function migrate(db: Db) {
-  // ---------------------------------------------------------------- Core: users & auth
-  await db.execute(sql`
+/**
+ * Passos de migração, em ordem. Passos SQL: statements executados dentro de
+ * uma transação única com o registro no ledger (aplicada ou nada). Passos de
+ * código: função `run` idempotente, revision explícito.
+ */
+export const MIGRATION_STEPS: MigrationStep[] = [
+  {
+    name: "001_core_users_auth",
+    description: "Core: users & auth",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "users" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "email" varchar(254) NOT NULL,
@@ -26,19 +40,16 @@ export async function migrate(db: Db) {
       "active" boolean NOT NULL DEFAULT true,
       "last_login_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "users_email_idx" ON "users" ("email");
-  `);
-  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "totp_last_used_step" integer;`);
-  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "needs_role_review" boolean NOT NULL DEFAULT false;`);
-  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passkey_credential_id" text;`);
-  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passkey_public_key" text;`);
-  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passkey_sign_count" integer NOT NULL DEFAULT 0;`);
-  await db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passkey_aaguid" text;`);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "users_email_idx" ON "users" ("email");`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "totp_last_used_step" integer;`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "needs_role_review" boolean NOT NULL DEFAULT false;`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passkey_credential_id" text;`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passkey_public_key" text;`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passkey_sign_count" integer NOT NULL DEFAULT 0;`,
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "passkey_aaguid" text;`,
+      `
     CREATE TABLE IF NOT EXISTS "sessions" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
@@ -53,34 +64,28 @@ export async function migrate(db: Db) {
       "mfa_verified_at" timestamptz,
       "mfa_challenge" text,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "token_hash" text;`);
-  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "idle_expires_at" timestamptz;`);
-  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "last_seen_at" timestamptz;`);
-  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "revoked_at" timestamptz;`);
-  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "mfa_verified_at" timestamptz;`);
-  await db.execute(sql`ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "mfa_challenge" text;`);
-  await db.execute(sql`ALTER TABLE "sessions" ALTER COLUMN "refresh_token_hash" DROP NOT NULL;`);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "sessions_user_idx" ON "sessions" ("user_id");
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "sessions_token_hash_idx" ON "sessions" ("token_hash");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "token_hash" text;`,
+      `ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "idle_expires_at" timestamptz;`,
+      `ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "last_seen_at" timestamptz;`,
+      `ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "revoked_at" timestamptz;`,
+      `ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "mfa_verified_at" timestamptz;`,
+      `ALTER TABLE "sessions" ADD COLUMN IF NOT EXISTS "mfa_challenge" text;`,
+      `ALTER TABLE "sessions" ALTER COLUMN "refresh_token_hash" DROP NOT NULL;`,
+      `
+    CREATE INDEX IF NOT EXISTS "sessions_user_idx" ON "sessions" ("user_id");`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "sessions_token_hash_idx" ON "sessions" ("token_hash");`,
+      `
     CREATE TABLE IF NOT EXISTS "mfa_recovery_codes" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
       "code_hash" text NOT NULL,
       "used_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS "mfa_recovery_codes_user_idx" ON "mfa_recovery_codes" ("user_id");`);
-
-  await db.execute(sql`
+    );`,
+      `CREATE INDEX IF NOT EXISTS "mfa_recovery_codes_user_idx" ON "mfa_recovery_codes" ("user_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "webauthn_credentials" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
@@ -91,12 +96,10 @@ export async function migrate(db: Db) {
       "label" varchar(120),
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "last_used_at" timestamptz
-    );
-  `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS "webauthn_credentials_user_idx" ON "webauthn_credentials" ("user_id");`);
-  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "webauthn_credentials_cred_idx" ON "webauthn_credentials" ("credential_id");`);
-
-  await db.execute(sql`
+    );`,
+      `CREATE INDEX IF NOT EXISTS "webauthn_credentials_user_idx" ON "webauthn_credentials" ("user_id");`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "webauthn_credentials_cred_idx" ON "webauthn_credentials" ("credential_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "admin_invites" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "email" varchar(254) NOT NULL,
@@ -106,22 +109,23 @@ export async function migrate(db: Db) {
       "used_at" timestamptz,
       "created_by" uuid REFERENCES "users"("id") ON DELETE SET NULL,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "admin_invites_token_hash_idx" ON "admin_invites" ("token_hash");`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS "admin_invites_email_idx" ON "admin_invites" ("email");`);
-
-  await db.execute(sql`
+    );`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "admin_invites_token_hash_idx" ON "admin_invites" ("token_hash");`,
+      `CREATE INDEX IF NOT EXISTS "admin_invites_email_idx" ON "admin_invites" ("email");`,
+      `
     CREATE TABLE IF NOT EXISTS "auth_lockouts" (
       "key" varchar(320) PRIMARY KEY,
       "fail_count" integer NOT NULL DEFAULT 0,
       "locked_until" timestamptz,
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-
-  // ---------------------------------------------------------------- Clientes
-  await db.execute(sql`
+    );`,
+    ],
+  },
+  {
+    name: "002_clientes",
+    description: "Clientes",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "customers" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "name" varchar(120) NOT NULL,
@@ -133,16 +137,12 @@ export async function migrate(db: Db) {
       "age_verified_at" timestamptz,
       "notes" text,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "customers_email_idx" ON "customers" ("email");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "customers_cpf_idx" ON "customers" ("cpf");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "customers_email_idx" ON "customers" ("email");`,
+      `
+    CREATE INDEX IF NOT EXISTS "customers_cpf_idx" ON "customers" ("cpf");`,
+      `
     CREATE TABLE IF NOT EXISTS "customer_addresses" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "customer_id" uuid NOT NULL REFERENCES "customers"("id") ON DELETE CASCADE,
@@ -156,15 +156,10 @@ export async function migrate(db: Db) {
       "state" varchar(2) NOT NULL,
       "country" varchar(2) NOT NULL DEFAULT 'BR',
       "is_default" boolean NOT NULL DEFAULT false
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "customer_addresses_customer_idx" ON "customer_addresses" ("customer_id");
-  `);
-
-  // Foto de perfil do cliente: uma por conta (índice único) — o upload faz
-  // upsert e o GET devolve os bytes com o mime gravado.
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "customer_addresses_customer_idx" ON "customer_addresses" ("customer_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "customer_avatars" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "customer_id" uuid NOT NULL REFERENCES "customers"("id") ON DELETE CASCADE,
@@ -172,15 +167,10 @@ export async function migrate(db: Db) {
       "bytes" bytea NOT NULL,
       "size_bytes" integer NOT NULL,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "customer_avatars_customer_uniq" ON "customer_avatars" ("customer_id");
-  `);
-
-  // Redefinição de senha: token sha256 (nunca o valor puro), TTL de 60 min,
-  // consumo marcado por used_at — a comparação é atômica em transação.
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "customer_avatars_customer_uniq" ON "customer_avatars" ("customer_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "password_resets" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "customer_id" uuid NOT NULL REFERENCES "customers"("id") ON DELETE CASCADE,
@@ -189,17 +179,18 @@ export async function migrate(db: Db) {
       "used_at" timestamptz,
       "requested_ip" varchar(45),
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "password_resets_token_idx" ON "password_resets" ("token_hash");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "password_resets_customer_idx" ON "password_resets" ("customer_id");
-  `);
-
-  // ---------------------------------------------------------------- Catálogo: brands, categories, products, variants
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "password_resets_token_idx" ON "password_resets" ("token_hash");`,
+      `
+    CREATE INDEX IF NOT EXISTS "password_resets_customer_idx" ON "password_resets" ("customer_id");`,
+    ],
+  },
+  {
+    name: "003_catalogo_brands_categories_products_vari",
+    description: "Catálogo: brands, categories, products, variants",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "brands" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "name" varchar(120) NOT NULL,
@@ -214,23 +205,18 @@ export async function migrate(db: Db) {
       "seo_og_image" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`ALTER TABLE "brands" ADD COLUMN IF NOT EXISTS "seo_title" varchar(160);`);
-  await db.execute(sql`ALTER TABLE "brands" ADD COLUMN IF NOT EXISTS "seo_description" varchar(320);`);
-  await db.execute(sql`ALTER TABLE "brands" ADD COLUMN IF NOT EXISTS "seo_canonical" text;`);
-  await db.execute(sql`ALTER TABLE "brands" ADD COLUMN IF NOT EXISTS "seo_og_image" text;`);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "brands_slug_idx" ON "brands" ("slug");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "brands_active_idx" ON "brands" ("active");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "brands_position_idx" ON "brands" ("position");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `ALTER TABLE "brands" ADD COLUMN IF NOT EXISTS "seo_title" varchar(160);`,
+      `ALTER TABLE "brands" ADD COLUMN IF NOT EXISTS "seo_description" varchar(320);`,
+      `ALTER TABLE "brands" ADD COLUMN IF NOT EXISTS "seo_canonical" text;`,
+      `ALTER TABLE "brands" ADD COLUMN IF NOT EXISTS "seo_og_image" text;`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "brands_slug_idx" ON "brands" ("slug");`,
+      `
+    CREATE INDEX IF NOT EXISTS "brands_active_idx" ON "brands" ("active");`,
+      `
+    CREATE INDEX IF NOT EXISTS "brands_position_idx" ON "brands" ("position");`,
+      `
     CREATE TABLE IF NOT EXISTS "categories" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "name" varchar(120) NOT NULL,
@@ -247,23 +233,18 @@ export async function migrate(db: Db) {
       "seo_og_image" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "seo_title" varchar(160);`);
-  await db.execute(sql`ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "seo_description" varchar(320);`);
-  await db.execute(sql`ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "seo_canonical" text;`);
-  await db.execute(sql`ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "seo_og_image" text;`);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "categories_slug_idx" ON "categories" ("slug");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "categories_parent_idx" ON "categories" ("parent_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "categories_active_idx" ON "categories" ("active");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "seo_title" varchar(160);`,
+      `ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "seo_description" varchar(320);`,
+      `ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "seo_canonical" text;`,
+      `ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "seo_og_image" text;`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "categories_slug_idx" ON "categories" ("slug");`,
+      `
+    CREATE INDEX IF NOT EXISTS "categories_parent_idx" ON "categories" ("parent_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "categories_active_idx" ON "categories" ("active");`,
+      `
     CREATE TABLE IF NOT EXISTS "products" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "name" varchar(160) NOT NULL,
@@ -288,33 +269,27 @@ export async function migrate(db: Db) {
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       "published_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "technical_description" text;`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "cost_cents" integer;`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "tags" text;`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "seo_title" varchar(200);`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "seo_description" varchar(320);`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "seo_canonical" text;`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "seo_og_image" text;`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "videos" jsonb;`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz NOT NULL DEFAULT now();`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "published_at" timestamptz;`);
-  await db.execute(sql`ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "active" boolean NOT NULL DEFAULT true;`);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "products_slug_idx" ON "products" ("slug");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "products_category_idx" ON "products" ("category_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "products_brand_idx" ON "products" ("brand_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "products_active_idx" ON "products" ("published", "active");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "technical_description" text;`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "cost_cents" integer;`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "tags" text;`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "seo_title" varchar(200);`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "seo_description" varchar(320);`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "seo_canonical" text;`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "seo_og_image" text;`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "videos" jsonb;`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz NOT NULL DEFAULT now();`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "published_at" timestamptz;`,
+      `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "active" boolean NOT NULL DEFAULT true;`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "products_slug_idx" ON "products" ("slug");`,
+      `
+    CREATE INDEX IF NOT EXISTS "products_category_idx" ON "products" ("category_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "products_brand_idx" ON "products" ("brand_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "products_active_idx" ON "products" ("published", "active");`,
+      `
     CREATE TABLE IF NOT EXISTS "product_variants" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
@@ -327,24 +302,19 @@ export async function migrate(db: Db) {
       "condicao" varchar(20) DEFAULT 'novo',
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "promo_price_cents" integer;`);
-  await db.execute(sql`ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "weight_grams" integer NOT NULL DEFAULT 0;`);
-  await db.execute(sql`ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "active" boolean NOT NULL DEFAULT true;`);
-  await db.execute(sql`ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz NOT NULL DEFAULT now();`);
-  await db.execute(sql`ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "condicao" varchar(20) DEFAULT 'novo';`);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "product_variants_sku_idx" ON "product_variants" ("sku");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "product_variants_product_idx" ON "product_variants" ("product_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "product_variants_active_idx" ON "product_variants" ("active");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "promo_price_cents" integer;`,
+      `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "weight_grams" integer NOT NULL DEFAULT 0;`,
+      `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "active" boolean NOT NULL DEFAULT true;`,
+      `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz NOT NULL DEFAULT now();`,
+      `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "condicao" varchar(20) DEFAULT 'novo';`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "product_variants_sku_idx" ON "product_variants" ("sku");`,
+      `
+    CREATE INDEX IF NOT EXISTS "product_variants_product_idx" ON "product_variants" ("product_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "product_variants_active_idx" ON "product_variants" ("active");`,
+      `
     CREATE TABLE IF NOT EXISTS "product_images" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
@@ -353,14 +323,11 @@ export async function migrate(db: Db) {
       "kind" varchar(20) NOT NULL DEFAULT 'image',
       "position" integer NOT NULL DEFAULT 0,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "product_images_product_idx" ON "product_images" ("product_id");
-  `);
-  await db.execute(sql`ALTER TABLE "product_images" ADD COLUMN IF NOT EXISTS "kind" varchar(20) NOT NULL DEFAULT 'image';`);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "product_images_product_idx" ON "product_images" ("product_id");`,
+      `ALTER TABLE "product_images" ADD COLUMN IF NOT EXISTS "kind" varchar(20) NOT NULL DEFAULT 'image';`,
+      `
     CREATE TABLE IF NOT EXISTS "product_specs" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
@@ -368,40 +335,36 @@ export async function migrate(db: Db) {
       "value" text NOT NULL,
       "position" integer NOT NULL DEFAULT 0,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "product_specs_product_idx" ON "product_specs" ("product_id");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "product_specs_product_idx" ON "product_specs" ("product_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "related_products" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
       "related_product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
       "position" integer NOT NULL DEFAULT 0,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "related_products_pair_idx" ON "related_products" ("product_id", "related_product_id");
-  `);
-
-  // ---------------------------------------------------------------- CMS
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "related_products_pair_idx" ON "related_products" ("product_id", "related_product_id");`,
+    ],
+  },
+  {
+    name: "004_cms",
+    description: "CMS",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "banner_images" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "mime" varchar(64) NOT NULL,
       "bytes" bytea NOT NULL,
       "size_bytes" integer NOT NULL,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "banner_images_created_idx" ON "banner_images" ("created_at");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "banner_images_created_idx" ON "banner_images" ("created_at");`,
+      `
     CREATE TABLE IF NOT EXISTS "banners" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "title" varchar(160) NOT NULL,
@@ -418,22 +381,16 @@ export async function migrate(db: Db) {
       "active" boolean NOT NULL DEFAULT true,
       "position" integer NOT NULL DEFAULT 0,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "banners_active_idx" ON "banners" ("active");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "banners_position_idx" ON "banners" ("position");
-  `);
-  await db.execute(sql`
-    ALTER TABLE "banners" ADD COLUMN IF NOT EXISTS "image_upload_id" uuid REFERENCES "banner_images"("id") ON DELETE SET NULL;
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "banners_image_upload_idx" ON "banners" ("image_upload_id");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "banners_active_idx" ON "banners" ("active");`,
+      `
+    CREATE INDEX IF NOT EXISTS "banners_position_idx" ON "banners" ("position");`,
+      `
+    ALTER TABLE "banners" ADD COLUMN IF NOT EXISTS "image_upload_id" uuid REFERENCES "banner_images"("id") ON DELETE SET NULL;`,
+      `
+    CREATE INDEX IF NOT EXISTS "banners_image_upload_idx" ON "banners" ("image_upload_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "homepage_sections" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "kind" varchar(40) NOT NULL,
@@ -442,20 +399,18 @@ export async function migrate(db: Db) {
       "position" integer NOT NULL DEFAULT 0,
       "active" boolean NOT NULL DEFAULT true,
       "config" jsonb NOT NULL DEFAULT '{}'::jsonb
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "homepage_sections_position_idx" ON "homepage_sections" ("position");
-  `);
-
-  // Seções removidas da home (a loja não renderiza mais): some também das
-  // linhas já gravadas no CMS — idempotente, roda no bootstrap e nos testes.
-  await db.execute(sql`
-    DELETE FROM "homepage_sections" WHERE "kind" IN ('benefits', 'institutional', 'newsletter');
-  `);
-
-  // ---------------------------------------------------------------- Estoque
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "homepage_sections_position_idx" ON "homepage_sections" ("position");`,
+      `
+    DELETE FROM "homepage_sections" WHERE "kind" IN ('benefits', 'institutional', 'newsletter');`,
+    ],
+  },
+  {
+    name: "005_estoque",
+    description: "Estoque",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "inventory" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "variant_id" uuid NOT NULL REFERENCES "product_variants"("id") ON DELETE CASCADE,
@@ -463,13 +418,10 @@ export async function migrate(db: Db) {
       "reserved" integer NOT NULL DEFAULT 0,
       "min_quantity" integer NOT NULL DEFAULT 0,
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "inventory_variant_idx" ON "inventory" ("variant_id");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "inventory_variant_idx" ON "inventory" ("variant_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "inventory_movements" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "variant_id" uuid NOT NULL REFERENCES "product_variants"("id") ON DELETE CASCADE,
@@ -482,20 +434,20 @@ export async function migrate(db: Db) {
       "reason" text,
       "user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "inventory_movements_variant_idx" ON "inventory_movements" ("variant_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "inventory_movements_type_idx" ON "inventory_movements" ("type");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "inventory_movements_created_idx" ON "inventory_movements" ("created_at");
-  `);
-
-  // ---------------------------------------------------------------- Carrinho (after product_variants)
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "inventory_movements_variant_idx" ON "inventory_movements" ("variant_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "inventory_movements_type_idx" ON "inventory_movements" ("type");`,
+      `
+    CREATE INDEX IF NOT EXISTS "inventory_movements_created_idx" ON "inventory_movements" ("created_at");`,
+    ],
+  },
+  {
+    name: "006_carrinho",
+    description: "Carrinho (after product_variants)",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "carts" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "customer_id" uuid REFERENCES "customers"("id") ON DELETE CASCADE,
@@ -503,29 +455,27 @@ export async function migrate(db: Db) {
       "coupon_code" varchar(40),
       "expires_at" timestamptz,
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "carts_customer_idx" ON "carts" ("customer_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "carts_session_idx" ON "carts" ("session_key");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "carts_customer_idx" ON "carts" ("customer_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "carts_session_idx" ON "carts" ("session_key");`,
+      `
     CREATE TABLE IF NOT EXISTS "cart_items" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "cart_id" uuid NOT NULL REFERENCES "carts"("id") ON DELETE CASCADE,
       "variant_id" uuid NOT NULL REFERENCES "product_variants"("id") ON DELETE RESTRICT,
       "quantity" integer NOT NULL
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "cart_items_cart_variant_idx" ON "cart_items" ("cart_id", "variant_id");
-  `);
-
-  // ---------------------------------------------------------------- Pedidos
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "cart_items_cart_variant_idx" ON "cart_items" ("cart_id", "variant_id");`,
+    ],
+  },
+  {
+    name: "007_pedidos",
+    description: "Pedidos",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "orders" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "number" varchar(20) NOT NULL,
@@ -551,9 +501,8 @@ export async function migrate(db: Db) {
       CONSTRAINT "orders_status_check" CHECK ("status" IN ('aguardando_pagamento','pagamento_em_processamento','em_analise_antifraude','aguardando_revisao_manual','pagamento_aprovado','separacao','preparando_envio','enviado','entregue','cancelado','reembolsado','em_disputa','chargeback_recebido')),
       CONSTRAINT "orders_payment_method_check" CHECK ("payment_method" IN ('pix','cartao','boleto')),
       CONSTRAINT "orders_risk_level_check" CHECK ("risk_level" IN ('baixo','medio','alto'))
-    );
-  `);
-  await db.execute(sql`
+    );`,
+      `
     CREATE TABLE IF NOT EXISTS "order_items" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "order_id" uuid NOT NULL REFERENCES "orders"("id") ON DELETE CASCADE,
@@ -563,25 +512,18 @@ export async function migrate(db: Db) {
       "quantity" integer NOT NULL,
       "unit_price_cents" integer NOT NULL,
       "total_cents" integer NOT NULL
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "orders_number_idx" ON "orders" ("number");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "orders_customer_idx" ON "orders" ("customer_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "orders_status_idx" ON "orders" ("status");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "orders_created_idx" ON "orders" ("created_at");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "orders_volume_day_idx" ON "orders" ("volume_day");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "orders_number_idx" ON "orders" ("number");`,
+      `
+    CREATE INDEX IF NOT EXISTS "orders_customer_idx" ON "orders" ("customer_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "orders_status_idx" ON "orders" ("status");`,
+      `
+    CREATE INDEX IF NOT EXISTS "orders_created_idx" ON "orders" ("created_at");`,
+      `
+    CREATE INDEX IF NOT EXISTS "orders_volume_day_idx" ON "orders" ("volume_day");`,
+      `
     CREATE TABLE IF NOT EXISTS "order_status_history" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "order_id" uuid NOT NULL REFERENCES "orders"("id") ON DELETE CASCADE,
@@ -591,14 +533,16 @@ export async function migrate(db: Db) {
       "actor_id" uuid,
       "reason" text,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "order_status_history_order_idx" ON "order_status_history" ("order_id");
-  `);
-
-  // ---------------------------------------------------------------- Pagamentos
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "order_status_history_order_idx" ON "order_status_history" ("order_id");`,
+    ],
+  },
+  {
+    name: "008_pagamentos",
+    description: "Pagamentos",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "payments" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "order_id" uuid NOT NULL REFERENCES "orders"("id") ON DELETE CASCADE,
@@ -613,100 +557,53 @@ export async function migrate(db: Db) {
       "captured_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "payments_order_idx" ON "payments" ("order_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "payments_status_idx" ON "payments" ("status");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "payments_provider_idx" ON "payments" ("provider");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "payments_order_idx" ON "payments" ("order_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "payments_status_idx" ON "payments" ("status");`,
+      `
+    CREATE INDEX IF NOT EXISTS "payments_provider_idx" ON "payments" ("provider");`,
+      `
     CREATE TABLE IF NOT EXISTS "payment_events" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "payment_id" uuid REFERENCES "payments"("id") ON DELETE CASCADE,
       "type" varchar(40) NOT NULL,
       "payload" jsonb NOT NULL,
       "processed_at" timestamptz
-    );
-  `);
-  // AUD-15: payment_id é NULLABLE — evento de webhook que chega na corrida
-  // checkout×webhook (cobrança criada, INSERT local ainda não commitado)
-  // fica estacionado sem paymentId e é aplicado depois pelo checkout
-  // (applyPendingEventsForPayment). processed_at também fica NULL até aplicar.
-  // DDLs OBRIGATÓRIOS (correção pós-revisão): SEM catch silencioso —
-  // DROP NOT NULL repetido é no-op no PostgreSQL (a coluna já aceita NULL),
-  // então a reexecução não falha; falha REAL (permissão, conexão) propaga e
-  // interrompe o boot: schema pela metade não é inicialização.
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ALTER COLUMN "payment_id" DROP NOT NULL;
-  `);
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP NOT NULL;
-  `);
-  // Revisão v5: o BASELINE criava a coluna com DEFAULT now() — evento novo
-  // nascia "processado" (processed_at = createdAt) sem passar por nenhum
-  // caminho de aplicação. O DROP NOT NULL da v4 não remove o default;
-  // aqui ele é eliminado — processed_at SÓ é gravado por markProcessed.
-  // DDL OBRIGATÓRIO (correção pós-revisão): SEM catch silencioso —
-  // reexecução é no-op (DROP DEFAULT sem default é no-op no PostgreSQL),
-  // mas falha REAL (permissão, banco indisponível, sintaxe) propaga e
-  // interrompe o boot: aplicar o schema pela metade não é inicialização.
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP DEFAULT;
-  `);
-  // Revisão v3 (ponto A): fila de recuperação com tentativas, backoff e
-  // dead-letter. ALTER idempotentes — produção só com autorização.
-  // DDLs OBRIGATÓRIOS (correção pós-revisão): SEM catch silencioso —
-  // ADD COLUMN IF NOT EXISTS cobre a idempotência; falha REAL propaga.
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0;
-  `);
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "last_attempt_at" timestamptz;
-  `);
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "last_error" text;
-  `);
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "dead_letter" boolean NOT NULL DEFAULT false;
-  `);
-  // Revisão v4: lease do claim (exclusão de reivindicação entre instâncias).
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_expires_at" timestamptz;
-  `);
-  // Revisão v5: fencing token do lease — conclusão exige posse atual.
-  // DDL OBRIGATÓRIO: falha real propaga (IF NOT EXISTS cobre a idempotência).
-  await db.execute(sql`
-    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_token" varchar(64);
-  `);
-  // Revisão v5 (item 4): primeira observação `null` persistida — confirmação
-  // de ausência exige consultas em passadas distintas.
-  await db.execute(sql`
-    ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "not_found_first_seen_at" timestamptz;
-  `);
-  // Revisão v5: lease de manutenção entre INSTÂNCIAS (exclusão no banco,
-  // não no processo) — uma instância varre por vez.
-  await db.execute(sql`
+    );`,
+      `
+    ALTER TABLE "payment_events" ALTER COLUMN "payment_id" DROP NOT NULL;`,
+      `
+    ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP NOT NULL;`,
+      `
+    ALTER TABLE "payment_events" ALTER COLUMN "processed_at" DROP DEFAULT;`,
+      `
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "attempts" integer NOT NULL DEFAULT 0;`,
+      `
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "last_attempt_at" timestamptz;`,
+      `
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "last_error" text;`,
+      `
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "dead_letter" boolean NOT NULL DEFAULT false;`,
+      `
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_expires_at" timestamptz;`,
+      `
+    ALTER TABLE "payment_events" ADD COLUMN IF NOT EXISTS "lease_token" varchar(64);`,
+      `
+    ALTER TABLE "payments" ADD COLUMN IF NOT EXISTS "not_found_first_seen_at" timestamptz;`,
+      `
     CREATE TABLE IF NOT EXISTS "system_locks" (
       "name" varchar(64) PRIMARY KEY,
       "lease_token" varchar(64),
       "lease_expires_at" timestamptz,
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    INSERT INTO "system_locks" ("name") VALUES ('payment_maintenance') ON CONFLICT DO NOTHING;
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "payment_events_payment_idx" ON "payment_events" ("payment_id");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    INSERT INTO "system_locks" ("name") VALUES ('payment_maintenance') ON CONFLICT DO NOTHING;`,
+      `
+    CREATE INDEX IF NOT EXISTS "payment_events_payment_idx" ON "payment_events" ("payment_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "refunds" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "payment_id" uuid NOT NULL REFERENCES "payments"("id") ON DELETE CASCADE,
@@ -716,13 +613,10 @@ export async function migrate(db: Db) {
       "gateway_refund_id" varchar(128),
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "refunds_payment_idx" ON "refunds" ("payment_id");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "refunds_payment_idx" ON "refunds" ("payment_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "gateway_configs" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "provider" varchar(32) NOT NULL,
@@ -733,17 +627,18 @@ export async function migrate(db: Db) {
       "last_decryption_failure_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "gateway_configs_provider_idx" ON "gateway_configs" ("provider");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "gateway_configs_default_idx" ON "gateway_configs" ("is_default");
-  `);
-
-  // ---------------------------------------------------------------- Chargebacks
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "gateway_configs_provider_idx" ON "gateway_configs" ("provider");`,
+      `
+    CREATE INDEX IF NOT EXISTS "gateway_configs_default_idx" ON "gateway_configs" ("is_default");`,
+    ],
+  },
+  {
+    name: "009_chargebacks",
+    description: "Chargebacks",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "chargebacks" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "payment_id" uuid NOT NULL REFERENCES "payments"("id") ON DELETE CASCADE,
@@ -757,19 +652,14 @@ export async function migrate(db: Db) {
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "chargebacks_status_check" CHECK ("status" IN ('notificado','aguardando_analise','documentacao_pendente','defesa_preparada','defesa_enviada','em_analise','ganho','perdido','encerrado'))
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "chargebacks_payment_idx" ON "chargebacks" ("payment_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "chargebacks_status_idx" ON "chargebacks" ("status");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "chargebacks_deadline_idx" ON "chargebacks" ("deadline_at");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "chargebacks_payment_idx" ON "chargebacks" ("payment_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "chargebacks_status_idx" ON "chargebacks" ("status");`,
+      `
+    CREATE INDEX IF NOT EXISTS "chargebacks_deadline_idx" ON "chargebacks" ("deadline_at");`,
+      `
     CREATE TABLE IF NOT EXISTS "chargeback_evidence" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "chargeback_id" uuid NOT NULL REFERENCES "chargebacks"("id") ON DELETE CASCADE,
@@ -780,14 +670,16 @@ export async function migrate(db: Db) {
       "size_bytes" integer,
       "submitted_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "chargeback_evidence_chargeback_idx" ON "chargeback_evidence" ("chargeback_id");
-  `);
-
-  // ---------------------------------------------------------------- Fraud
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "chargeback_evidence_chargeback_idx" ON "chargeback_evidence" ("chargeback_id");`,
+    ],
+  },
+  {
+    name: "010_fraud",
+    description: "Fraud",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "fraud_assessments" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "order_id" uuid NOT NULL REFERENCES "orders"("id") ON DELETE CASCADE,
@@ -799,16 +691,12 @@ export async function migrate(db: Db) {
       "reviewer_id" uuid,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "fraud_assessments_level_check" CHECK ("level" IN ('baixo','medio','alto'))
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "fraud_assessments_order_idx" ON "fraud_assessments" ("order_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "fraud_assessments_level_idx" ON "fraud_assessments" ("level");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "fraud_assessments_order_idx" ON "fraud_assessments" ("order_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "fraud_assessments_level_idx" ON "fraud_assessments" ("level");`,
+      `
     CREATE TABLE IF NOT EXISTS "fraud_rules" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "key" varchar(64) NOT NULL,
@@ -819,27 +707,26 @@ export async function migrate(db: Db) {
       "priority" integer NOT NULL DEFAULT 0,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "fraud_rules_key_idx" ON "fraud_rules" ("key");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "fraud_rules_key_idx" ON "fraud_rules" ("key");`,
+      `
     CREATE TABLE IF NOT EXISTS "watchlist" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "kind" varchar(20) NOT NULL,
       "value" text NOT NULL,
       "reason" text,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "watchlist_kind_value_idx" ON "watchlist" ("kind", "value");
-  `);
-
-  // ---------------------------------------------------------------- Fraud (cont.)
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "watchlist_kind_value_idx" ON "watchlist" ("kind", "value");`,
+    ],
+  },
+  {
+    name: "011_fraud_cont",
+    description: "Fraud (cont.)",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "fraud_review_events" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "assessment_id" uuid REFERENCES "fraud_assessments"("id") ON DELETE CASCADE,
@@ -847,14 +734,16 @@ export async function migrate(db: Db) {
       "note" text,
       "reviewer_id" uuid REFERENCES "users"("id"),
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "fraud_review_events_assessment_idx" ON "fraud_review_events" ("assessment_id");
-  `);
-
-  // ---------------------------------------------------------------- Envios
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "fraud_review_events_assessment_idx" ON "fraud_review_events" ("assessment_id");`,
+    ],
+  },
+  {
+    name: "012_envios",
+    description: "Envios",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "shipments" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "order_id" uuid NOT NULL REFERENCES "orders"("id"),
@@ -865,27 +754,26 @@ export async function migrate(db: Db) {
       "shipped_at" timestamptz,
       "delivered_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "shipments_order_idx" ON "shipments" ("order_id");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "shipments_order_idx" ON "shipments" ("order_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "shipping_events" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "shipment_id" uuid NOT NULL REFERENCES "shipments"("id") ON DELETE CASCADE,
       "status" varchar(40) NOT NULL,
       "description" text,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "shipping_events_shipment_idx" ON "shipping_events" ("shipment_id");
-  `);
-
-  // ---------------------------------------------------------------- Promoções
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "shipping_events_shipment_idx" ON "shipping_events" ("shipment_id");`,
+    ],
+  },
+  {
+    name: "013_promocoes",
+    description: "Promoções",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "promotions" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "name" varchar(120) NOT NULL,
@@ -894,11 +782,14 @@ export async function migrate(db: Db) {
       "starts_at" timestamptz,
       "ends_at" timestamptz,
       "active" boolean NOT NULL DEFAULT true
-    );
-  `);
-
-  // ---------------------------------------------------------------- Limites de volume
-  await db.execute(sql`
+    );`,
+    ],
+  },
+  {
+    name: "014_limites_de_volume",
+    description: "Limites de volume",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "order_volume_limits" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "max_orders_per_day" integer NOT NULL DEFAULT 0,
@@ -908,11 +799,14 @@ export async function migrate(db: Db) {
       "action_when_exceeded" varchar(20) NOT NULL DEFAULT 'bloquear_checkout',
       "enabled" boolean NOT NULL DEFAULT false,
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-
-  // ---------------------------------------------------------------- Notificações
-  await db.execute(sql`
+    );`,
+    ],
+  },
+  {
+    name: "015_notificacoes",
+    description: "Notificações",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "notifications" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "kind" varchar(40) NOT NULL,
@@ -921,14 +815,16 @@ export async function migrate(db: Db) {
       "severity" varchar(10) NOT NULL DEFAULT 'info',
       "read_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "notifications_created_idx" ON "notifications" ("created_at");
-  `);
-
-  // ---------------------------------------------------------------- Métricas diárias
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "notifications_created_idx" ON "notifications" ("created_at");`,
+    ],
+  },
+  {
+    name: "016_metricas_diarias",
+    description: "Métricas diárias",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "daily_metrics" (
       "day" varchar(10) PRIMARY KEY,
       "orders_created" integer NOT NULL DEFAULT 0,
@@ -940,11 +836,14 @@ export async function migrate(db: Db) {
       "chargeback_amount_cents" bigint NOT NULL DEFAULT 0,
       "tickets_cents" bigint NOT NULL DEFAULT 0,
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-
-  // ---------------------------------------------------------------- Histórico de produtos
-  await db.execute(sql`
+    );`,
+    ],
+  },
+  {
+    name: "017_historico_de_produtos",
+    description: "Histórico de produtos",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "product_change_history" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
@@ -954,17 +853,18 @@ export async function migrate(db: Db) {
       "before_value" text,
       "after_value" text,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "product_change_history_product_idx" ON "product_change_history" ("product_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "product_change_history_created_idx" ON "product_change_history" ("created_at");
-  `);
-
-  // ---------------------------------------------------------------- Chaves de idempotência
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "product_change_history_product_idx" ON "product_change_history" ("product_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "product_change_history_created_idx" ON "product_change_history" ("created_at");`,
+    ],
+  },
+  {
+    name: "018_chaves_de_idempotencia",
+    description: "Chaves de idempotência",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "idempotency_keys" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "key" varchar(255) NOT NULL UNIQUE,
@@ -972,27 +872,31 @@ export async function migrate(db: Db) {
       "payload_hash" varchar(64),
       "result" jsonb,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "idempotency_keys_key_idx" ON "idempotency_keys" ("key");
-  `);
-
-  // ---------------------------------------------------------------- Produtos compatíveis
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "idempotency_keys_key_idx" ON "idempotency_keys" ("key");`,
+    ],
+  },
+  {
+    name: "019_produtos_compativeis",
+    description: "Produtos compatíveis",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "compatible_products" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
       "compatible_product_id" uuid NOT NULL REFERENCES "products"("id") ON DELETE CASCADE,
       "position" integer NOT NULL DEFAULT 0
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "compatible_products_pair_idx" ON "compatible_products" ("product_id", "compatible_product_id");
-  `);
-
-  // ---------------------------------------------------------------- Cupons
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "compatible_products_pair_idx" ON "compatible_products" ("product_id", "compatible_product_id");`,
+    ],
+  },
+  {
+    name: "020_cupons",
+    description: "Cupons",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "coupons" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "code" varchar(32) NOT NULL,
@@ -1006,17 +910,18 @@ export async function migrate(db: Db) {
       "active" boolean NOT NULL DEFAULT true,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "coupons_code_idx" ON "coupons" ("code");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "coupons_active_idx" ON "coupons" ("active");
-  `);
-
-  // ---------------------------------------------------------------- Newsletter
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "coupons_code_idx" ON "coupons" ("code");`,
+      `
+    CREATE INDEX IF NOT EXISTS "coupons_active_idx" ON "coupons" ("active");`,
+    ],
+  },
+  {
+    name: "021_newsletter",
+    description: "Newsletter",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "newsletter_subscribers" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "email" varchar(254) NOT NULL,
@@ -1024,14 +929,16 @@ export async function migrate(db: Db) {
       "source" varchar(40),
       "confirmed_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "newsletter_email_idx" ON "newsletter_subscribers" ("email");
-  `);
-
-  // ---------------------------------------------------------------- Webhooks
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "newsletter_email_idx" ON "newsletter_subscribers" ("email");`,
+    ],
+  },
+  {
+    name: "022_webhooks",
+    description: "Webhooks",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "webhooks" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "source" varchar(32) NOT NULL,
@@ -1041,27 +948,31 @@ export async function migrate(db: Db) {
       "error" text,
       "processed_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "webhooks_processed_idx" ON "webhooks" ("processed");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "webhooks_source_idx" ON "webhooks" ("source");
-  `);
-
-  // ---------------------------------------------------------------- Settings
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "webhooks_processed_idx" ON "webhooks" ("processed");`,
+      `
+    CREATE INDEX IF NOT EXISTS "webhooks_source_idx" ON "webhooks" ("source");`,
+    ],
+  },
+  {
+    name: "023_settings",
+    description: "Settings",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "system_settings" (
       "key" varchar(64) PRIMARY KEY,
       "value" jsonb NOT NULL,
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       "updated_by" uuid
-    );
-  `);
-
-  // ---------------------------------------------------------------- Fraud
-  await db.execute(sql`
+    );`,
+    ],
+  },
+  {
+    name: "024_fraud_cont2",
+    description: "Fraud",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "fraud_assessments" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "order_id" uuid NOT NULL REFERENCES "orders"("id") ON DELETE CASCADE,
@@ -1073,16 +984,12 @@ export async function migrate(db: Db) {
       "reviewer_id" uuid,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT "fraud_assessments_level_check" CHECK ("level" IN ('baixo','medio','alto'))
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "fraud_assessments_order_idx" ON "fraud_assessments" ("order_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "fraud_assessments_level_idx" ON "fraud_assessments" ("level");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "fraud_assessments_order_idx" ON "fraud_assessments" ("order_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "fraud_assessments_level_idx" ON "fraud_assessments" ("level");`,
+      `
     CREATE TABLE IF NOT EXISTS "fraud_rules" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "key" varchar(64) NOT NULL,
@@ -1093,27 +1000,26 @@ export async function migrate(db: Db) {
       "priority" integer NOT NULL DEFAULT 0,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "fraud_rules_key_idx" ON "fraud_rules" ("key");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "fraud_rules_key_idx" ON "fraud_rules" ("key");`,
+      `
     CREATE TABLE IF NOT EXISTS "watchlist" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "kind" varchar(20) NOT NULL,
       "value" text NOT NULL,
       "reason" text,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "watchlist_kind_value_idx" ON "watchlist" ("kind", "value");
-  `);
-
-  // ---------------------------------------------------------------- Blog
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "watchlist_kind_value_idx" ON "watchlist" ("kind", "value");`,
+    ],
+  },
+  {
+    name: "025_blog",
+    description: "Blog",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "blog_posts" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "title" varchar(200) NOT NULL,
@@ -1132,36 +1038,32 @@ export async function migrate(db: Db) {
       "seo_og_image" text,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS "blog_posts_slug_idx" ON "blog_posts" ("slug");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "blog_posts_published_idx" ON "blog_posts" ("published");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "blog_posts_category_idx" ON "blog_posts" ("category");
-  `);
-
-  // ---------------------------------------------------------------- AI Assistant
-  await db.execute(sql`
+    );`,
+      `
+    CREATE UNIQUE INDEX IF NOT EXISTS "blog_posts_slug_idx" ON "blog_posts" ("slug");`,
+      `
+    CREATE INDEX IF NOT EXISTS "blog_posts_published_idx" ON "blog_posts" ("published");`,
+      `
+    CREATE INDEX IF NOT EXISTS "blog_posts_category_idx" ON "blog_posts" ("category");`,
+    ],
+  },
+  {
+    name: "026_ai_assistant",
+    description: "AI Assistant",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "ai_conversations" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
       "title" varchar(200) DEFAULT '',
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "ai_conversations_actor_idx" ON "ai_conversations" ("actor_user_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "ai_conversations_created_idx" ON "ai_conversations" ("created_at");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "ai_conversations_actor_idx" ON "ai_conversations" ("actor_user_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "ai_conversations_created_idx" ON "ai_conversations" ("created_at");`,
+      `
     CREATE TABLE IF NOT EXISTS "ai_messages" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "conversation_id" uuid NOT NULL REFERENCES "ai_conversations"("id") ON DELETE CASCADE,
@@ -1169,13 +1071,10 @@ export async function migrate(db: Db) {
       "content" text NOT NULL,
       "upload_ids" jsonb NOT NULL DEFAULT '[]'::jsonb,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "ai_messages_conversation_idx" ON "ai_messages" ("conversation_id");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "ai_messages_conversation_idx" ON "ai_messages" ("conversation_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "ai_uploads" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
@@ -1184,18 +1083,15 @@ export async function migrate(db: Db) {
       "bytes" bytea NOT NULL,
       "size_bytes" integer NOT NULL,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "filename" varchar(200) NOT NULL DEFAULT '';`);
-  await db.execute(sql`ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "mime" varchar(64) NOT NULL DEFAULT '';`);
-  await db.execute(sql`ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "bytes" bytea NOT NULL DEFAULT '';`);
-  await db.execute(sql`ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "size_bytes" integer NOT NULL DEFAULT 0;`);
-  await db.execute(sql`ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "created_at" timestamptz NOT NULL DEFAULT now();`);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "ai_uploads_actor_idx" ON "ai_uploads" ("actor_user_id");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "filename" varchar(200) NOT NULL DEFAULT '';`,
+      `ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "mime" varchar(64) NOT NULL DEFAULT '';`,
+      `ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "bytes" bytea NOT NULL DEFAULT '';`,
+      `ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "size_bytes" integer NOT NULL DEFAULT 0;`,
+      `ALTER TABLE "ai_uploads" ADD COLUMN IF NOT EXISTS "created_at" timestamptz NOT NULL DEFAULT now();`,
+      `
+    CREATE INDEX IF NOT EXISTS "ai_uploads_actor_idx" ON "ai_uploads" ("actor_user_id");`,
+      `
     CREATE TABLE IF NOT EXISTS "ai_drafts" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "conversation_id" uuid NOT NULL REFERENCES "ai_conversations"("id") ON DELETE CASCADE,
@@ -1207,26 +1103,27 @@ export async function migrate(db: Db) {
       "product_id" uuid,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "conversation_id" uuid NOT NULL REFERENCES "ai_conversations"("id") ON DELETE CASCADE;`);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL;`);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "status" varchar(20) NOT NULL DEFAULT 'pendente';`);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "payload" jsonb NOT NULL DEFAULT '{}'::jsonb;`);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "flags" jsonb NOT NULL DEFAULT '{}'::jsonb;`);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "upload_ids" jsonb NOT NULL DEFAULT '[]'::jsonb;`);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "product_id" uuid;`);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "created_at" timestamptz NOT NULL DEFAULT now();`);
-  await db.execute(sql`ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz NOT NULL DEFAULT now();`);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "ai_drafts_conversation_idx" ON "ai_drafts" ("conversation_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "ai_drafts_status_idx" ON "ai_drafts" ("status");
-  `);
-
-  // ---------------------------------------------------------------- Suporte
-  await db.execute(sql`
+    );`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "conversation_id" uuid NOT NULL REFERENCES "ai_conversations"("id") ON DELETE CASCADE;`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL;`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "status" varchar(20) NOT NULL DEFAULT 'pendente';`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "payload" jsonb NOT NULL DEFAULT '{}'::jsonb;`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "flags" jsonb NOT NULL DEFAULT '{}'::jsonb;`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "upload_ids" jsonb NOT NULL DEFAULT '[]'::jsonb;`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "product_id" uuid;`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "created_at" timestamptz NOT NULL DEFAULT now();`,
+      `ALTER TABLE "ai_drafts" ADD COLUMN IF NOT EXISTS "updated_at" timestamptz NOT NULL DEFAULT now();`,
+      `
+    CREATE INDEX IF NOT EXISTS "ai_drafts_conversation_idx" ON "ai_drafts" ("conversation_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "ai_drafts_status_idx" ON "ai_drafts" ("status");`,
+    ],
+  },
+  {
+    name: "027_suporte",
+    description: "Suporte",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "support_tickets" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "customer_id" uuid NOT NULL REFERENCES "customers"("id") ON DELETE CASCADE,
@@ -1239,16 +1136,12 @@ export async function migrate(db: Db) {
       "closed_by" uuid,
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "support_tickets_customer_idx" ON "support_tickets" ("customer_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "support_tickets_status_idx" ON "support_tickets" ("status");
-  `);
-
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "support_tickets_customer_idx" ON "support_tickets" ("customer_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "support_tickets_status_idx" ON "support_tickets" ("status");`,
+      `
     CREATE TABLE IF NOT EXISTS "support_messages" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "ticket_id" uuid NOT NULL REFERENCES "support_tickets"("id") ON DELETE CASCADE,
@@ -1256,14 +1149,16 @@ export async function migrate(db: Db) {
       "body" text NOT NULL,
       "is_internal" boolean NOT NULL DEFAULT false,
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "support_messages_ticket_idx" ON "support_messages" ("ticket_id");
-  `);
-
-  // ---------------------------------------------------------------- Auditoria
-  await db.execute(sql`
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "support_messages_ticket_idx" ON "support_messages" ("ticket_id");`,
+    ],
+  },
+  {
+    name: "028_auditoria",
+    description: "Auditoria",
+    statements: [
+      `
     CREATE TABLE IF NOT EXISTS "audit_logs" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "actor_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
@@ -1276,45 +1171,40 @@ export async function migrate(db: Db) {
       "ip" varchar(45),
       "correlation_id" varchar(64),
       "created_at" timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  // Trigger para imutabilidade: impede UPDATE e DELETE
-  await db.execute(sql.raw(`
-    CREATE OR REPLACE FUNCTION prevent_audit_modification()
-    RETURNS trigger AS $$
-    BEGIN
-      RAISE EXCEPTION 'audit_logs is immutable';
-    END;
-    $$ LANGUAGE plpgsql;
-  `));
-  await db.execute(sql.raw(`DROP TRIGGER IF EXISTS prevent_audit_update ON "audit_logs";`));
-  await db.execute(sql.raw(`
-    CREATE TRIGGER prevent_audit_update
-    BEFORE UPDATE ON "audit_logs"
-    FOR EACH ROW EXECUTE FUNCTION prevent_audit_modification()
-  `));
-  await db.execute(sql.raw(`DROP TRIGGER IF EXISTS prevent_audit_delete ON "audit_logs";`));
-  await db.execute(sql.raw(`
-    CREATE TRIGGER prevent_audit_delete
-    BEFORE DELETE ON "audit_logs"
-    FOR EACH ROW EXECUTE FUNCTION prevent_audit_modification()
-  `));
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "audit_logs_actor_idx" ON "audit_logs" ("actor_user_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "audit_logs_entity_idx" ON "audit_logs" ("entity", "entity_id");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "audit_logs_action_idx" ON "audit_logs" ("action");
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS "audit_logs_created_idx" ON "audit_logs" ("created_at");
-  `);
+    );`,
+      `
+    CREATE INDEX IF NOT EXISTS "audit_logs_actor_idx" ON "audit_logs" ("actor_user_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "audit_logs_entity_idx" ON "audit_logs" ("entity", "entity_id");`,
+      `
+    CREATE INDEX IF NOT EXISTS "audit_logs_action_idx" ON "audit_logs" ("action");`,
+      `
+    CREATE INDEX IF NOT EXISTS "audit_logs_created_idx" ON "audit_logs" ("created_at");`,
+    ],
+  },
+  {
+    name: "029_sync_schema_columns",
+    description: "Sync schema columns (idempotent)",
+    revision: SYNC_SCHEMA_COLUMNS_REVISION,
+    run: async (db: Db) => {
+      await syncSchemaColumns(db);
+    },
+  },
+  {
+    name: "030_migrate_legacy_roles",
+    description: "Migrate legacy roles (idempotent)",
+    revision: MIGRATE_LEGACY_ROLES_REVISION,
+    run: async (db: Db) => {
+      await migrateLegacyRoles(db);
+    },
+  },
+];
 
-  // ---------------------------------------------------------------- Sync schema columns (idempotent)
-  await syncSchemaColumns(db);
-
-  // ---------------------------------------------------------------- Migrate legacy roles (idempotent)
-  await migrateLegacyRoles(db);
+/**
+ * Coordenador: executa os passos sob advisory lock, com ledger, checksum e
+ * recuperação de interrupções. Assinatura preservada — todos os chamadores
+ * (boot, seed, CLIs, testes) continuam válidos.
+ */
+export async function migrate(db: Db): Promise<MigrationRunSummary> {
+  return runMigrationSteps(db, MIGRATION_STEPS);
 }
