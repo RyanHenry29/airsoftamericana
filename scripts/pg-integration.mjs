@@ -25,6 +25,24 @@ try {
   await pg.start();
   console.log(`[pg-integration] PostgreSQL real ativo na porta ${PORT}`);
 
+  // Evidência de versão EFETIVA do servidor (exigência do revisor):
+  // a versão do pacote embedded-postgres não comprova o binário executado.
+  // `pg` é dependência de apps/api — resolve a partir daí.
+  const { createRequire } = await import("node:module");
+  const apiRequire = createRequire(path.join(process.cwd(), "apps", "api", "package.json"));
+  const Client = apiRequire("pg").Client;
+  const versionClient = new Client({
+    host: "localhost",
+    port: PORT,
+    user: "postgres",
+    password: "integration",
+    database: "postgres",
+  });
+  await versionClient.connect();
+  const { rows } = await versionClient.query("SHOW server_version");
+  console.log(`[pg-integration] SHOW server_version => ${rows[0].server_version}`);
+  await versionClient.end();
+
   const env = {
     ...process.env,
     NODE_ENV: "test",
