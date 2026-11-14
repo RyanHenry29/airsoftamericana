@@ -2073,10 +2073,18 @@ index 0daadc4..8218142 100644
 +
 +
 diff --git a/apps/api/src/services/payments/expiry.ts b/apps/api/src/services/payments/expiry.ts
-index 70ab2ea..373d040 100644
+index 70ab2ea..3ac317f 100644
 --- a/apps/api/src/services/payments/expiry.ts
 +++ b/apps/api/src/services/payments/expiry.ts
-@@ -36,6 +36,10 @@ import { getAdapter, type PaymentAdapter, type QueryPaymentResult } from "./type
+@@ -29,13 +29,17 @@
+  * em apps/api/index.ts, default 15 min, com flag de não-reentrância). O hook
+  * de boot sozinho não cobre processos longevos — o intervalo sim.
+  */
+-import { and, eq, lt, inArray } from "drizzle-orm";
++import { and, eq, gt, isNull, inArray, lt, sql } from "drizzle-orm";
+ import type { Db } from "../../db/index.js";
+ import { schema } from "../../db/index.js";
+ import { getAdapter, type PaymentAdapter, type QueryPaymentResult } from "./types.js";
  import { initAdapters } from "./index.js";
  import { transitionOrderInTx } from "../orders.js";
  import { audit } from "../../lib/audit.js";
@@ -2146,7 +2154,7 @@ index 70ab2ea..373d040 100644
    };
  
    for (const { order, payment } of stale) {
-@@ -136,8 +172,38 @@ export async function expireStaleReservations(
+@@ -136,8 +172,48 @@ export async function expireStaleReservations(
      let remote = queried.result;
  
      if (remote === null) {
@@ -2160,14 +2168,22 @@ index 70ab2ea..373d040 100644
 +        // Revalidação atômica: pagamento ainda pendente e ainda sem a
 +        // primeira observação. Persistência e auditoria na MESMA
 +        // transação — falha de auditoria reverte a marcação, nunca deixa
-+        // o campo registrado sem a trilha.
-+        await db.transaction(async (tx) => {
++        // o campo registrado sem a trilha. O UPDATE só afeta se o campo
++        // ainda estiver nulo (condição atômica contra corridas).
++        const result = await db.transaction(async (tx) => {
 +          const [freshPayment] = await tx.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
-+          if (!freshPayment || freshPayment.status !== "pendente" || freshPayment.notFoundFirstSeenAt) return;
-+          await tx
++          if (!freshPayment || freshPayment.status !== "pendente" || freshPayment.notFoundFirstSeenAt) return false;
++          const updated = await tx
 +            .update(schema.payments)
-+            .set({ notFoundFirstSeenAt: new Date() })
-+            .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
++            .set({ notFoundFirstSeenAt: sql`clock_timestamp()` })
++            .where(
++              and(
++                eq(schema.payments.id, payment.id),
++                eq(schema.payments.status, "pendente"),
++                isNull(schema.payments.notFoundFirstSeenAt),
++              ),
++            );
++          if ((updated.rowCount ?? 0) === 0) return false;
 +          summary.firstSeenRecorded++;
 +          await audit(tx as unknown as Db, {
 +            action: "expiry.notfound_first_seen",
@@ -2180,14 +2196,16 @@ index 70ab2ea..373d040 100644
 +              graceMinutes: notFoundGraceMinutes,
 +            },
 +          });
++          return true;
 +        });
++        if (!result) continue;
 +      }
 +      // Tolerância: dentro do grace, resposta negativa NÃO cancela —
 +      // consistência eventual do gateway preservada (v4).
        if (order.createdAt.getTime() > graceCutoff.getTime()) {
          summary.skippedNotFoundGrace++;
          await audit(db, {
-@@ -153,96 +219,200 @@ export async function expireStaleReservations(
+@@ -153,96 +229,200 @@ export async function expireStaleReservations(
          });
          continue;
        }
@@ -2448,7 +2466,7 @@ index 70ab2ea..373d040 100644
        continue;
      }
  
-@@ -261,50 +431,202 @@ export async function expireStaleReservations(
+@@ -261,50 +441,202 @@ export async function expireStaleReservations(
    return summary;
  }
  
@@ -2840,7 +2858,7 @@ index 0000000..3f9c938
 +  }
 +}
 diff --git a/apps/api/src/services/payments/webhook-events.ts b/apps/api/src/services/payments/webhook-events.ts
-index cd3cf18..e12219e 100644
+index cd3cf18..dda32a1 100644
 --- a/apps/api/src/services/payments/webhook-events.ts
 +++ b/apps/api/src/services/payments/webhook-events.ts
 @@ -25,7 +25,7 @@
@@ -2952,7 +2970,7 @@ index cd3cf18..e12219e 100644
 +                eq(schema.paymentEvents.id, input.eventRowId),
 +                eq(schema.paymentEvents.leaseToken, input.leaseToken),
 +                isNull(schema.paymentEvents.processedAt),
-+                gt(schema.paymentEvents.leaseExpiresAt, new Date()),
++                gt(schema.paymentEvents.leaseExpiresAt, sql`clock_timestamp()`),
 +              )
 +            : and(
 +                eq(schema.paymentEvents.id, input.eventRowId),
@@ -3146,7 +3164,7 @@ index cd3cf18..e12219e 100644
 +      isNull(schema.paymentEvents.processedAt),
 +      eq(schema.paymentEvents.deadLetter, false),
 +    ];
-+    if (leaseToken) conditions.push(gt(schema.paymentEvents.leaseExpiresAt, new Date()));
++    if (leaseToken) conditions.push(gt(schema.paymentEvents.leaseExpiresAt, sql`clock_timestamp()`));
 +    const locked = await tx
 +      .select()
 +      .from(schema.paymentEvents)
@@ -3186,7 +3204,7 @@ index cd3cf18..e12219e 100644
  }> {
    await initAdapters(db);
  
-@@ -522,36 +593,11 @@ export async function recoverPendingEvents(
+@@ -522,64 +593,19 @@ export async function recoverPendingEvents(
    let applied = 0;
    let rejected = 0;
    let parked = 0;
@@ -3224,33 +3242,29 @@ index cd3cf18..e12219e 100644
 +  let leaseLost = 0;
  
    for (const row of pending) {
-     // ---- Parse: invalidade PERMANENTE vai para dead-letter SEM disputar
-@@ -559,27 +605,29 @@ export async function recoverPendingEvents(
-     let event: NormalizedWebhookEvent | null = null;
-     let adapter = getAdapter(row.provider);
-     if (!adapter) {
+-    // ---- Parse: invalidade PERMANENTE vai para dead-letter SEM disputar
+-    // lease — payload não-parseável nunca se tornará aplicável.
+-    let event: NormalizedWebhookEvent | null = null;
+-    let adapter = getAdapter(row.provider);
+-    if (!adapter) {
 -      await deadLetter(row, "unknown_provider");
-+      if (await deadLetterEvent(db, row, "unknown_provider")) deadLettered++;
-       continue;
-     }
-     try {
-       event = adapter.parseWebhook(JSON.stringify(row.payload));
-     } catch (e) {
+-      continue;
+-    }
+-    try {
+-      event = adapter.parseWebhook(JSON.stringify(row.payload));
+-    } catch (e) {
 -      await deadLetter(row, "invalid_payload", e instanceof Error ? e.message : String(e));
-+      if (await deadLetterEvent(db, row, "invalid_payload", e instanceof Error ? e.message : String(e))) deadLettered++;
-       continue;
-     }
-     if (!event.providerTransactionId) {
+-      continue;
+-    }
+-    if (!event.providerTransactionId) {
 -      await deadLetter(row, "missing_transaction_reference");
-+      if (await deadLetterEvent(db, row, "missing_transaction_reference")) deadLettered++;
-       continue;
-     }
- 
-     // ---- CLAIM ATÔMICO: lock da linha + guarda de lease, SKIP LOCKED.
-     // Segundo worker em corrida recebe zero linhas e pula — o primeiro
+-      continue;
+-    }
+-
+-    // ---- CLAIM ATÔMICO: lock da linha + guarda de lease, SKIP LOCKED.
+-    // Segundo worker em corrida recebe zero linhas e pula — o primeiro
 -    // processa sozinho dentro da janela do lease.
-+    // processa sozinho dentro da janela do lease. O token (fencing, v5)
-+    // prova posse: quem perdeu o lease não conclui o evento.
++    // ---- CLAIM ATÔMICO PRIMEIRO: qualquer decisão terminal exige o lease.
 +    const leaseToken = crypto.randomUUID();
      const claim = await db.transaction(async (tx): Promise<
        | { kind: "locked_by_other" }
@@ -3260,10 +3274,27 @@ index cd3cf18..e12219e 100644
      > => {
        const locked = await tx
          .select()
-@@ -605,9 +653,10 @@ export async function recoverPendingEvents(
+@@ -589,12 +615,12 @@ export async function recoverPendingEvents(
+             eq(schema.paymentEvents.id, row.id),
+             isNull(schema.paymentEvents.processedAt),
+             eq(schema.paymentEvents.deadLetter, false),
+-            or(isNull(schema.paymentEvents.leaseExpiresAt), lte(schema.paymentEvents.leaseExpiresAt, new Date())),
++            or(isNull(schema.paymentEvents.leaseExpiresAt), lte(schema.paymentEvents.leaseExpiresAt, sql`clock_timestamp()`)),
+           ),
+         )
+         .for("update", { skipLocked: true });
+       const fresh = locked[0];
+-      if (!fresh) return { kind: "locked_by_other" }; // outro worker segura o lease
++      if (!fresh) return { kind: "locked_by_other" };
+       if (fresh.lastAttemptAt && Date.now() - fresh.lastAttemptAt.getTime() < minBackoffMs) {
+         return { kind: "backoff" };
+       }
+@@ -604,10 +630,11 @@ export async function recoverPendingEvents(
+         .set({
            attempts,
            lastAttemptAt: new Date(),
-           leaseExpiresAt: new Date(Date.now() + leaseMs),
+-          leaseExpiresAt: new Date(Date.now() + leaseMs),
++          leaseExpiresAt: sql`clock_timestamp() + ${leaseMs}::bigint * interval '1 millisecond'`,
 +          leaseToken,
          })
          .where(eq(schema.paymentEvents.id, fresh.id));
@@ -3272,7 +3303,32 @@ index cd3cf18..e12219e 100644
      });
  
      if (claim.kind === "locked_by_other") {
-@@ -635,23 +684,40 @@ export async function recoverPendingEvents(
+@@ -619,6 +646,24 @@ export async function recoverPendingEvents(
+       continue;
+     }
+ 
++    // ---- Parse: invalidade PERMANENTE vai para dead-letter com o token do claim.
++    let event: NormalizedWebhookEvent | null = null;
++    let adapter = getAdapter(row.provider);
++    if (!adapter) {
++      if (await deadLetterEvent(db, row, "unknown_provider", undefined, claim.leaseToken)) deadLettered++;
++      continue;
++    }
++    try {
++      event = adapter.parseWebhook(JSON.stringify(row.payload));
++    } catch (e) {
++      if (await deadLetterEvent(db, row, "invalid_payload", e instanceof Error ? e.message : String(e), claim.leaseToken)) deadLettered++;
++      continue;
++    }
++    if (!event.providerTransactionId) {
++      if (await deadLetterEvent(db, row, "missing_transaction_reference", undefined, claim.leaseToken)) deadLettered++;
++      continue;
++    }
++
+     // ---- Pagamento local: corrida checkout×webhook = referência ainda
+     // NÃO DISPONÍVEL. Saída SOMENTE por idade — tentativas nunca descartam.
+     const rows = await db
+@@ -635,23 +680,40 @@ export async function recoverPendingEvents(
      if (!payment) {
        const tooOld = Date.now() - row.createdAt.getTime() > maxAgeDays * 24 * 60 * 60 * 1000;
        if (tooOld) {
@@ -3322,7 +3378,7 @@ index cd3cf18..e12219e 100644
      } else if (
        outcome.reason &&
        ["amount_mismatch", "currency_mismatch", "account_mismatch", "account_unverified", "transaction_mismatch", "gateway_query_unavailable", "event_not_authenticated"].includes(outcome.reason)
-@@ -663,7 +729,7 @@ export async function recoverPendingEvents(
+@@ -663,7 +725,7 @@ export async function recoverPendingEvents(
        // próprio bem-sucedido — se outro worker segurasse o lease, esta
        // passada teria pulado em `locked_by_other` antes de processar.
        if (claim.attempts >= maxAttempts) {
@@ -3331,7 +3387,7 @@ index cd3cf18..e12219e 100644
        }
      } else {
        // already_applied / noop: evento saiu da fila (marcado na transação).
-@@ -671,7 +737,7 @@ export async function recoverPendingEvents(
+@@ -671,7 +733,7 @@ export async function recoverPendingEvents(
      }
    }
  
@@ -3340,7 +3396,7 @@ index cd3cf18..e12219e 100644
  }
  
  /**
-@@ -679,6 +745,12 @@ export async function recoverPendingEvents(
+@@ -679,6 +741,12 @@ export async function recoverPendingEvents(
   * updates): pagamento já atualizado mas pedido não. Roda no boot, depois de
   * recoverPendingEvents — revisão v4 (ponto B):
   *
@@ -3353,7 +3409,7 @@ index cd3cf18..e12219e 100644
   *  - IDEMPOTENTE por construção: a divergência é definida pela JUNÇÃO
   *    (payment definitivo × order em PAYMENT_PENDING_STATUSES). O primeiro
   *    reparo tira o pedido da condição — passadas seguintes não encontram
-@@ -705,7 +777,13 @@ export async function recoverPendingEvents(
+@@ -705,7 +773,13 @@ export async function recoverPendingEvents(
   *   expirado    → cancelado           (libera estoque, uma vez)
   *   estornado   → reembolsado         (nunca auto-estorna; estado só espelha)
   */
@@ -3368,7 +3424,7 @@ index cd3cf18..e12219e 100644
    const divergent = await db
      .select({ payment: schema.payments, order: schema.orders })
      .from(schema.payments)
-@@ -719,6 +797,10 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+@@ -719,6 +793,10 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
  
    let repaired = 0;
    for (const { payment, order } of divergent) {
@@ -3379,7 +3435,7 @@ index cd3cf18..e12219e 100644
      const from = order.status as OrderStatus;
      const to: OrderStatus | null =
        payment.status === "aprovado"
-@@ -729,6 +811,25 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+@@ -729,6 +807,25 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
      try {
        let done = false;
        await db.transaction(async (tx) => {
@@ -3405,7 +3461,7 @@ index cd3cf18..e12219e 100644
          const outcome = await transitionOrderInTx(tx as unknown as Db, {
            orderId: order.id,
            to,
-@@ -757,7 +858,8 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+@@ -757,7 +854,8 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
          }
        });
        if (done) repaired++;
@@ -3564,7 +3620,7 @@ index 179bcf2..1c23c69 100644
 +5. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
 diff --git a/docs/review/pr1-v5-guia-de-revisao.md b/docs/review/pr1-v5-guia-de-revisao.md
 new file mode 100644
-index 0000000..d9c13c8
+index 0000000..7611b3a
 --- /dev/null
 +++ b/docs/review/pr1-v5-guia-de-revisao.md
 @@ -0,0 +1,180 @@
@@ -3572,9 +3628,9 @@ index 0000000..d9c13c8
 +
 +> **Status:** v5 NÃO publicável. v4 (`1cdf48f`) permanece a versão publicada no PR #1. Produção, migrations e SQLs de hardening intocados.
 +>
-+> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..07db6a2` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
++> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..2379108` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
 +>
-+> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (CI verde) · `07db6a2` (**cercas de arrendamento + 6 testes de cerca — SHA alvo da revisão final**).
++> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (CI verde) · `07db6a2` (**cercas de arrendamento + 6 testes de cerca — SHA alvo da revisão final**) · `d9c3d1a` (**fencing transacional no reparo + testes fortalecidos — SHA alvo da revisão final**) · `2379108` (**correções do revisor final: dead-letter com token, relógio do banco, primeira observação atômica, CI alinhado — SHA alvo da revisão final**).
 +
 +## Rodada de correção (`68445bb`) — resultado da revisão v5.1
 +
@@ -3843,14 +3899,14 @@ index 0000000..496f0a8
 +  )
 +order by l.created_at asc;
 diff --git a/package-lock.json b/package-lock.json
-index 83b5be5..1c3f8d2 100644
+index 83b5be5..8d22d03 100644
 --- a/package-lock.json
 +++ b/package-lock.json
 @@ -14,6 +14,7 @@
        "devDependencies": {
          "@playwright/test": "^1.52.0",
          "@types/pg": "^8.23.1",
-+        "embedded-postgres": "^18.6.0-beta.19",
++        "embedded-postgres": "^17.11.0-beta.19",
          "otpauth": "^9.4.1"
        },
        "engines": {
@@ -3859,9 +3915,9 @@ index 83b5be5..1c3f8d2 100644
        "license": "Apache-2.0"
      },
 +    "node_modules/@embedded-postgres/darwin-arm64": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/@embedded-postgres/darwin-arm64/-/darwin-arm64-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-FHuiAR1sQUw8J6M+UVFlzd1D8oP4rlL+16Zgd1STqCCzWmO6dFjXBCEQ2I1JaGVQKOE85NlCjNNKuy8RiIrsqw==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/@embedded-postgres/darwin-arm64/-/darwin-arm64-17.11.0-beta.19.tgz",
++      "integrity": "sha512-t7SxepOERtwqrkt0lfqLWjeDdYoOvjYRuVFVke7vYJ7XSxMq1sRLRekG6zvcN/zm46XouzXkmrd/E5/RPhlAvw==",
 +      "cpu": [
 +        "arm64"
 +      ],
@@ -3877,9 +3933,9 @@ index 83b5be5..1c3f8d2 100644
 +      }
 +    },
 +    "node_modules/@embedded-postgres/darwin-x64": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/@embedded-postgres/darwin-x64/-/darwin-x64-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-ipQDDcoc72moknp3QHP3sgj90/ZG6IqBhN9mdd1eOfBEwJUJXESfuoyNiTwUc4PoNDmnx51nRqQwzxoKMUwSTw==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/@embedded-postgres/darwin-x64/-/darwin-x64-17.11.0-beta.19.tgz",
++      "integrity": "sha512-4p3AnzAizgUGsDt+/mCL5YmfkUubBFvWhbVjZQmjDhnE3UrxFSd6wfKQkhlv4VKMRpfNyLiTrtXWNGi76t5M3Q==",
 +      "cpu": [
 +        "x64"
 +      ],
@@ -3895,9 +3951,9 @@ index 83b5be5..1c3f8d2 100644
 +      }
 +    },
 +    "node_modules/@embedded-postgres/linux-arm": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-arm/-/linux-arm-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-rA1uII2C1Z9WW4ArxhY0lTfexdS0HGDHn6VwrYA8/ZIPiVsi1I0f9PG+2FS0fH0tjwRGgQ4RNoeWENx9eyCc8w==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-arm/-/linux-arm-17.11.0-beta.19.tgz",
++      "integrity": "sha512-Fe5GXAQ+nPBYQEVUQIzBKG3zTnetWj+tLvMPSYlam3dy+a4A5FlsN7JARnHFhNN6wcQRgbssfQUsXCc2l7mIQQ==",
 +      "cpu": [
 +        "arm"
 +      ],
@@ -3913,9 +3969,9 @@ index 83b5be5..1c3f8d2 100644
 +      }
 +    },
 +    "node_modules/@embedded-postgres/linux-arm64": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-arm64/-/linux-arm64-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-mDNZiZkT+Wyxh+BD8HH1n603ircuVLSbQT2bVQeC0D7vk7zPO+54RNRUuC7H0RyTlU6l4FxOxjE6D1Yun1JgMg==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-arm64/-/linux-arm64-17.11.0-beta.19.tgz",
++      "integrity": "sha512-Rl7wWkWFa8TYT9ZdMSGETq0EiE8Y4djD7oAVbaUHl/KWXpQm8rPLGgGYTYyqfHG3dg0uKhBIlN/Cs3wvP7dqew==",
 +      "cpu": [
 +        "arm64"
 +      ],
@@ -3931,9 +3987,9 @@ index 83b5be5..1c3f8d2 100644
 +      }
 +    },
 +    "node_modules/@embedded-postgres/linux-ia32": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-ia32/-/linux-ia32-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-QdncW2uOfZLIgZqhl7VH8DCW4EJNNMA1xUrEpFP3k1vZ+jrjmj2f7KN0cakUZiCjIlMGx3VoBqfqEANWj63GCQ==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-ia32/-/linux-ia32-17.11.0-beta.19.tgz",
++      "integrity": "sha512-6pfA/iHpNbNhP2uTpIG5HeCnuU6S0Uru3prGkHNbl903IBma/V/dAubYJAVyRb3RUi9ZecBZrtAoYOn1KGEBJA==",
 +      "cpu": [
 +        "ia32"
 +      ],
@@ -3949,9 +4005,9 @@ index 83b5be5..1c3f8d2 100644
 +      }
 +    },
 +    "node_modules/@embedded-postgres/linux-ppc64": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-ppc64/-/linux-ppc64-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-vi8Gk01tgDboOdsoWtWHou6TABrj3zec7ORmz0yefTCED5J4PtvRpx3wdG3K6Emg2VCMVjG7JuF/fUlsehw5gA==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-ppc64/-/linux-ppc64-17.11.0-beta.19.tgz",
++      "integrity": "sha512-PC20tUFD/tuJRRhpX+X3TqHsbvwCAurvuZr+Tg3Lx58tFW+O264jdmdS3uQSdYzWsXRXHmgxn26bo3tsMVxaVQ==",
 +      "cpu": [
 +        "ppc64"
 +      ],
@@ -3967,9 +4023,9 @@ index 83b5be5..1c3f8d2 100644
 +      }
 +    },
 +    "node_modules/@embedded-postgres/linux-x64": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-x64/-/linux-x64-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-U7sqNsI2M5OPAClnptT05bGSnos4IESgUesNytwvgXQ9L4GKY1mnJciXab6CE1pWm3Kes4/UrsZVJJZKBMFZbw==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/@embedded-postgres/linux-x64/-/linux-x64-17.11.0-beta.19.tgz",
++      "integrity": "sha512-Mg2SUiVf0TW9vECO8qfv41730WgJOKguOaK4acUuIB4L8HeVuiYgQzlIj2kh73Q3OLxRdeub7D8C/SkExMlqrg==",
 +      "cpu": [
 +        "x64"
 +      ],
@@ -3985,9 +4041,9 @@ index 83b5be5..1c3f8d2 100644
 +      }
 +    },
 +    "node_modules/@embedded-postgres/windows-x64": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/@embedded-postgres/windows-x64/-/windows-x64-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-fp8d8f+6WfJQftX0D+l1vUTLPwCN5hlhV/g/KI5zDBwHURmta6ph3/kJeEOVirtbczO/pKQlqM4cELB2c7Sp7Q==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/@embedded-postgres/windows-x64/-/windows-x64-17.11.0-beta.19.tgz",
++      "integrity": "sha512-z1/SIyBulCYPWYsLWDkgniAYqSd2KBc48zwPOPpyu2YGYIoQ5kRCU6bEJ2q/lcsBuseAdWAn1lBg7KiI/pIg4Q==",
 +      "cpu": [
 +        "x64"
 +      ],
@@ -4010,9 +4066,9 @@ index 83b5be5..1c3f8d2 100644
        }
      },
 +    "node_modules/embedded-postgres": {
-+      "version": "18.6.0-beta.19",
-+      "resolved": "https://registry.npmjs.org/embedded-postgres/-/embedded-postgres-18.6.0-beta.19.tgz",
-+      "integrity": "sha512-EInqEn8wqfzbP0+mpdPNdu4CrzgMEzU6dg/mYsjgGXpXqf9oqtwq7CRXDV8295+tN7ONecrsaOm3knWk+xtRsg==",
++      "version": "17.11.0-beta.19",
++      "resolved": "https://registry.npmjs.org/embedded-postgres/-/embedded-postgres-17.11.0-beta.19.tgz",
++      "integrity": "sha512-7weAEptF45qGnDg9DjjFrFGB/TYgS8SwSq2ipO69Q0lupdA1VNcwQd6siHALIOgw6vYu65/MqMd8lSMeYXqvSg==",
 +      "dev": true,
 +      "license": "MIT",
 +      "dependencies": {
@@ -4023,14 +4079,14 @@ index 83b5be5..1c3f8d2 100644
 +        "node": ">=16"
 +      },
 +      "optionalDependencies": {
-+        "@embedded-postgres/darwin-arm64": "^18.6.0-beta.19",
-+        "@embedded-postgres/darwin-x64": "^18.6.0-beta.19",
-+        "@embedded-postgres/linux-arm": "^18.6.0-beta.19",
-+        "@embedded-postgres/linux-arm64": "^18.6.0-beta.19",
-+        "@embedded-postgres/linux-ia32": "^18.6.0-beta.19",
-+        "@embedded-postgres/linux-ppc64": "^18.6.0-beta.19",
-+        "@embedded-postgres/linux-x64": "^18.6.0-beta.19",
-+        "@embedded-postgres/windows-x64": "^18.6.0-beta.19"
++        "@embedded-postgres/darwin-arm64": "^17.11.0-beta.19",
++        "@embedded-postgres/darwin-x64": "^17.11.0-beta.19",
++        "@embedded-postgres/linux-arm": "^17.11.0-beta.19",
++        "@embedded-postgres/linux-arm64": "^17.11.0-beta.19",
++        "@embedded-postgres/linux-ia32": "^17.11.0-beta.19",
++        "@embedded-postgres/linux-ppc64": "^17.11.0-beta.19",
++        "@embedded-postgres/linux-x64": "^17.11.0-beta.19",
++        "@embedded-postgres/windows-x64": "^17.11.0-beta.19"
 +      }
 +    },
      "node_modules/emoji-regex": {
@@ -4057,14 +4113,14 @@ index 83b5be5..1c3f8d2 100644
        "version": "1.4.0",
        "resolved": "https://registry.npmjs.org/expect-type/-/expect-type-1.4.0.tgz",
 diff --git a/package.json b/package.json
-index c7eb0e2..f90a86b 100644
+index c7eb0e2..f6db398 100644
 --- a/package.json
 +++ b/package.json
 @@ -28,6 +28,7 @@
    "devDependencies": {
      "@playwright/test": "^1.52.0",
      "@types/pg": "^8.23.1",
-+    "embedded-postgres": "^18.6.0-beta.19",
++    "embedded-postgres": "^17.11.0-beta.19",
      "otpauth": "^9.4.1"
    }
  }
