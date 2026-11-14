@@ -234,12 +234,38 @@ export async function expireStaleReservations(
               graceMinutes: notFoundGraceMinutes,
             },
           });
-          return "defined"; // definiu agora — prosseguir para grace
+          // Acabamos de definir a primeira observação — verifica imediatamente
+          // se já está dentro da janela de confirmação (confirmWindowMs padrão
+          // é 15 min, então uma observação persistida há instantes está dentro).
+          const withinWindow2 = await tx
+            .select({ withinWindow: sql<boolean>`${schema.payments.notFoundFirstSeenAt} > clock_timestamp() - ${confirmWindowMs}::bigint * interval '1 millisecond'` })
+            .from(schema.payments)
+            .where(eq(schema.payments.id, payment.id));
+          const inWindow2 = withinWindow2[0]?.withinWindow ?? false;
+          if (inWindow2) {
+            summary.skippedConfirmWindow++;
+            await audit(tx as unknown as Db, {
+              action: "expiry.skipped_confirm_window",
+              entity: "order",
+              entityId: order.id,
+              actorLabel: "expiry:auto",
+              after: {
+                provider: payment.provider,
+                reason: "segunda observação antes da janela de confirmação — decisão adiada para a passada seguinte",
+                firstSeenAt: freshPayment.notFoundFirstSeenAt ?? null,
+                confirmWindowMs,
+              },
+            });
+            return "skip_window"; // está na janela — pular para próximo pagamento
+          }
+          return "defined"; // definiu agora — prosseguir para verificação de grace abaixo
         });
         if (result === "skip" || result === "skip_window") continue;
-        if (result === "passed_window") continue;
-        // result === "defined": primeira observação definida agora —
-        // prosseguir para verificação de grace abaixo.
+        // result === "passed_window": passou da janela de confirmação —
+        // prosseguir para cancelar (finalizeExpiry com toOrderStatus: "cancelado").
+        // result === "defined": primeira observação definida agora — não
+        // cancela nesta passada; a próxima passada (janela decorrida) decide.
+        if (result === "defined") continue;
       }
       // Tolerância: dentro do grace, resposta negativa NÃO cancela —
       // consistência eventual do gateway preservada (v4).
