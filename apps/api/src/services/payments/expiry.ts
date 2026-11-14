@@ -170,6 +170,7 @@ export async function expireStaleReservations(
       continue;
     }
     let remote = queried.result;
+    let firstObservationNow = false;
 
     if (remote === null) {
       // Revisão v5 (item 4): a primeira observação `null` é PERSISTIDA —
@@ -234,36 +235,14 @@ export async function expireStaleReservations(
               graceMinutes: notFoundGraceMinutes,
             },
           });
-          // Acabamos de definir a primeira observação — verifica imediatamente
-          // se já está dentro da janela de confirmação (confirmWindowMs padrão
-          // é 15 min, então uma observação persistida há instantes está dentro).
-          const withinWindow2 = await tx
-            .select({ withinWindow: sql<boolean>`${schema.payments.notFoundFirstSeenAt} > clock_timestamp() - ${confirmWindowMs}::bigint * interval '1 millisecond'` })
-            .from(schema.payments)
-            .where(eq(schema.payments.id, payment.id));
-          const inWindow2 = withinWindow2[0]?.withinWindow ?? false;
-          if (inWindow2) {
-            summary.skippedConfirmWindow++;
-            await audit(tx as unknown as Db, {
-              action: "expiry.skipped_confirm_window",
-              entity: "order",
-              entityId: order.id,
-              actorLabel: "expiry:auto",
-              after: {
-                provider: payment.provider,
-                reason: "segunda observação antes da janela de confirmação — decisão adiada para a passada seguinte",
-                firstSeenAt: freshPayment.notFoundFirstSeenAt ?? null,
-                confirmWindowMs,
-              },
-            });
-            return "skip_window"; // está na janela — pular para próximo pagamento
-          }
-          return "defined"; // definiu agora — prosseguir para verificação de grace abaixo
+          return "defined"; // definiu agora — grace e adiamento decidem no fluxo externo
         });
         if (result === "skip" || result === "skip_window") continue;
-        if (result === "defined") continue;
-        // result === "passed_window": passou da janela de confirmação —
-        // prosseguir para cancelar (finalizeExpiry com toOrderStatus: "cancelado").
+        if (result === "defined") firstObservationNow = true;
+        // result === "passed_window" ou "defined": prosseguir para a
+        // verificação de grace abaixo; o cancelamento só ocorre com
+        // "passed_window" (janela decorrida em observação anterior) e fora
+        // do grace — nunca na passada que gravou a primeira observação.
       }
       // Tolerância: dentro do grace, resposta negativa NÃO cancela —
       // consistência eventual do gateway preservada (v4).
@@ -278,6 +257,23 @@ export async function expireStaleReservations(
             provider: payment.provider,
             reason: "provedor não conhece a cobrança, mas pedido dentro da tolerância — reserva preservada",
             graceMinutes: notFoundGraceMinutes,
+          },
+        });
+        continue;
+      }
+      // Primeira observação gravada NESTA passada — o cancelamento exige
+      // confirmação independente em passada distinta; decisão adiada.
+      if (firstObservationNow) {
+        summary.skippedConfirmWindow++;
+        await audit(db, {
+          action: "expiry.skipped_confirm_window",
+          entity: "order",
+          entityId: order.id,
+          actorLabel: "expiry:auto",
+          after: {
+            provider: payment.provider,
+            reason: "primeira observação persistida nesta passada — decisão adiada para a passada seguinte",
+            confirmWindowMs,
           },
         });
         continue;
