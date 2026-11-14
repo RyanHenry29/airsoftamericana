@@ -196,6 +196,13 @@ export function setDb(instance: Db): void {
 }
 
 /**
+ * Verifica se há pool PostgreSQL configurado (para migrations).
+ */
+export function poolInstanceExists(): boolean {
+  return !!poolInstance;
+}
+
+/**
  * Sessão EXCLUSIVA para migrations (AUD-03): o advisory lock é por SESSÃO —
  * executado no pool genérico, cada query pode cair em conexão diferente e a
  * coordenação multi-instância não serializa nada. Aqui: um cliente dedicado
@@ -207,19 +214,32 @@ export function setDb(instance: Db): void {
  * chamador rodar migrate() DENTRO de uma transação (fault-injection, seed).
  * Nesses casos o motor usa o db recebido (tx-aware), como o blob original.
  */
-export async function getMigrationSession(): Promise<{ db: Db; release: () => Promise<void> }> {
-  if (poolInstance) {
-    const client = await poolInstance.connect();
-    return {
-      db: drizzlePg(client, { schema }),
-      release: async () => {
-        client.release();
-      },
-    };
+export async function getMigrationSession(): Promise<{
+  db: Db;
+  release: (lockFailed?: boolean) => Promise<void>;
+}> {
+  if (!poolInstance) {
+    throw new Error(
+      "getMigrationSession exige pool (Postgres); PGlite usa o db do chamador (single-session)",
+    );
   }
-  throw new Error(
-    "getMigrationSession exige pool (Postgres); PGlite usa o db do chamador (single-session)",
-  );
+  const client = await poolInstance.connect();
+  return {
+    db: drizzlePg(client, { schema }),
+    release: async (lockFailed?: boolean) => {
+      if (lockFailed) {
+        // Unlock falhou: não garantimos que a sessão está limpa.
+        // Descartamos a conexão em vez de devolvê-la ao pool.
+        try {
+          await client.end();
+        } catch {
+          // best effort
+        }
+      } else {
+        client.release();
+      }
+    },
+  };
 }
 
 export async function closeDb(): Promise<void> {

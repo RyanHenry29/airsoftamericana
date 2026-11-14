@@ -102,9 +102,10 @@ describe("AUD-03: migration ledger", () => {
       run: async () => {},
       nonIdempotent: true,
     };
+    const correctChecksum = computeStepChecksum(step);
     const result = (await db.execute(
       sql`INSERT INTO "migration_ledger" ("step_name", "checksum", "status", "instance_id", "error")
-          VALUES (${step.name}, 'x', 'in_progress', 'test', 'simulado')
+          VALUES (${step.name}, ${correctChecksum}, 'in_progress', 'test', 'simulado')
           ON CONFLICT ("step_name") DO UPDATE SET "status" = 'in_progress'`,
     )) as unknown as { rows: Array<Record<string, unknown>> };
     void result;

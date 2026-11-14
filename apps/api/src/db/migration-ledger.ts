@@ -3,7 +3,7 @@
 //
 // - Ledger: `migration_ledger` registra cada passo (nome único, checksum,
 //   status, instância, duração, erro).
-// - Checksum: sha256 sobre o conteúdo do passo (statements ou revision) —
+// - Checksum: sha256 sobre o conteúdo do passo (statements, revision, run) —
 //   divergência entre código e ledger REFUSA o boot (tamper-evident).
 // - Coordenação: pg_try_advisory_lock com polling e deadline — duas instâncias
 //   subindo em paralelo executam as migrations em série, nunca intercaladas.
@@ -20,7 +20,7 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "./index.js";
-import { getMigrationSession } from "./index.js";
+import { getMigrationSession, poolInstanceExists } from "./index.js";
 
 export interface MigrationStep {
   name: string;
@@ -92,6 +92,7 @@ export function computeStepChecksum(step: MigrationStep): string {
     name: step.name,
     revision: step.revision ?? null,
     statements: step.statements ?? null,
+    runSource: step.run?.toString() ?? null,
   });
   return createHash("sha256").update(payload).digest("hex");
 }
@@ -163,15 +164,13 @@ async function runMigrationStepsExclusive(
   const lockTimeoutMs = options.lockTimeoutMs ?? 120_000;
   const instanceId = `${process.pid}:${Date.now().toString(36)}`.slice(0, 60);
 
-  // Sessão dedicada; se o backend não for gerenciado por getDb (instância
-  // custom via setDb), usa a própria db — PGlite é single-session por design.
-  let session: { db: Db; release: () => Promise<void> };
-  try {
+  // Sessão dedicada: obrigatória para Postgres (pool). PGlite usa o db do chamador.
+  // NÃO há fallback silencioso: se pool existe mas falha ao obter conexão, propaga o erro.
+  let session: { db: Db; release: (lockFailed?: boolean) => Promise<void>; lockFailed?: boolean };
+  if (poolInstanceExists()) {
     session = await getMigrationSession();
-  } catch {
-    // Sem pool (PGlite / db custom): usa o db do chamador — tx-aware. O db do
-    // módulo JAMAIS substitui o db recebido: no PGlite, query fora do callback
-    // de transaction() trava atrás do BEGIN aberto (deadlock).
+  } else {
+    // PGlite / db custom sem pool: usa o db do chamador — tx-aware.
     session = { db, release: async () => {} };
   }
 
@@ -180,8 +179,11 @@ async function runMigrationStepsExclusive(
     await ensureLedgerTable(session.db);
     await executeSteps(session.db, steps, instanceId, summary);
   } finally {
-    await releaseAdvisoryLock(session.db);
-    await session.release();
+    const lockOk = await releaseAdvisoryLock(session.db);
+    if (!lockOk) {
+      session.lockFailed = true;
+    }
+    await session.release(session.lockFailed);
   }
 
   summary.durationMs = Math.round(performance.now() - start);
@@ -198,11 +200,18 @@ async function acquireAdvisoryLock(db: Db, timeoutMs: number): Promise<void> {
   }
 }
 
-async function releaseAdvisoryLock(db: Db): Promise<void> {
+/**
+ * Libera o advisory lock. Retorna true se conseguiu confirmar o unlock.
+ * Se falhar, NÃO devolve a conexão ao pool (o caller deve descartar).
+ */
+async function releaseAdvisoryLock(db: Db): Promise<boolean> {
   try {
     await db.execute(sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`);
+    return true;
   } catch {
-    // sessão morrendo após falha: o lock morre com a sessão de qualquer forma
+    // Unlock falhou: não podemos garantir que a sessão está limpa.
+    // O caller deve descartar a conexão (não devolver ao pool).
+    return false;
   }
 }
 
@@ -226,6 +235,13 @@ async function executeSteps(
       }
       summary.skipped.push(step.name);
       continue;
+    }
+
+    // VALIDAÇÃO DE CHECKSUM ANTES DA RECUPERAÇÃO:
+    // Se há registro anterior (in_progress ou interrrompida) com checksum divergente,
+    // RECUSA a recuperação automática — exige intervenção humana.
+    if (existing && existing.checksum !== checksum) {
+      throw new MigrationChecksumError(step.name, existing.checksum, checksum);
     }
 
     if (existing && step.nonIdempotent) {
