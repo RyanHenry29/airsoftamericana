@@ -261,7 +261,6 @@ export async function expireStaleReservations(
           return "defined"; // definiu agora — prosseguir para verificação de grace abaixo
         });
         if (result === "skip" || result === "skip_window") continue;
-        if (result === "defined") continue;
         // result === "passed_window": passou da janela de confirmação —
         // prosseguir para cancelar (finalizeExpiry com toOrderStatus: "cancelado").
         // result === "defined": primeira observação definida agora — prosseguir
