@@ -1,16 +1,24 @@
 // language: JS (ESM), file: scripts/build-migration-steps.mjs
-// One-shot: converte o blob idempotente de apps/api/src/db/migrate.ts em passos
-// nomeados (MigrationStep[]) preservando o SQL byte a byte. Roda UMA vez no
-// refactor AUD-03; mantido como registro do processo.
+// One-shot: converte o blob idempotente de migrations em passos nomeados
+// (MigrationStep[]) preservando o SQL byte a byte. Uso:
+//   node scripts/build-migration-steps.mjs <blob-original>  [destino fixo]
+// O blob ORIGINAL (executado do master) entra como argv[2]; a saída é sempre
+// apps/api/src/db/migrate.ts. Roda UMA vez no refactor AUD-03; mantido como
+// registro do processo.
 import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
-const SRC = "apps/api/src/db/migrate.ts";
+const SRC = process.argv[2] ?? "apps/api/src/db/migrate.ts";
+const DEST = "apps/api/src/db/migrate.ts";
 const raw = readFileSync(SRC, "utf8");
+if (process.env.DEBUG_CONV) console.error(`[conv] SRC=${SRC} bytes=${raw.length} db.execute=${(raw.match(/db\.execute/g) ?? []).length}`);
 
-// ---- 1. statements: todos os spans `await db.execute(sql`...`);` na ordem ----
-const stmtRe = /await\s+db\.execute\((?:sql|sql\.raw)\s*`([\s\S]*?)`\s*\);/g;
+// ---- 1. statements: spans `await db.execute(sql`...`);` e
+//         `await db.execute(sql.raw(`...`));`, na ordem ----
+// sql       → `db.execute(sql`...`);`          (fecha com `);`)
+// sql.raw   → `db.execute(sql.raw(`...`));`    (fecha com `));`)
+const stmtRe = /await\s+db\.execute\(\s*(?:sql\.raw|sql)\s*(?:\(\s*)?`([\s\S]*?)`\s*\)\s*\)?\s*;/g;
 const statements = [];
 let m;
 while ((m = stmtRe.exec(raw)) !== null) {
@@ -18,7 +26,11 @@ while ((m = stmtRe.exec(raw)) !== null) {
   if (m[1].includes("${")) throw new Error(`interpolação em statement @${m.index}`);
   statements.push({ text: m[1], start: m.index, end: m.index + m[0].length });
 }
-if (statements.length !== 223) throw new Error(`esperado 223 statements, achados ${statements.length}`);
+// Guarda de completude: todo "db.execute" do blob deve ter virado statement.
+const executeLines = (raw.match(/db\.execute/g) ?? []).length;
+if (executeLines !== statements.length) {
+  throw new Error(`db.execute no blob: ${executeLines}, statements capturados: ${statements.length} — regex perdeu statements`);
+}
 
 // ---- 2. seções: marcadores `// ---- Título ----` ----
 const markerRe = /^[ \t]*\/\/ -+ (.+)$/gm;
@@ -138,6 +150,6 @@ export async function migrate(db: Db): Promise<MigrationRunSummary> {
 }
 `;
 
-writeFileSync(SRC, header + stepBlocks + "\n" + codeSteps, "utf8");
+writeFileSync(DEST, header + stepBlocks + "\n" + codeSteps, "utf8");
 console.log(`OK: ${named.length} seções, ${statements.length} statements, revisões: sync=${syncRevision.slice(0, 8)} roles=${rolesRevision.slice(0, 8)}`);
 console.log(named.map((s) => `${s.name} (${s.statements.length})`).join("\n"));

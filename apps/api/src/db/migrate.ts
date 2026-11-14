@@ -1173,6 +1173,23 @@ export const MIGRATION_STEPS: MigrationStep[] = [
       "created_at" timestamptz NOT NULL DEFAULT now()
     );`,
       `
+    CREATE OR REPLACE FUNCTION prevent_audit_modification()
+    RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'audit_logs is immutable';
+    END;
+    $$ LANGUAGE plpgsql;`,
+      `DROP TRIGGER IF EXISTS prevent_audit_update ON "audit_logs";`,
+      `
+    CREATE TRIGGER prevent_audit_update
+    BEFORE UPDATE ON "audit_logs"
+    FOR EACH ROW EXECUTE FUNCTION prevent_audit_modification()`,
+      `DROP TRIGGER IF EXISTS prevent_audit_delete ON "audit_logs";`,
+      `
+    CREATE TRIGGER prevent_audit_delete
+    BEFORE DELETE ON "audit_logs"
+    FOR EACH ROW EXECUTE FUNCTION prevent_audit_modification()`,
+      `
     CREATE INDEX IF NOT EXISTS "audit_logs_actor_idx" ON "audit_logs" ("actor_user_id");`,
       `
     CREATE INDEX IF NOT EXISTS "audit_logs_entity_idx" ON "audit_logs" ("entity", "entity_id");`,

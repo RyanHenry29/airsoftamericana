@@ -6,17 +6,16 @@ Diff completo: `docs/review/pr3-aud03-full.diff` (2.437 linhas)
 
 ## Escopo
 
-Converte o blob idempotente de migrations (1.320 linhas, 223 statements, zero
-interpolação) em **30 passos nomeados** (`MigrationStep[]`: 28 SQL + 2 de
-código) executados por um motor coordenado. Assinatura `migrate(db)`
-preservada — todos os ~30 chamadores (boot, seed, CLIs, testes) continuam
-válidos.
+Converte o blob idempotente de migrations (228 statements, zero interpolação)
+em **30 passos nomeados** (`MigrationStep[]`: 28 SQL + 2 de código) executados
+por um motor coordenado. Assinatura `migrate(db)` preservada — todos os ~30
+chamadores (boot, seed, CLIs, testes) continuam válidos.
 
 ## Arquivos alterados
 
 | Arquivo | Mudança |
 |---|---|
-| `apps/api/src/db/migrate.ts` | Blob → passos nomeados; SQL byte a byte (conversor one-shot) |
+| `apps/api/src/db/migrate.ts` | Blob → passos nomeados; SQL byte a byte (conversor one-shot, guarda de completude 228/228) |
 | `apps/api/src/db/migration-ledger.ts` | **Novo** — motor: ledger, checksum, locks, recuperação |
 | `apps/api/src/db/migration-ledger.test.ts` | **Novo** — 7 testes do ledger |
 | `apps/api/src/db/index.ts` | `getMigrationSession()` — sessão dedicada (só com pool) |
@@ -85,6 +84,21 @@ query do `acquireAdvisoryLock`; depois: `migrate(tx)` completa em 54ms.
    `migrationChain` (teste de concorrência falhava: `n=2`; passa com
    exatamente-uma aplicação, `n=1`).
 3. Deadlock `migrate(tx)` no PGlite (descrito acima).
+4. **Conversor perdia statements `sql.raw(...)`** — o regex não cobria o
+   parêntese entre `sql.raw` e a crase: 5 statements de trigger de
+   imutabilidade de `audit_logs` ficaram FORA do arquivo gerado. Sintoma
+   determinístico: em DB fresco (CI, data-test zerado) o passo `028_auditoria`
+   era marcado `aplicada` SEM os triggers → `UPDATE`/`DELETE` em
+   `audit_logs` passavam (`audit.immutability.test.ts` 2/2 falhando no CI).
+   Correção: regex com `(?:\(\s*)?` + fechamento `\)\s*\)?` e **guarda de
+   completude** no conversor (`db.execute` no blob === statements capturados;
+   hoje 228/228). Prova local: dir zerado + migrate fresco → antes: triggers
+   `[]`, UPDATE passa; depois: 30 passos aplicados, triggers
+   `prevent_audit_update`/`prevent_audit_delete` presentes, UPDATE bloqueado.
+   Nota: DBs migrados pela versão intermediária (só dev/test local) recusam o
+   boot por checksum divergente (`MigrationChecksumError`) — comportamento
+   correto do tamper-evident; apagar o diretório de dev resolve. Produção
+   congelada: nenhum DB real foi migrado pela versão intermediária.
 
 ## Fora do escopo (pré-existente, anotado)
 
