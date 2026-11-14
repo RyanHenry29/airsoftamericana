@@ -1,12 +1,28 @@
 # Deploy monorepo (store + admin + api) na Vercel via CLI.
 # Não depende do Vercel GitHub App — útil quando a conta GitHub está impedida
 # de autorizar integrações de terceiros. Requer só o secret VERCEL_TOKEN.
+#
+# Contrato (rota 2):
+#   - push em master              -> deploy PREVIEW dos três apps (NUNCA produção)
+#   - workflow_dispatch preview   -> deploy PREVIEW dos três apps
+#   - workflow_dispatch production-> previews rodam como PORTÃO; produção só
+#     se os três previews passarem (needs). Job de produção exige o GitHub
+#     Environment "production" (proteção/aprovação configurada no repo).
 name: Deploy Vercel (CLI)
 
 on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente alvo do deploy"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - production
 
 concurrency:
   group: deploy-vercel-${{ github.ref }}
@@ -17,8 +33,74 @@ env:
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
 jobs:
-  deploy-store:
-    name: deploy store (apps/store)
+  preview-store:
+    name: preview store (apps/store)
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_9Sugoxxzib3WdiDaXnOFJ8jth4IO
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i -g vercel@latest
+      - name: Link projeto
+        run: |
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+      - run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+      - run: vercel build --token="$VERCEL_TOKEN"
+      - run: vercel deploy --prebuilt --token="$VERCEL_TOKEN"
+
+  preview-admin:
+    name: preview admin (apps/admin)
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_qdcrPg8o4hA4UbIVVCO7rnOgcYOu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i -g vercel@latest
+      - name: Link projeto
+        run: |
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+      - run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+      - run: vercel build --token="$VERCEL_TOKEN"
+      - run: vercel deploy --prebuilt --token="$VERCEL_TOKEN"
+
+  preview-api:
+    name: preview api (apps/api)
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_MLk5KPuaIh5shK0cNZum69oXpl13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm i -g vercel@latest
+      - name: Link projeto
+        run: |
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+      - run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+      - run: vercel build --token="$VERCEL_TOKEN"
+      - run: vercel deploy --prebuilt --token="$VERCEL_TOKEN"
+
+  production-store:
+    name: production store (apps/store)
+    needs: [preview-store, preview-admin, preview-api]
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
+    environment: production
     runs-on: ubuntu-latest
     env:
       VERCEL_PROJECT_ID: prj_9Sugoxxzib3WdiDaXnOFJ8jth4IO
@@ -38,11 +120,14 @@ jobs:
       - run: vercel build --prod --token="$VERCEL_TOKEN"
       - run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
-  deploy-admin:
-    name: deploy admin (apps/admin)
+  production-admin:
+    name: production admin (apps/admin)
+    needs: [preview-store, preview-admin, preview-api]
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
+    environment: production
     runs-on: ubuntu-latest
     env:
-      VERCEL_PROJECT_ID: prj_Yp59lHvWQUaym3DHvDyDICXmhNdh
+      VERCEL_PROJECT_ID: prj_qdcrPg8o4hA4UbIVVCO7rnOgcYOu
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,8 +144,11 @@ jobs:
       - run: vercel build --prod --token="$VERCEL_TOKEN"
       - run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
-  deploy-api:
-    name: deploy api (apps/api)
+  production-api:
+    name: production api (apps/api)
+    needs: [preview-store, preview-admin, preview-api]
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
+    environment: production
     runs-on: ubuntu-latest
     env:
       VERCEL_PROJECT_ID: prj_MLk5KPuaIh5shK0cNZum69oXpl13
