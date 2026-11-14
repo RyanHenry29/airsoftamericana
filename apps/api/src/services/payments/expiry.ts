@@ -261,11 +261,12 @@ export async function expireStaleReservations(
           return "defined"; // definiu agora — prosseguir para verificação de grace abaixo
         });
         if (result === "skip" || result === "skip_window") continue;
+        if (result === "defined") continue;
         // result === "passed_window": passou da janela de confirmação —
         // prosseguir para cancelar (finalizeExpiry com toOrderStatus: "cancelado").
-        // result === "defined": primeira observação definida agora — não
-        // cancela nesta passada; a próxima passada (janela decorrida) decide.
-        if (result === "defined") continue;
+        // result === "defined": primeira observação definida agora — prosseguir
+        // para verificação de grace abaixo (não cancela nesta passada, apenas
+        // registra a primeira observação).
       }
       // Tolerância: dentro do grace, resposta negativa NÃO cancela —
       // consistência eventual do gateway preservada (v4).
