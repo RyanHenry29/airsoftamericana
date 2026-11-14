@@ -517,9 +517,12 @@ export async function deadLetterEvent(
   db: Db,
   row: typeof schema.paymentEvents.$inferSelect,
   reason: string,
+  leaseToken: string,
   detail?: unknown,
-  leaseToken?: string,
 ): Promise<boolean> {
+  // leaseToken é obrigatório na prática — todo caminho de produção passa o
+  // token do claim. Sem ele, não há como comprovar posse do evento.
+  if (!leaseToken) throw new Error("deadLetterEvent requer leaseToken");
   let marked = false;
   await db.transaction(async (tx) => {
     const conditions = [
@@ -650,17 +653,17 @@ export async function recoverPendingEvents(
     let event: NormalizedWebhookEvent | null = null;
     let adapter = getAdapter(row.provider);
     if (!adapter) {
-      if (await deadLetterEvent(db, row, "unknown_provider", undefined, claim.leaseToken)) deadLettered++;
+      if (await deadLetterEvent(db, row, "unknown_provider", claim.leaseToken, undefined)) deadLettered++;
       continue;
     }
     try {
       event = adapter.parseWebhook(JSON.stringify(row.payload));
     } catch (e) {
-      if (await deadLetterEvent(db, row, "invalid_payload", e instanceof Error ? e.message : String(e), claim.leaseToken)) deadLettered++;
+      if (await deadLetterEvent(db, row, "invalid_payload", claim.leaseToken, e instanceof Error ? e.message : String(e))) deadLettered++;
       continue;
     }
     if (!event.providerTransactionId) {
-      if (await deadLetterEvent(db, row, "missing_transaction_reference", undefined, claim.leaseToken)) deadLettered++;
+      if (await deadLetterEvent(db, row, "missing_transaction_reference", claim.leaseToken, undefined)) deadLettered++;
       continue;
     }
 
@@ -680,7 +683,7 @@ export async function recoverPendingEvents(
     if (!payment) {
       const tooOld = Date.now() - row.createdAt.getTime() > maxAgeDays * 24 * 60 * 60 * 1000;
       if (tooOld) {
-        if (await deadLetterEvent(db, row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts }, claim.leaseToken)) deadLettered++;
+        if (await deadLetterEvent(db, row, "payment_never_arrived", claim.leaseToken, { ageDays: maxAgeDays, attempts: claim.attempts })) deadLettered++;
       } else {
         parked++;
       }
@@ -725,7 +728,7 @@ export async function recoverPendingEvents(
       // próprio bem-sucedido — se outro worker segurasse o lease, esta
       // passada teria pulado em `locked_by_other` antes de processar.
       if (claim.attempts >= maxAttempts) {
-        if (await deadLetterEvent(db, row, `max_attempts_${outcome.reason}`, undefined, claim.leaseToken)) deadLettered++;
+        if (await deadLetterEvent(db, row, `max_attempts_${outcome.reason}`, claim.leaseToken, undefined)) deadLettered++;
       }
     } else {
       // already_applied / noop: evento saiu da fila (marcado na transação).
@@ -819,7 +822,7 @@ export async function repairPartialApplications(
               and(
                 eq(schema.systemLocks.name, ctx.lockName),
                 eq(schema.systemLocks.leaseToken, ctx.leaseToken),
-                sql`${schema.systemLocks.leaseExpiresAt} > now()`,
+                sql`${schema.systemLocks.leaseExpiresAt} > clock_timestamp()`,
               ),
             )
             .for("update");

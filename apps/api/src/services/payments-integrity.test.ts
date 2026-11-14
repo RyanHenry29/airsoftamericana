@@ -3032,7 +3032,7 @@ describe("cercas de arrendamento: validade temporal (revisão do revisor)", () =
     expect(row!.leaseToken).toBe("worker-a"); // token ainda é o do worker antigo
     expect(row!.leaseExpiresAt!.getTime()).toBeLessThan(Date.now()); // lease já expirou
 
-    const marked = await deadLetterEvent(db, row!, "max_attempts_amount_mismatch", undefined, "worker-a");
+    const marked = await deadLetterEvent(db, row!, "max_attempts_amount_mismatch", "worker-a", undefined);
     expect(marked).toBe(false); // lease expirado: não dead-lettera
 
     const [rowAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
