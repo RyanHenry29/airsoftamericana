@@ -184,7 +184,33 @@ export async function expireStaleReservations(
         // ainda estiver nulo (condição atômica contra corridas).
         const result = await db.transaction(async (tx) => {
           const [freshPayment] = await tx.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
-          if (!freshPayment || freshPayment.status !== "pendente" || freshPayment.notFoundFirstSeenAt) return false;
+          if (!freshPayment || freshPayment.status !== "pendente") return "skip";
+          if (freshPayment.notFoundFirstSeenAt) {
+            // Já tem primeira observação — verifica janela de confirmação
+            // com o relógio do banco (mesma autoridade da gravação).
+            const withinWindow = await tx
+              .select({ withinWindow: sql<boolean>`${schema.payments.notFoundFirstSeenAt} > clock_timestamp() - ${confirmWindowMs}::bigint * interval '1 millisecond'` })
+              .from(schema.payments)
+              .where(eq(schema.payments.id, payment.id));
+            const inWindow = withinWindow[0]?.withinWindow ?? false;
+            if (inWindow) {
+              summary.skippedConfirmWindow++;
+              await audit(tx as unknown as Db, {
+                action: "expiry.skipped_confirm_window",
+                entity: "order",
+                entityId: order.id,
+                actorLabel: "expiry:auto",
+                after: {
+                  provider: payment.provider,
+                  reason: "segunda observação antes da janela de confirmação — decisão adiada para a passada seguinte",
+                  firstSeenAt: freshPayment.notFoundFirstSeenAt ?? null,
+                  confirmWindowMs,
+                },
+              });
+              return "skip_window"; // está na janela — pular para próximo pagamento
+            }
+            return "passed_window"; // passou da janela — segue para cancelar
+          }
           const updated = await tx
             .update(schema.payments)
             .set({ notFoundFirstSeenAt: sql`clock_timestamp()` })
@@ -195,7 +221,7 @@ export async function expireStaleReservations(
                 isNull(schema.payments.notFoundFirstSeenAt),
               ),
             );
-          if ((updated.rowCount ?? 0) === 0) return false;
+          if ((updated.rowCount ?? 0) === 0) return "skip";
           summary.firstSeenRecorded++;
           await audit(tx as unknown as Db, {
             action: "expiry.notfound_first_seen",
@@ -208,9 +234,12 @@ export async function expireStaleReservations(
               graceMinutes: notFoundGraceMinutes,
             },
           });
-          return true;
+          return "defined"; // definiu agora — prosseguir para grace
         });
-        if (!result) continue;
+        if (result === "skip" || result === "skip_window") continue;
+        if (result === "passed_window") continue;
+        // result === "defined": primeira observação definida agora —
+        // prosseguir para verificação de grace abaixo.
       }
       // Tolerância: dentro do grace, resposta negativa NÃO cancela —
       // consistência eventual do gateway preservada (v4).
@@ -225,28 +254,6 @@ export async function expireStaleReservations(
             provider: payment.provider,
             reason: "provedor não conhece a cobrança, mas pedido dentro da tolerância — reserva preservada",
             graceMinutes: notFoundGraceMinutes,
-          },
-        });
-        continue;
-      }
-      // Janela de confirmação: a observação persistida é recente — este
-      // `null` não é independente do primeiro; a passada seguinte decide.
-      // RE-LEITURA: o scan leu a linha ANTES de persistir a primeira
-      // observação — a janela julga o estado real do banco.
-      const [freshPayment] = await db.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
-      const firstSeen = freshPayment?.notFoundFirstSeenAt?.getTime() ?? 0;
-      if (Date.now() - firstSeen < confirmWindowMs) {
-        summary.skippedConfirmWindow++;
-        await audit(db, {
-          action: "expiry.skipped_confirm_window",
-          entity: "order",
-          entityId: order.id,
-          actorLabel: "expiry:auto",
-          after: {
-            provider: payment.provider,
-            reason: "segunda observação antes da janela de confirmação — decisão adiada para a passada seguinte",
-            firstSeenAt: freshPayment?.notFoundFirstSeenAt ?? null,
-            confirmWindowMs,
           },
         });
         continue;
