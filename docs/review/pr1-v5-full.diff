@@ -274,7 +274,7 @@ index b9fe14f..e6b593f 100644
    id: uuid("id").defaultRandom().primaryKey(),
    paymentId: uuid("payment_id").notNull().references(() => payments.id),
 diff --git a/apps/api/src/services/payments-integrity.test.ts b/apps/api/src/services/payments-integrity.test.ts
-index 0daadc4..8218142 100644
+index 0daadc4..ddf1b6f 100644
 --- a/apps/api/src/services/payments-integrity.test.ts
 +++ b/apps/api/src/services/payments-integrity.test.ts
 @@ -3,13 +3,13 @@
@@ -1895,7 +1895,7 @@ index 0daadc4..8218142 100644
 +    expect(row!.leaseToken).toBe("worker-a"); // token ainda é o do worker antigo
 +    expect(row!.leaseExpiresAt!.getTime()).toBeLessThan(Date.now()); // lease já expirou
 +
-+    const marked = await deadLetterEvent(db, row!, "max_attempts_amount_mismatch", undefined, "worker-a");
++    const marked = await deadLetterEvent(db, row!, "max_attempts_amount_mismatch", "worker-a", undefined);
 +    expect(marked).toBe(false); // lease expirado: não dead-lettera
 +
 +    const [rowAfter] = await db.select().from(schema.paymentEvents).where(eq(schema.paymentEvents.eventId, parsed.eventId));
@@ -2073,7 +2073,7 @@ index 0daadc4..8218142 100644
 +
 +
 diff --git a/apps/api/src/services/payments/expiry.ts b/apps/api/src/services/payments/expiry.ts
-index 70ab2ea..3ac317f 100644
+index 70ab2ea..117b68b 100644
 --- a/apps/api/src/services/payments/expiry.ts
 +++ b/apps/api/src/services/payments/expiry.ts
 @@ -29,13 +29,17 @@
@@ -2154,7 +2154,7 @@ index 70ab2ea..3ac317f 100644
    };
  
    for (const { order, payment } of stale) {
-@@ -136,8 +172,48 @@ export async function expireStaleReservations(
+@@ -136,8 +172,77 @@ export async function expireStaleReservations(
      let remote = queried.result;
  
      if (remote === null) {
@@ -2172,7 +2172,33 @@ index 70ab2ea..3ac317f 100644
 +        // ainda estiver nulo (condição atômica contra corridas).
 +        const result = await db.transaction(async (tx) => {
 +          const [freshPayment] = await tx.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
-+          if (!freshPayment || freshPayment.status !== "pendente" || freshPayment.notFoundFirstSeenAt) return false;
++          if (!freshPayment || freshPayment.status !== "pendente") return "skip";
++          if (freshPayment.notFoundFirstSeenAt) {
++            // Já tem primeira observação — verifica janela de confirmação
++            // com o relógio do banco (mesma autoridade da gravação).
++            const withinWindow = await tx
++              .select({ withinWindow: sql<boolean>`${schema.payments.notFoundFirstSeenAt} > clock_timestamp() - ${confirmWindowMs}::bigint * interval '1 millisecond'` })
++              .from(schema.payments)
++              .where(eq(schema.payments.id, payment.id));
++            const inWindow = withinWindow[0]?.withinWindow ?? false;
++            if (inWindow) {
++              summary.skippedConfirmWindow++;
++              await audit(tx as unknown as Db, {
++                action: "expiry.skipped_confirm_window",
++                entity: "order",
++                entityId: order.id,
++                actorLabel: "expiry:auto",
++                after: {
++                  provider: payment.provider,
++                  reason: "segunda observação antes da janela de confirmação — decisão adiada para a passada seguinte",
++                  firstSeenAt: freshPayment.notFoundFirstSeenAt ?? null,
++                  confirmWindowMs,
++                },
++              });
++              return "skip_window"; // está na janela — pular para próximo pagamento
++            }
++            return "passed_window"; // passou da janela — segue para cancelar
++          }
 +          const updated = await tx
 +            .update(schema.payments)
 +            .set({ notFoundFirstSeenAt: sql`clock_timestamp()` })
@@ -2183,7 +2209,7 @@ index 70ab2ea..3ac317f 100644
 +                isNull(schema.payments.notFoundFirstSeenAt),
 +              ),
 +            );
-+          if ((updated.rowCount ?? 0) === 0) return false;
++          if ((updated.rowCount ?? 0) === 0) return "skip";
 +          summary.firstSeenRecorded++;
 +          await audit(tx as unknown as Db, {
 +            action: "expiry.notfound_first_seen",
@@ -2196,16 +2222,19 @@ index 70ab2ea..3ac317f 100644
 +              graceMinutes: notFoundGraceMinutes,
 +            },
 +          });
-+          return true;
++          return "defined"; // definiu agora — prosseguir para grace
 +        });
-+        if (!result) continue;
++        if (result === "skip" || result === "skip_window") continue;
++        if (result === "passed_window") continue;
++        // result === "defined": primeira observação definida agora —
++        // prosseguir para verificação de grace abaixo.
 +      }
 +      // Tolerância: dentro do grace, resposta negativa NÃO cancela —
 +      // consistência eventual do gateway preservada (v4).
        if (order.createdAt.getTime() > graceCutoff.getTime()) {
          summary.skippedNotFoundGrace++;
          await audit(db, {
-@@ -153,96 +229,200 @@ export async function expireStaleReservations(
+@@ -153,96 +258,178 @@ export async function expireStaleReservations(
          });
          continue;
        }
@@ -2215,33 +2244,6 @@ index 70ab2ea..3ac317f 100644
 -        remote = await adapter.queryPaymentByOrder(order.id);
 -      } catch {
 -        summary.skippedUnknown++;
-+      // Janela de confirmação: a observação persistida é recente — este
-+      // `null` não é independente do primeiro; a passada seguinte decide.
-+      // RE-LEITURA: o scan leu a linha ANTES de persistir a primeira
-+      // observação — a janela julga o estado real do banco.
-+      const [freshPayment] = await db.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
-+      const firstSeen = freshPayment?.notFoundFirstSeenAt?.getTime() ?? 0;
-+      if (Date.now() - firstSeen < confirmWindowMs) {
-+        summary.skippedConfirmWindow++;
-         await audit(db, {
--          action: "expiry.skipped_unknown",
-+          action: "expiry.skipped_confirm_window",
-           entity: "order",
-           entityId: order.id,
-           actorLabel: "expiry:auto",
--          after: { provider: payment.provider, reason: "2ª confirmação falhou — reserva preservada" },
-+          after: {
-+            provider: payment.provider,
-+            reason: "segunda observação antes da janela de confirmação — decisão adiada para a passada seguinte",
-+            firstSeenAt: freshPayment?.notFoundFirstSeenAt ?? null,
-+            confirmWindowMs,
-+          },
-         });
-         continue;
-       }
--      if (remote !== null) {
--        // Apareceu entre as consultas: segue com o resultado real (abaixo).
--        // null→pendente fica no ramo de cobrança viva; null→aprovado no de aprovação.
 +      // Tolerância vencida + duas observações independentes (passadas
 +      // distintas), ambas `null`: ausência definitiva — cancela com estoque
 +      // livre, atomicamente (v5, item 5).
@@ -2260,7 +2262,8 @@ index 70ab2ea..3ac317f 100644
 +        // pedido não existe mais). Nunca assenta, nunca reconcilia.
 +        summary.skipped++;
 +        summary.skippedOrderMissing++;
-+        await audit(db, {
+         await audit(db, {
+-          action: "expiry.skipped_unknown",
 +          action: "expiry.skipped_order_missing",
 +          entity: "payment",
 +          entityId: payment.id,
@@ -2279,15 +2282,21 @@ index 70ab2ea..3ac317f 100644
 +        summary.skippedInvalidState++; // indicador operacional (revisão)
 +        await audit(db, {
 +          action: "expiry.skipped_invalid_order_state",
-+          entity: "order",
-+          entityId: order.id,
-+          actorLabel: "expiry:auto",
+           entity: "order",
+           entityId: order.id,
+           actorLabel: "expiry:auto",
+-          after: { provider: payment.provider, reason: "2ª confirmação falhou — reserva preservada" },
 +          after: {
 +            provider: payment.provider,
 +            orderStatus: settled.orderStatus,
 +            reason: "transição recusada pelo estado do pedido — assentamento automático proibido; investigação humana",
 +          },
-+        });
+         });
+-        continue;
+-      }
+-      if (remote !== null) {
+-        // Apareceu entre as consultas: segue com o resultado real (abaixo).
+-        // null→pendente fica no ramo de cobrança viva; null→aprovado no de aprovação.
 +      } else {
 +        summary.skipped++; // webhook/admin venceu a corrida
        }
@@ -2466,7 +2475,7 @@ index 70ab2ea..3ac317f 100644
        continue;
      }
  
-@@ -261,50 +441,202 @@ export async function expireStaleReservations(
+@@ -261,50 +448,202 @@ export async function expireStaleReservations(
    return summary;
  }
  
@@ -2858,7 +2867,7 @@ index 0000000..3f9c938
 +  }
 +}
 diff --git a/apps/api/src/services/payments/webhook-events.ts b/apps/api/src/services/payments/webhook-events.ts
-index cd3cf18..dda32a1 100644
+index cd3cf18..3b4b599 100644
 --- a/apps/api/src/services/payments/webhook-events.ts
 +++ b/apps/api/src/services/payments/webhook-events.ts
 @@ -25,7 +25,7 @@
@@ -3138,7 +3147,7 @@ index cd3cf18..dda32a1 100644
    return result;
  }
  
-@@ -486,6 +505,56 @@ export async function applyPendingEventsForPayment(
+@@ -486,6 +505,59 @@ export async function applyPendingEventsForPayment(
   *    estacionado INDEPENDENTE do número de tentativas e só sai por IDADE
   *    (`maxAgeDays`, default 30). Tentativas nunca descartam um parked.
   */
@@ -3154,9 +3163,12 @@ index cd3cf18..dda32a1 100644
 +  db: Db,
 +  row: typeof schema.paymentEvents.$inferSelect,
 +  reason: string,
++  leaseToken: string,
 +  detail?: unknown,
-+  leaseToken?: string,
 +): Promise<boolean> {
++  // leaseToken é obrigatório na prática — todo caminho de produção passa o
++  // token do claim. Sem ele, não há como comprovar posse do evento.
++  if (!leaseToken) throw new Error("deadLetterEvent requer leaseToken");
 +  let marked = false;
 +  await db.transaction(async (tx) => {
 +    const conditions = [
@@ -3195,7 +3207,7 @@ index cd3cf18..dda32a1 100644
  export async function recoverPendingEvents(
    db: Db,
    opts: {
-@@ -504,6 +573,8 @@ export async function recoverPendingEvents(
+@@ -504,6 +576,8 @@ export async function recoverPendingEvents(
    deadLettered: number;
    skippedBackoff: number;
    skippedLease: number;
@@ -3204,7 +3216,7 @@ index cd3cf18..dda32a1 100644
  }> {
    await initAdapters(db);
  
-@@ -522,64 +593,19 @@ export async function recoverPendingEvents(
+@@ -522,64 +596,19 @@ export async function recoverPendingEvents(
    let applied = 0;
    let rejected = 0;
    let parked = 0;
@@ -3274,7 +3286,7 @@ index cd3cf18..dda32a1 100644
      > => {
        const locked = await tx
          .select()
-@@ -589,12 +615,12 @@ export async function recoverPendingEvents(
+@@ -589,12 +618,12 @@ export async function recoverPendingEvents(
              eq(schema.paymentEvents.id, row.id),
              isNull(schema.paymentEvents.processedAt),
              eq(schema.paymentEvents.deadLetter, false),
@@ -3289,7 +3301,7 @@ index cd3cf18..dda32a1 100644
        if (fresh.lastAttemptAt && Date.now() - fresh.lastAttemptAt.getTime() < minBackoffMs) {
          return { kind: "backoff" };
        }
-@@ -604,10 +630,11 @@ export async function recoverPendingEvents(
+@@ -604,10 +633,11 @@ export async function recoverPendingEvents(
          .set({
            attempts,
            lastAttemptAt: new Date(),
@@ -3303,7 +3315,7 @@ index cd3cf18..dda32a1 100644
      });
  
      if (claim.kind === "locked_by_other") {
-@@ -619,6 +646,24 @@ export async function recoverPendingEvents(
+@@ -619,6 +649,24 @@ export async function recoverPendingEvents(
        continue;
      }
  
@@ -3311,29 +3323,29 @@ index cd3cf18..dda32a1 100644
 +    let event: NormalizedWebhookEvent | null = null;
 +    let adapter = getAdapter(row.provider);
 +    if (!adapter) {
-+      if (await deadLetterEvent(db, row, "unknown_provider", undefined, claim.leaseToken)) deadLettered++;
++      if (await deadLetterEvent(db, row, "unknown_provider", claim.leaseToken, undefined)) deadLettered++;
 +      continue;
 +    }
 +    try {
 +      event = adapter.parseWebhook(JSON.stringify(row.payload));
 +    } catch (e) {
-+      if (await deadLetterEvent(db, row, "invalid_payload", e instanceof Error ? e.message : String(e), claim.leaseToken)) deadLettered++;
++      if (await deadLetterEvent(db, row, "invalid_payload", claim.leaseToken, e instanceof Error ? e.message : String(e))) deadLettered++;
 +      continue;
 +    }
 +    if (!event.providerTransactionId) {
-+      if (await deadLetterEvent(db, row, "missing_transaction_reference", undefined, claim.leaseToken)) deadLettered++;
++      if (await deadLetterEvent(db, row, "missing_transaction_reference", claim.leaseToken, undefined)) deadLettered++;
 +      continue;
 +    }
 +
      // ---- Pagamento local: corrida checkout×webhook = referência ainda
      // NÃO DISPONÍVEL. Saída SOMENTE por idade — tentativas nunca descartam.
      const rows = await db
-@@ -635,23 +680,40 @@ export async function recoverPendingEvents(
+@@ -635,23 +683,40 @@ export async function recoverPendingEvents(
      if (!payment) {
        const tooOld = Date.now() - row.createdAt.getTime() > maxAgeDays * 24 * 60 * 60 * 1000;
        if (tooOld) {
 -        await deadLetter(row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts });
-+        if (await deadLetterEvent(db, row, "payment_never_arrived", { ageDays: maxAgeDays, attempts: claim.attempts }, claim.leaseToken)) deadLettered++;
++        if (await deadLetterEvent(db, row, "payment_never_arrived", claim.leaseToken, { ageDays: maxAgeDays, attempts: claim.attempts })) deadLettered++;
        } else {
          parked++;
        }
@@ -3378,16 +3390,16 @@ index cd3cf18..dda32a1 100644
      } else if (
        outcome.reason &&
        ["amount_mismatch", "currency_mismatch", "account_mismatch", "account_unverified", "transaction_mismatch", "gateway_query_unavailable", "event_not_authenticated"].includes(outcome.reason)
-@@ -663,7 +725,7 @@ export async function recoverPendingEvents(
+@@ -663,7 +728,7 @@ export async function recoverPendingEvents(
        // próprio bem-sucedido — se outro worker segurasse o lease, esta
        // passada teria pulado em `locked_by_other` antes de processar.
        if (claim.attempts >= maxAttempts) {
 -        await deadLetter(row, `max_attempts_${outcome.reason}`);
-+        if (await deadLetterEvent(db, row, `max_attempts_${outcome.reason}`, undefined, claim.leaseToken)) deadLettered++;
++        if (await deadLetterEvent(db, row, `max_attempts_${outcome.reason}`, claim.leaseToken, undefined)) deadLettered++;
        }
      } else {
        // already_applied / noop: evento saiu da fila (marcado na transação).
-@@ -671,7 +733,7 @@ export async function recoverPendingEvents(
+@@ -671,7 +736,7 @@ export async function recoverPendingEvents(
      }
    }
  
@@ -3396,7 +3408,7 @@ index cd3cf18..dda32a1 100644
  }
  
  /**
-@@ -679,6 +741,12 @@ export async function recoverPendingEvents(
+@@ -679,6 +744,12 @@ export async function recoverPendingEvents(
   * updates): pagamento já atualizado mas pedido não. Roda no boot, depois de
   * recoverPendingEvents — revisão v4 (ponto B):
   *
@@ -3409,7 +3421,7 @@ index cd3cf18..dda32a1 100644
   *  - IDEMPOTENTE por construção: a divergência é definida pela JUNÇÃO
   *    (payment definitivo × order em PAYMENT_PENDING_STATUSES). O primeiro
   *    reparo tira o pedido da condição — passadas seguintes não encontram
-@@ -705,7 +773,13 @@ export async function recoverPendingEvents(
+@@ -705,7 +776,13 @@ export async function recoverPendingEvents(
   *   expirado    → cancelado           (libera estoque, uma vez)
   *   estornado   → reembolsado         (nunca auto-estorna; estado só espelha)
   */
@@ -3424,7 +3436,7 @@ index cd3cf18..dda32a1 100644
    const divergent = await db
      .select({ payment: schema.payments, order: schema.orders })
      .from(schema.payments)
-@@ -719,6 +793,10 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+@@ -719,6 +796,10 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
  
    let repaired = 0;
    for (const { payment, order } of divergent) {
@@ -3435,7 +3447,7 @@ index cd3cf18..dda32a1 100644
      const from = order.status as OrderStatus;
      const to: OrderStatus | null =
        payment.status === "aprovado"
-@@ -729,6 +807,25 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+@@ -729,6 +810,25 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
      try {
        let done = false;
        await db.transaction(async (tx) => {
@@ -3451,7 +3463,7 @@ index cd3cf18..dda32a1 100644
 +              and(
 +                eq(schema.systemLocks.name, ctx.lockName),
 +                eq(schema.systemLocks.leaseToken, ctx.leaseToken),
-+                sql`${schema.systemLocks.leaseExpiresAt} > now()`,
++                sql`${schema.systemLocks.leaseExpiresAt} > clock_timestamp()`,
 +              ),
 +            )
 +            .for("update");
@@ -3461,7 +3473,7 @@ index cd3cf18..dda32a1 100644
          const outcome = await transitionOrderInTx(tx as unknown as Db, {
            orderId: order.id,
            to,
-@@ -757,7 +854,8 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
+@@ -757,7 +857,8 @@ export async function repairPartialApplications(db: Db): Promise<{ repaired: num
          }
        });
        if (done) repaired++;
@@ -3620,7 +3632,7 @@ index 179bcf2..1c23c69 100644
 +5. Nada em produção, migrations ou SQLs de hardening sem autorização explícita.
 diff --git a/docs/review/pr1-v5-guia-de-revisao.md b/docs/review/pr1-v5-guia-de-revisao.md
 new file mode 100644
-index 0000000..27e0795
+index 0000000..5b39cd2
 --- /dev/null
 +++ b/docs/review/pr1-v5-guia-de-revisao.md
 @@ -0,0 +1,180 @@
@@ -3628,9 +3640,9 @@ index 0000000..27e0795
 +
 +> **Status:** v5 NÃO publicável. v4 (`1cdf48f`) permanece a versão publicada no PR #1. Produção, migrations e SQLs de hardening intocados.
 +>
-+> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..f2cbe6e` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
++> **Diff completo versionado:** `docs/review/pr1-v5-full.diff` (regenerado de `git diff 1cdf48f..bdc0e78` — SHA alvo da revisão final, excluindo o artefato de si mesmo).
 +>
-+> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (CI verde) · `07db6a2` (**cercas de arrendamento + 6 testes de cerca — SHA alvo da revisão final**) · `d9c3d1a` (**fencing transacional no reparo + testes fortalecidos — SHA alvo da revisão final**) · `2379108` (**correções do revisor final: dead-letter com token, relógio do banco, primeira observação atômica, CI alinhado — SHA alvo da revisão final**) · `3524eb7` (**correções do revisor: dead-letter com token, relógio do banco, primeira observação atômica, CI PostgreSQL 17 — SHA alvo da revisão final**).
++> Commits na branch: `b184d5d` · `7b4e895` · `f9b0250` · `001b011` · `54f9f51` · `eb7abcc` · `a1e0a1f` · `a97f9f2` · `118f69c` (artefatos) · `68445bb` (**correção pós-revisão**) · `ac4578a` · `f9e5d8d` (limpeza) · `c853b07` (artefatos regenerados) · `3313667` (**evidências pós-revisão**) · `276990c` · `b0b8d14` (artefatos) · `1dc5c2f` (**rodada final pós-revisão condicionada**) · `e270fb3` · `df72df8` (artefatos) · `fbc3f46` (endurecimentos documentados) · `c04fc0f` · `2e2943f` · `b75b511` (CI verde) · `07db6a2` (**cercas de arrendamento + 6 testes de cerca — SHA alvo da revisão final**) · `d9c3d1a` (**fencing transacional no reparo + testes fortalecidos — SHA alvo da revisão final**) · `2379108` (**correções do revisor final: dead-letter com token, relógio do banco, primeira observação atômica, CI alinhado — SHA alvo da revisão final**) · `bdc0e78` (**correções do revisor: dead-letter com token, relógio do banco, primeira observação atômica, CI PostgreSQL 17 — SHA alvo da revisão final**).
 +
 +## Rodada de correção (`68445bb`) — resultado da revisão v5.1
 +
