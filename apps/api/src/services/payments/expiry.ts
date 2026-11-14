@@ -29,7 +29,7 @@
  * em apps/api/index.ts, default 15 min, com flag de não-reentrância). O hook
  * de boot sozinho não cobre processos longevos — o intervalo sim.
  */
-import { and, eq, lt, inArray } from "drizzle-orm";
+import { and, eq, gt, isNull, inArray, lt, sql } from "drizzle-orm";
 import type { Db } from "../../db/index.js";
 import { schema } from "../../db/index.js";
 import { getAdapter, type PaymentAdapter, type QueryPaymentResult } from "./types.js";
@@ -180,14 +180,22 @@ export async function expireStaleReservations(
         // Revalidação atômica: pagamento ainda pendente e ainda sem a
         // primeira observação. Persistência e auditoria na MESMA
         // transação — falha de auditoria reverte a marcação, nunca deixa
-        // o campo registrado sem a trilha.
-        await db.transaction(async (tx) => {
+        // o campo registrado sem a trilha. O UPDATE só afeta se o campo
+        // ainda estiver nulo (condição atômica contra corridas).
+        const result = await db.transaction(async (tx) => {
           const [freshPayment] = await tx.select().from(schema.payments).where(eq(schema.payments.id, payment.id));
-          if (!freshPayment || freshPayment.status !== "pendente" || freshPayment.notFoundFirstSeenAt) return;
-          await tx
+          if (!freshPayment || freshPayment.status !== "pendente" || freshPayment.notFoundFirstSeenAt) return false;
+          const updated = await tx
             .update(schema.payments)
-            .set({ notFoundFirstSeenAt: new Date() })
-            .where(and(eq(schema.payments.id, payment.id), eq(schema.payments.status, "pendente")));
+            .set({ notFoundFirstSeenAt: sql`clock_timestamp()` })
+            .where(
+              and(
+                eq(schema.payments.id, payment.id),
+                eq(schema.payments.status, "pendente"),
+                isNull(schema.payments.notFoundFirstSeenAt),
+              ),
+            );
+          if ((updated.rowCount ?? 0) === 0) return false;
           summary.firstSeenRecorded++;
           await audit(tx as unknown as Db, {
             action: "expiry.notfound_first_seen",
@@ -200,7 +208,9 @@ export async function expireStaleReservations(
               graceMinutes: notFoundGraceMinutes,
             },
           });
+          return true;
         });
+        if (!result) continue;
       }
       // Tolerância: dentro do grace, resposta negativa NÃO cancela —
       // consistência eventual do gateway preservada (v4).

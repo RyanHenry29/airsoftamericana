@@ -299,7 +299,7 @@ export async function applyPaymentEvent(
                 eq(schema.paymentEvents.id, input.eventRowId),
                 eq(schema.paymentEvents.leaseToken, input.leaseToken),
                 isNull(schema.paymentEvents.processedAt),
-                gt(schema.paymentEvents.leaseExpiresAt, new Date()),
+                gt(schema.paymentEvents.leaseExpiresAt, sql`clock_timestamp()`),
               )
             : and(
                 eq(schema.paymentEvents.id, input.eventRowId),
@@ -527,7 +527,7 @@ export async function deadLetterEvent(
       isNull(schema.paymentEvents.processedAt),
       eq(schema.paymentEvents.deadLetter, false),
     ];
-    if (leaseToken) conditions.push(gt(schema.paymentEvents.leaseExpiresAt, new Date()));
+    if (leaseToken) conditions.push(gt(schema.paymentEvents.leaseExpiresAt, sql`clock_timestamp()`));
     const locked = await tx
       .select()
       .from(schema.paymentEvents)
@@ -600,29 +600,7 @@ export async function recoverPendingEvents(
   let leaseLost = 0;
 
   for (const row of pending) {
-    // ---- Parse: invalidade PERMANENTE vai para dead-letter SEM disputar
-    // lease — payload não-parseável nunca se tornará aplicável.
-    let event: NormalizedWebhookEvent | null = null;
-    let adapter = getAdapter(row.provider);
-    if (!adapter) {
-      if (await deadLetterEvent(db, row, "unknown_provider")) deadLettered++;
-      continue;
-    }
-    try {
-      event = adapter.parseWebhook(JSON.stringify(row.payload));
-    } catch (e) {
-      if (await deadLetterEvent(db, row, "invalid_payload", e instanceof Error ? e.message : String(e))) deadLettered++;
-      continue;
-    }
-    if (!event.providerTransactionId) {
-      if (await deadLetterEvent(db, row, "missing_transaction_reference")) deadLettered++;
-      continue;
-    }
-
-    // ---- CLAIM ATÔMICO: lock da linha + guarda de lease, SKIP LOCKED.
-    // Segundo worker em corrida recebe zero linhas e pula — o primeiro
-    // processa sozinho dentro da janela do lease. O token (fencing, v5)
-    // prova posse: quem perdeu o lease não conclui o evento.
+    // ---- CLAIM ATÔMICO PRIMEIRO: qualquer decisão terminal exige o lease.
     const leaseToken = crypto.randomUUID();
     const claim = await db.transaction(async (tx): Promise<
       | { kind: "locked_by_other" }
@@ -637,12 +615,12 @@ export async function recoverPendingEvents(
             eq(schema.paymentEvents.id, row.id),
             isNull(schema.paymentEvents.processedAt),
             eq(schema.paymentEvents.deadLetter, false),
-            or(isNull(schema.paymentEvents.leaseExpiresAt), lte(schema.paymentEvents.leaseExpiresAt, new Date())),
+            or(isNull(schema.paymentEvents.leaseExpiresAt), lte(schema.paymentEvents.leaseExpiresAt, sql`clock_timestamp()`)),
           ),
         )
         .for("update", { skipLocked: true });
       const fresh = locked[0];
-      if (!fresh) return { kind: "locked_by_other" }; // outro worker segura o lease
+      if (!fresh) return { kind: "locked_by_other" };
       if (fresh.lastAttemptAt && Date.now() - fresh.lastAttemptAt.getTime() < minBackoffMs) {
         return { kind: "backoff" };
       }
@@ -652,7 +630,7 @@ export async function recoverPendingEvents(
         .set({
           attempts,
           lastAttemptAt: new Date(),
-          leaseExpiresAt: new Date(Date.now() + leaseMs),
+          leaseExpiresAt: sql`clock_timestamp() + ${leaseMs}::bigint * interval '1 millisecond'`,
           leaseToken,
         })
         .where(eq(schema.paymentEvents.id, fresh.id));
@@ -665,6 +643,24 @@ export async function recoverPendingEvents(
     }
     if (claim.kind === "backoff") {
       skippedBackoff++;
+      continue;
+    }
+
+    // ---- Parse: invalidade PERMANENTE vai para dead-letter com o token do claim.
+    let event: NormalizedWebhookEvent | null = null;
+    let adapter = getAdapter(row.provider);
+    if (!adapter) {
+      if (await deadLetterEvent(db, row, "unknown_provider", undefined, claim.leaseToken)) deadLettered++;
+      continue;
+    }
+    try {
+      event = adapter.parseWebhook(JSON.stringify(row.payload));
+    } catch (e) {
+      if (await deadLetterEvent(db, row, "invalid_payload", e instanceof Error ? e.message : String(e), claim.leaseToken)) deadLettered++;
+      continue;
+    }
+    if (!event.providerTransactionId) {
+      if (await deadLetterEvent(db, row, "missing_transaction_reference", undefined, claim.leaseToken)) deadLettered++;
       continue;
     }
 
