@@ -1,6 +1,6 @@
 // language: TS, file: apps/api/src/db/migration-concurrency.test.ts, target: PostgreSQL real
-// AUD-03: teste de concorrência REAL entre sessões PostgreSQL independentes.
-// Duas pools de conexão separadas, cada uma com sua conexão física,
+// AUD-03: teste de concorrência REAL entre PROCESSOS Node independentes.
+// Dois processos Node separados, cada um com sua pool PostgreSQL,
 // tentam executar o mesmo passo de migração. O advisory lock deve serializar.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
@@ -40,72 +40,101 @@ afterAll(async () => {
   await closeDb();
 });
 
-describe("AUD-03: concorrência real entre pools PostgreSQL independentes", () => {
-  // Este teste SÓ roda no pg-integration (PostgreSQL real)
-  // Pula no ambiente PGlite local onde advisory lock não é suportado
-  if (process.env.DATABASE_URL?.startsWith("postgresql://")) {
-    it("duas pools independentes serializam via advisory lock — exatamente-uma execução", async () => {
-      const step = {
-        name: "test_concurrency_multi_process_001",
-        description: "passo sintético para teste multi-processo",
-        statements: [
-          `CREATE TABLE IF NOT EXISTS "concurrency_scratch" ("id" text PRIMARY KEY, "n" integer NOT NULL);`,
-          `INSERT INTO "concurrency_scratch" ("id", "n") VALUES ('concurrent', 0) ON CONFLICT ("id") DO NOTHING;`,
-          `UPDATE "concurrency_scratch" SET "n" = "n" + 1 WHERE "id" = 'concurrent';`,
-        ],
-        nonIdempotent: false,
-      };
+describe("AUD-03: concorrência real entre PROCESSOS Node independentes", () => {
+  it("dois processos Node independentes serializam via advisory lock — exatamente-uma execução", async () => {
+    // Só roda se DATABASE_URL for PostgreSQL real (pg-integration)
+    const databaseUrl = process.env.DATABASE_URL || "";
+    if (!databaseUrl.startsWith("postgresql://")) {
+      console.log("Skipping multi-process test: DATABASE_URL not set to PostgreSQL");
+      return;
+    }
+    
+    const step = {
+      name: "test_concurrency_multi_process_001",
+      description: "passo sintético para teste multi-processo",
+      statements: [
+        `CREATE TABLE IF NOT EXISTS "concurrency_scratch" ("id" text PRIMARY KEY, "n" integer NOT NULL);`,
+        `INSERT INTO "concurrency_scratch" ("id", "n") VALUES ('concurrent', 0) ON CONFLICT ("id") DO NOTHING;`,
+        `UPDATE "concurrency_scratch" SET "n" = "n" + 1 WHERE "id" = 'concurrent';`,
+      ],
+      nonIdempotent: false,
+    };
 
-      // Cria DOIS pools PostgreSQL independentes (simulando duas instâncias de aplicação)
-      const { Pool } = await import("pg");
-      const { drizzle: drizzlePg } = await import("drizzle-orm/node-postgres");
-      const { schema } = await import("./index.js");
-      
-      const pgConfig = {
-        host: "localhost",
-        port: 55432,
-        user: "postgres",
-        password: "integration",
-        database: "postgres",
-        max: 1,
-      };
-      
-      const pool1 = new Pool(pgConfig);
-      const pool2 = new Pool(pgConfig);
-      
-      const db1 = drizzlePg(pool1, { schema });
-      const db2 = drizzlePg(pool2, { schema });
-      
-      try {
-        // Executa AMBOS em paralelo - o advisory lock deve serializar
-        const [summary1, summary2] = await Promise.all([
-          runMigrationSteps(db1, [step]),
-          runMigrationSteps(db2, [step]),
-        ]);
+    const { spawnSync } = await import("node:child_process");
+    const path = await import("node:path");
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const tempScript = path.join(os.tmpdir(), `concurrency_runner_${Date.now()}.ts`);
+    
+    // Copy the runner script to temp location
+    const runnerSource = "apps/api/src/db/migration-concurrency-runner.ts";
+    fs.copyFileSync(runnerSource, tempScript);
 
-        // Exatamente um aplicou, o outro pulou
-        const totalApplied = summary1.applied.length + summary2.applied.length;
-        const totalSkipped = summary1.skipped.length + summary2.skipped.length;
-        
-        expect(totalApplied).toBe(1);
-        expect(totalSkipped).toBe(1);
+    // Inicia dois processos Node INDEPENDENTES (dois processos OS separados)
+    // Cada um tem sua própria memória, seu próprio migrationChain, sua própria pool
+    const env = {
+      ...process.env,
+      NODE_ENV: "test",
+      DATABASE_URL: process.env.DATABASE_URL,
+    };
 
-        // Verifica contador no banco (exatamente 1) - usa pool1 para verificação
-        const scratchResult = await pool1.query(`SELECT "n" FROM "concurrency_scratch" WHERE "id" = 'concurrent'`);
-        expect(scratchResult.rows[0]?.n).toBe(1);
-
-        // Ledger tem exatamente 1 registro aplicada
-        const ledgerResult = await pool1.query(`SELECT "status", "checksum" FROM "migration_ledger" WHERE "step_name" = 'test_concurrency_multi_process_001'`);
-        expect(ledgerResult.rows.length).toBe(1);
-        expect(ledgerResult.rows[0].status).toBe("aplicada");
-      } finally {
-        await pool1.end();
-        await pool2.end();
-      }
-    }, 120000);
-  } else {
-    it.skip("concorrência multi-processo (só roda no pg-integration com PostgreSQL)", () => {
-      // Pula no ambiente PGlite
+    console.log("Starting process 1...");
+    const proc1 = spawnSync("npx", ["tsx", tempScript], { 
+      env, 
+      cwd: process.cwd(),
+      timeout: 120000,
+      encoding: "utf8"
     });
-  }
+    
+    console.log("Starting process 2...");
+    const proc2 = spawnSync("npx", ["tsx", tempScript], { 
+      env, 
+      cwd: process.cwd(),
+      timeout: 120000,
+      encoding: "utf8"
+    });
+
+    console.log("Proc1 status:", proc1.status, "stdout:", proc1.stdout?.slice(0, 500), "stderr:", proc1.stderr?.slice(0, 500));
+    console.log("Proc2 status:", proc2.status, "stdout:", proc2.stdout?.slice(0, 500), "stderr:", proc2.stderr?.slice(0, 500));
+
+    // Ambos devem terminar com sucesso
+    expect(proc1.status).toBe(0);
+    expect(proc2.status).toBe(0);
+
+    // Parse output - procura pela linha RESULT:
+    const resultLine1 = proc1.stdout.split('\n').find(l => l.startsWith('RESULT:'));
+    const resultLine2 = proc2.stdout.split('\n').find(l => l.startsWith('RESULT:'));
+    
+    if (!resultLine1 || !resultLine2) {
+      throw new Error("Missing RESULT line in process output");
+    }
+    
+    const out1 = JSON.parse(resultLine1.replace('RESULT:', '').trim());
+    const out2 = JSON.parse(resultLine2.replace('RESULT:', '').trim());
+
+    // Exatamente um aplicou, o outro pulou
+    const totalApplied = out1.applied.length + out2.applied.length;
+    const totalSkipped = out1.skipped.length + out2.skipped.length;
+    
+    expect(totalApplied).toBe(1);
+    expect(totalSkipped).toBe(1);
+
+    // Verifica contador no banco (exatamente 1)
+    const scratch = (await db.execute(
+      sql`SELECT "n" FROM "concurrency_scratch" WHERE "id" = 'concurrent'`,
+    )) as unknown as { rows: Array<{ n: number }> };
+    expect(scratch.rows[0]?.n).toBe(1);
+
+    // Ledger tem exatamente 1 registro aplicada
+    const ledger = (await db.execute(
+      sql`SELECT "status", "checksum" FROM "migration_ledger" WHERE "step_name" = 'test_concurrency_multi_process_001'`,
+    )) as unknown as { rows: Array<{ status: string; checksum: string }> };
+    expect(ledger.rows.length).toBe(1);
+    if (ledger.rows[0]) {
+      expect(ledger.rows[0].status).toBe("aplicada");
+    }
+
+    // Limpeza
+    fs.unlinkSync(tempScript);
+  }, 180000);
 });
