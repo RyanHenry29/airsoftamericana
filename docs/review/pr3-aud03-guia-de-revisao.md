@@ -1,8 +1,8 @@
 # PR #3 — AUD-03: Ledger de migrations (checksum, advisory lock, recuperação)
 
 Branch: `fix/aud03-migration-ledger` (base `origin/master` = `5d6a978`)
-Commit: `0c30301` (base) → `2381938` (fix do conversor sql.raw) → `HEAD` (fixes pós-revisão)
-Diff completo: `docs/review/pr3-aud03-full.diff` (5.118 linhas)
+Commit: `0c30301` (base) → `2381938` (fix do conversor) → `4e34d27` (pós-revisão v1) → `HEAD` (pós-revisão v2)
+Diff completo: `docs/review/pr3-aud03-full.diff` (7.767 linhas)
 
 ## Escopo
 
@@ -17,8 +17,8 @@ chamadores (boot, seed, CLIs, testes) continuam válidos.
 |---|---|
 | `apps/api/src/db/migrate.ts` | Blob → passos nomeados; SQL byte a byte (conversor one-shot, guarda de completude 228/228) |
 | `apps/api/src/db/migration-ledger.ts` | **Novo** — motor: ledger, checksum, locks, recuperação |
-| `apps/api/src/db/migration-ledger.test.ts` | **Novo** — 7 testes do ledger |
-| `apps/api/src/db/index.ts` | `getMigrationSession()` + `poolInstanceExists()` — sessão dedicada (só com pool), unlock safe |
+| `apps/api/src/db/migration-ledger.test.ts` | **Novo** — 9 testes do ledger (inclui falhas explícitas) |
+| `apps/api/src/db/index.ts` | `getMigrationSession()` + `poolInstanceExists()` — sessão dedicada (só com pool), unlock seguro |
 | `apps/api/src/services/payments-integrity.test.ts` | 2 testes de migrate adaptados à era do ledger |
 | `scripts/pg-integration.mjs` | Gate inclui `migration-ledger.test.ts`; registra `SHOW server_version` |
 | `scripts/build-migration-steps.mjs` | **Novo** — conversor one-shot (guarda de completude 228/228) |
@@ -46,8 +46,14 @@ chamadores (boot, seed, CLIs, testes) continuam válidos.
    NÃO zera `"error"`.
 6. **nonIdempotent**: passo marcado assim recusa re-execução automática
    (`MigrationNonIdempotentError`) — decisão humana obrigatória.
-7. **Sessão dedicada + unlock seguro**: se `pg_advisory_unlock` falhar, a
-   conexão é DESCARTADA (não devolvida ao pool), evitando contaminação do pool.
+7. **Sessão dedicada + unlock seguro**: se `pg_advisory_unlock` falhar OU
+   retornar `false` (sessão não detinha lock), a conexão é DESCARTADA
+   (`client.release(new Error(...))`), evitando contaminação do pool.
+8. **Exceção original preservada**: cleanup no `finally` loga falha mas
+   **não substitui** a exceção original da migration.
+9. **Revisão obrigatória para passos de código**: `MigrationStep` é união
+   discriminada — `CodeMigrationStep` exige `revision: string` (TypeScript
+   impede passo de código sem revisão).
 
 ## Decisão crítica: `getMigrationSession()` — sem fallback silencioso
 
@@ -56,31 +62,34 @@ fallbackava para o `db` do módulo. Se `poolInstance.connect()` falhasse
 (indisponibilidade, esgotamento), o motor usaria o `db` genérico,
 **perdendo a garantia de sessão única** e quebrando o advisory lock.
 
-**Correção**: `getMigrationSession()` lança se não há pool OU se falhar ao
+**Correção**: `getMigrationSession()` lança se `!poolInstance` OU se falhar ao
 obter a conexão dedicada. Sem pool (PGlite), o caller usa seu `db` (tx-aware).
 Com pool, **exige** a sessão dedicada — falha de conexão propaga e interrompe
 as migrations. Não há fallback que silencie a perda de coordenação.
 
-## `releaseAdvisoryLock` — descarta conexão se unlock falhar
+## `releaseAdvisoryLock` — descarta conexão se unlock falhar OU retornar false
 
 **Problema anterior**: erro no unlock era ignorado; conexão voltava ao pool
-ainda com o lock de sessão ativo.
+ainda com o lock de sessão ativo. Não verificava o retorno de
+`pg_advisory_unlock` (pode ser `false` se a sessão não detinha o lock).
 
 **Correção**: `releaseAdvisoryLock` retorna `boolean` (`true` = unlock
-confirmado, `false` = falhou). No `finally` de `runMigrationStepsExclusive`:
-se `lockOk === false`, a sessão é marcada `lockFailed = true` e o
-`release()` da sessão **descarta a conexão** (`client.end()`) em vez de
-`client.release()`. Pool não recebe conexão possivelmente contaminada.
+confirmado E `unlocked === true`; `false` = erro OU `unlocked === false`).
+No `finally` de `runMigrationStepsExclusive`: se `lockOk === false`,
+`session.lockFailed = true` e `session.release(true)` **descarta a conexão**
+(`client.release(new Error(...))`) em vez de `client.release()`. Pool não
+recebe conexão possivelmente contaminada.
 
-## Checksum de passos de código — inclui `run.toString()`
+## Checksum de passos de código — inclui `run.toString()` + revisão obrigatória
 
 **Problema anterior**: `step.run` não entrava no checksum; alteração na
 implementação sem bump de revisão passava despercebida.
 
 **Correção**: `computeStepChecksum` serializa `runSource: step.run?.toString() ?? null`.
-Alteração no corpo da função muda o checksum. Para passos de código, a
-revisão explícita (`revision`) continua obrigatória e recomendada; o
-checksum agora detecta mudanças não declaradas.
+Alteração no corpo da função muda o checksum. **`revision` agora é OBRIGATÓRIA**
+no tipo `CodeMigrationStep` (TypeScript impede passo de código sem revisão).
+Para passos de código, a revisão explícita continua sendo a garantia operacional
+principal; o `run.toString()` é proteção adicional contra mudanças não declaradas.
 
 ## Validação de checksum ANTES da recuperação
 
@@ -94,44 +103,46 @@ existente (`in_progress` ou `interrrompida`) com o checksum atual do código.
 Se divergirem → `MigrationChecksumError`. Recuperação automática só ocorre
 com checksum idêntico; divergência exige intervenção humana.
 
-## Testes adaptados à era do ledger (`payments-integrity.test.ts`)
+## Testes de falha explícitos (9 testes do ledger)
 
-- **Fault-injection**: passo `aplicada` com checksum válido é PULADO — o
-  teste agora simula passo interrompido (DELETE da linha `008_pagamentos` no
-  ledger DENTRO da transação) e confirma que o DDL obrigatório falho
-  (`ALTER COLUMN ... DROP NOT NULL` sobre coluna droppada) PROPAGA; rollback
-  restaura schema E ledger (linha `008_pagamentos` de volta).
-- **Idempotência**: `migrate()` devolve sumário — o teste valida
-  `applied=[]` e `recovered=[]` (no-op real) em vez de `undefined`.
+| Teste | O que valida |
+|---|---|
+| `migrate()` aplica todos os passos | 30 passos, checksums corretos, status `aplicada` |
+| Re-execução é no-op | `applied=[]`, `recovered=[]`, `skipped=30` |
+| Checksum divergente em `aplicada` | `MigrationChecksumError` |
+| **Checksum divergente em `in_progress`** | **`MigrationChecksumError` — ledger inalterado, zero DDL** |
+| **Checksum divergente em `interrrompida`** | **`MigrationChecksumError` — ledger inalterado, zero DDL** |
+| Passo interrompido é RECUPERADO | `recovered` + `aplicada` + trilha de erro preservada |
+| `nonIdempotent` bloqueia | `MigrationNonIdempotentError` |
+| Paralelismo exatamente-uma | Mutex + advisory lock, `n=1` |
+| Checksum estável | Deriva só do conteúdo |
+
+**Passos sintéticos** para testes de falha (`test_checksum_progress_001`, `test_checksum_interrupted_001`) — não tocam migrations reais.
 
 ## Evidências de gate (todos executados nesta branch, stash de IA aplicado)
 
 | Gate | Resultado |
 |---|---|
 | `npx tsc --noEmit` (shared/api/store/admin) | 0 erros ×4 |
-| `npm test` (apps/api) | **303/303** (296 + 7 ledger), exit 0, 122s |
-| `node scripts/pg-integration.mjs` (da raiz) | **108/108**, exit 0, PostgreSQL **17.11** (`SHOW server_version` registrado no log) |
-| Suíte do ledger isolada (PGlite) | 7/7 |
+| `npm test` (apps/api, `data-test` zerado) | **305/305**, exit 0 |
+| `node scripts/pg-integration.mjs` (da raiz) | **110/110**, exit 0, PostgreSQL **17.11** (`SHOW server_version` registrado no log) |
+| Suíte do ledger isolada (PGlite) | 9/9 |
 
 ## Bugs corrigidos durante o desenvolvimento (prova vermelho→verde)
 
-1. Nota de recuperação apagada pelo upsert de `in_progress` → preservada via
-   `CASE WHEN` (teste "passo interrompido é RECUPERADO" falhava: `error`
-   nulo; passa com a nota).
-2. Paralelo aplicando 2× no PGlite (lock reentrante por sessão) → mutex
-   `migrationChain` (teste de concorrência falhava: `n=2`; passa com
-   exatamente-uma aplicação, `n=1`).
-3. Deadlock `migrate(tx)` no PGlite (descrito acima).
-4. **Conversor perdia statements `sql.raw(...)`** — regex não cobria o
-   parêntese entre `sql.raw` e a crase; 5 triggers de imutabilidade de
-   `audit_logs` ficaram FORA do arquivo gerado. CI falhou em DB fresco.
-   Correção: regex + guarda de completude 228/228.
-5. **Fallback silencioso de `getMigrationSession()`** → sem fallback: erro
-   de conexão propaga.
-6. **Unlock falhou → conexão descartada** → não volta ao pool contaminada.
-7. **Checksum de `step.run`** → inclui `toString()` do corpo da função.
-8. **Validação de checksum antes da recuperação** → recusa `in_progress`/
-   `interrrompida` com checksum divergente.
+1. Nota de recuperação apagada pelo upsert de `in_progress` → preservada via `CASE WHEN`.
+2. Paralelo aplicando 2× no PGlite → mutex `migrationChain`.
+3. Deadlock `migrate(tx)` no PGlite → `getMigrationSession()` sem fallback silencioso.
+4. Conversor perdia `sql.raw(...)` → regex + guarda de completude 228/228.
+5. **Fallback silencioso de `getMigrationSession()`** → sem fallback: erro de conexão propaga.
+6. **Unlock falhou → descarta conexão** → `client.release(new Error(...))`, não volta ao pool.
+7. **Checksum de `step.run`** → `run.toString()` + `revision` obrigatória.
+8. **Validação de checksum antes da recuperação** → recusa `in_progress`/`interrrompida` com checksum divergente.
+9. **Cleanup não mascara exceção original** → `hasOriginalError` flag no `finally`.
+10. **`releaseAdvisoryLock` verifica `unlocked === true`** → descarta se `false` ou erro.
+11. **`revision` obrigatória para passos de código** → união discriminada `MigrationStep`.
+12. **Testes de checksum divergente em `in_progress`/`interrrompida`** → passos sintéticos, ledger inalterado.
+13. **Testes de falha não tocam migrations reais** → passos `test_checksum_*`.
 
 ## Fora do escopo (pré-existente, anotado)
 

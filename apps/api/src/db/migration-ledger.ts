@@ -22,17 +22,28 @@ import { sql } from "drizzle-orm";
 import type { Db } from "./index.js";
 import { getMigrationSession, poolInstanceExists } from "./index.js";
 
-export interface MigrationStep {
+export interface MigrationStepBase {
   name: string;
   description?: string;
-  /** SQL idempotente do passo (executado em transação única). */
-  statements?: string[];
-  /** Passo de código: revisão explícita (sha256 do módulo) no lugar do checksum automático. */
-  revision?: string;
-  run?: (db: Db) => Promise<void>;
   /** Recusa re-execução automática quando há run anterior não concluído. */
   nonIdempotent?: boolean;
 }
+
+export type SqlMigrationStep = MigrationStepBase & {
+  /** SQL idempotente do passo (executado em transação única). */
+  statements: string[];
+  run?: never;
+  revision?: never;
+};
+
+export type CodeMigrationStep = MigrationStepBase & {
+  statements?: never;
+  /** Passo de código: revisão explícita (sha256 do módulo) OBRIGATÓRIA. */
+  run: (db: Db) => Promise<void>;
+  revision: string;
+};
+
+export type MigrationStep = SqlMigrationStep | CodeMigrationStep;
 
 export type MigrationStepStatus = "aplicada" | "in_progress" | "interrrompida";
 
@@ -174,16 +185,30 @@ async function runMigrationStepsExclusive(
     session = { db, release: async () => {} };
   }
 
+  let hasOriginalError = false;
+  let originalError: unknown;
   try {
     await acquireAdvisoryLock(session.db, lockTimeoutMs);
     await ensureLedgerTable(session.db);
     await executeSteps(session.db, steps, instanceId, summary);
+  } catch (error) {
+    hasOriginalError = true;
+    originalError = error;
+    throw error;
   } finally {
     const lockOk = await releaseAdvisoryLock(session.db);
     if (!lockOk) {
       session.lockFailed = true;
     }
-    await session.release(session.lockFailed);
+    try {
+      await session.release(session.lockFailed);
+    } catch (cleanupError) {
+      if (hasOriginalError) {
+        console.error("migration cleanup failed:", cleanupError);
+      } else {
+        throw cleanupError;
+      }
+    }
   }
 
   summary.durationMs = Math.round(performance.now() - start);
@@ -202,15 +227,17 @@ async function acquireAdvisoryLock(db: Db, timeoutMs: number): Promise<void> {
 
 /**
  * Libera o advisory lock. Retorna true se conseguiu confirmar o unlock.
- * Se falhar, NÃO devolve a conexão ao pool (o caller deve descartar).
+ * Se falhar OU o PostgreSQL retornar false (sessão não detinha o lock),
+ * NÃO devolve a conexão ao pool (o caller deve descartar).
  */
 async function releaseAdvisoryLock(db: Db): Promise<boolean> {
   try {
-    await db.execute(sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`);
-    return true;
+    const rows = await rawRows(
+      db,
+      sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY}) AS unlocked`,
+    );
+    return rows[0]?.unlocked === true;
   } catch {
-    // Unlock falhou: não podemos garantir que a sessão está limpa.
-    // O caller deve descartar a conexão (não devolver ao pool).
     return false;
   }
 }

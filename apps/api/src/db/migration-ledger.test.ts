@@ -82,6 +82,47 @@ describe("AUD-03: migration ledger", () => {
     }
   });
 
+  it("checksum divergente em in_progress RECUSA recuperação", async () => {
+    const testStep = {
+      name: "test_checksum_progress_001",
+      description: "passo sintético para teste checksum in_progress",
+      statements: [`CREATE TABLE IF NOT EXISTS "test_checksum_progress" ("id" integer PRIMARY KEY);`],
+      nonIdempotent: false,
+    };
+    // Insere registro in_progress com checksum ERRADO
+    await db.execute(
+      sql`INSERT INTO "migration_ledger" ("step_name", "checksum", "status", "instance_id", "error")
+          VALUES (${testStep.name}, 'checksum-errado', 'in_progress', 'test', 'crash')
+          ON CONFLICT ("step_name") DO UPDATE SET "checksum" = 'checksum-errado', "status" = 'in_progress'`,
+    );
+    await expect(runMigrationSteps(db, [testStep])).rejects.toBeInstanceOf(MigrationChecksumError);
+    // Verifica que o ledger NÃO foi alterado (checksum errado permanece)
+    const row = await ledgerRow(testStep.name);
+    expect(row.checksum).toBe('checksum-errado');
+    expect(row.status).toBe('in_progress');
+    // Limpa
+    await db.execute(sql`DELETE FROM "migration_ledger" WHERE "step_name" = ${testStep.name}`);
+  });
+
+  it("checksum divergente em interrrompida RECUSA recuperação", async () => {
+    const testStep = {
+      name: "test_checksum_interrupted_001",
+      description: "passo sintético para teste checksum interrrompida",
+      statements: [`CREATE TABLE IF NOT EXISTS "test_checksum_interrupted" ("id" integer PRIMARY KEY);`],
+      nonIdempotent: false,
+    };
+    await db.execute(
+      sql`INSERT INTO "migration_ledger" ("step_name", "checksum", "status", "instance_id", "error")
+          VALUES (${testStep.name}, 'checksum-errado', 'interrrompida', 'test', 'falha anterior')
+          ON CONFLICT ("step_name") DO UPDATE SET "checksum" = 'checksum-errado', "status" = 'interrrompida'`,
+    );
+    await expect(runMigrationSteps(db, [testStep])).rejects.toBeInstanceOf(MigrationChecksumError);
+    const row = await ledgerRow(testStep.name);
+    expect(row.checksum).toBe('checksum-errado');
+    expect(row.status).toBe('interrrompida');
+    await db.execute(sql`DELETE FROM "migration_ledger" WHERE "step_name" = ${testStep.name}`);
+  });
+
   it("passo interrompido (in_progress de run anterior) é RECUPERADO e marcado aplicada", async () => {
     await db.execute(
       sql`UPDATE "migration_ledger" SET "status" = 'in_progress', "error" = 'crash simulado' WHERE "step_name" = '023_settings'`,

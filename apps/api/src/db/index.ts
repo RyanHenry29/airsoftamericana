@@ -228,16 +228,10 @@ export async function getMigrationSession(): Promise<{
     db: drizzlePg(client, { schema }),
     release: async (lockFailed?: boolean) => {
       if (lockFailed) {
-        // Unlock falhou: não garantimos que a sessão está limpa.
-        // Descartamos a conexão em vez de devolvê-la ao pool.
-        try {
-          await client.end();
-        } catch {
-          // best effort
-        }
-      } else {
-        client.release();
+        client.release(new Error("Migration advisory lock cleanup failed"));
+        return;
       }
+      client.release();
     },
   };
 }
