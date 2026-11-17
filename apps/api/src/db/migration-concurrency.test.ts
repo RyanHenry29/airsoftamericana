@@ -17,6 +17,7 @@ beforeAll(async () => {
   setDb(db);
   
   // Cria passo sintético para o teste de concorrência
+  // Inclui pg_sleep(2) para manter o lock enquanto o segundo processo tenta adquirir
   const step = {
     name: "test_concurrency_multi_process_001",
     description: "passo sintético para teste multi-processo",
@@ -24,6 +25,7 @@ beforeAll(async () => {
       `CREATE TABLE IF NOT EXISTS "concurrency_scratch" ("id" text PRIMARY KEY, "n" integer NOT NULL);`,
       `INSERT INTO "concurrency_scratch" ("id", "n") VALUES ('concurrent', 0) ON CONFLICT ("id") DO NOTHING;`,
       `UPDATE "concurrency_scratch" SET "n" = "n" + 1 WHERE "id" = 'concurrent';`,
+      `SELECT pg_sleep(2);`, // Mantém o lock por 2s para forçar contenção
     ],
     nonIdempotent: false,
   };
@@ -56,19 +58,51 @@ describe("AUD-03: concorrência real entre PROCESSOS Node independentes", () => 
         `CREATE TABLE IF NOT EXISTS "concurrency_scratch" ("id" text PRIMARY KEY, "n" integer NOT NULL);`,
         `INSERT INTO "concurrency_scratch" ("id", "n") VALUES ('concurrent', 0) ON CONFLICT ("id") DO NOTHING;`,
         `UPDATE "concurrency_scratch" SET "n" = "n" + 1 WHERE "id" = 'concurrent';`,
+        `SELECT pg_sleep(2);`, // Mantém o lock por 2s para forçar contenção real
       ],
       nonIdempotent: false,
     };
 
-    const { spawnSync } = await import("node:child_process");
+    const { spawn } = await import("node:child_process");
     const path = await import("node:path");
     const os = await import("node:os");
     const fs = await import("node:fs");
     const tempScript = path.join(os.tmpdir(), `concurrency_runner_${Date.now()}.ts`);
     
-    // Copy the runner script to temp location
-    const runnerSource = "apps/api/src/db/migration-concurrency-runner.ts";
-    fs.copyFileSync(runnerSource, tempScript);
+    // Build runner script without template literals to avoid parser issues
+    const runnerLines = [
+      'import { getDb, closeDb } from "' + path.join(process.cwd(), "apps", "api", "src", "db", "index.ts").replace(/\\/g, "/") + '";',
+      'import { runMigrationSteps } from "' + path.join(process.cwd(), "apps", "api", "src", "db", "migration-ledger.ts").replace(/\\/g, "/") + '";',
+      '',
+      'const step = {',
+      '  name: "test_concurrency_multi_process_001",',
+      '  description: "passo sintético para teste multi-processo",',
+      '  statements: [',
+      '    `CREATE TABLE IF NOT EXISTS "concurrency_scratch" ("id" text PRIMARY KEY, "n" integer NOT NULL);`,',
+      '    `INSERT INTO "concurrency_scratch" ("id", "n") VALUES (\'concurrent\', 0) ON CONFLICT ("id") DO NOTHING;`,',
+      '    `UPDATE "concurrency_scratch" SET "n" = "n" + 1 WHERE "id" = \'concurrent\';`,',
+      '    `SELECT pg_sleep(2);`,',
+      '  ],',
+      '  nonIdempotent: false,',
+      '};',
+      '',
+      'async function main() {',
+      '  const db = await getDb();',
+      '  try {',
+      '    const summary = await runMigrationSteps(db, [step]);',
+      '    console.log("RESULT:", JSON.stringify({ applied: summary.applied, skipped: summary.skipped }));',
+      '  } catch (e) {',
+      '    console.error("ERROR:", e.message, e.stack);',
+      '    process.exit(1);',
+      '  } finally {',
+      '    await closeDb();',
+      '  }',
+      '}',
+      'main();',
+    ];
+    
+    const runnerScript = runnerLines.join('\n');
+    fs.writeFileSync(tempScript, runnerScript);
 
     // Inicia dois processos Node INDEPENDENTES (dois processos OS separados)
     // Cada um tem sua própria memória, seu próprio migrationChain, sua própria pool
@@ -79,31 +113,39 @@ describe("AUD-03: concorrência real entre PROCESSOS Node independentes", () => 
     };
 
     console.log("Starting process 1...");
-    const proc1 = spawnSync("npx", ["tsx", tempScript], { 
+    const proc1 = spawn("npx", ["tsx", tempScript], { 
       env, 
       cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
       timeout: 120000,
-      encoding: "utf8"
+      shell: true, // Windows: resolve npx.cmd
     });
     
     console.log("Starting process 2...");
-    const proc2 = spawnSync("npx", ["tsx", tempScript], { 
+    const proc2 = spawn("npx", ["tsx", tempScript], { 
       env, 
       cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
       timeout: 120000,
-      encoding: "utf8"
+      shell: true, // Windows: resolve npx.cmd
     });
 
-    console.log("Proc1 status:", proc1.status, "stdout:", proc1.stdout?.slice(0, 500), "stderr:", proc1.stderr?.slice(0, 500));
-    console.log("Proc2 status:", proc2.status, "stdout:", proc2.stdout?.slice(0, 500), "stderr:", proc2.stderr?.slice(0, 500));
+    // Aguarda ambos os processos CONCORRENTEMENTE
+    const [result1, result2] = await Promise.all([
+      waitForProcess(proc1),
+      waitForProcess(proc2),
+    ]);
+
+    console.log("Proc1 status:", result1.status, "stdout:", result1.stdout?.slice(0, 500), "stderr:", result1.stderr?.slice(0, 500));
+    console.log("Proc2 status:", result2.status, "stdout:", result2.stdout?.slice(0, 500), "stderr:", result2.stderr?.slice(0, 500));
 
     // Ambos devem terminar com sucesso
-    expect(proc1.status).toBe(0);
-    expect(proc2.status).toBe(0);
+    expect(result1.status).toBe(0);
+    expect(result2.status).toBe(0);
 
     // Parse output - procura pela linha RESULT:
-    const resultLine1 = proc1.stdout.split('\n').find(l => l.startsWith('RESULT:'));
-    const resultLine2 = proc2.stdout.split('\n').find(l => l.startsWith('RESULT:'));
+    const resultLine1 = result1.stdout.split('\n').find(l => l.startsWith('RESULT:'));
+    const resultLine2 = result2.stdout.split('\n').find(l => l.startsWith('RESULT:'));
     
     if (!resultLine1 || !resultLine2) {
       throw new Error("Missing RESULT line in process output");
@@ -138,3 +180,28 @@ describe("AUD-03: concorrência real entre PROCESSOS Node independentes", () => 
     fs.unlinkSync(tempScript);
   }, 180000);
 });
+
+// Helper para aguardar processo assíncrono
+function waitForProcess(proc: ReturnType<typeof import("node:child_process").spawn>): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    let stdout = "";
+    let stderr = "";
+    
+    proc.stdout?.on("data", (data) => { stdout += data.toString(); });
+    proc.stderr?.on("data", (data) => { stderr += data.toString(); });
+    
+    proc.on("error", (err) => {
+      reject(new Error(`Process spawn error: ${err.message}`));
+    });
+    
+    proc.on("close", (code) => {
+      resolve({ status: code, stdout, stderr });
+    });
+    
+    // Timeout de segurança
+    setTimeout(() => {
+      proc.kill("SIGTERM");
+      reject(new Error("Process timeout"));
+    }, 130000);
+  });
+}
