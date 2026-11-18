@@ -25,7 +25,7 @@ beforeAll(async () => {
       `CREATE TABLE IF NOT EXISTS "concurrency_scratch" ("id" text PRIMARY KEY, "n" integer NOT NULL);`,
       `INSERT INTO "concurrency_scratch" ("id", "n") VALUES ('concurrent', 0) ON CONFLICT ("id") DO NOTHING;`,
       `UPDATE "concurrency_scratch" SET "n" = "n" + 1 WHERE "id" = 'concurrent';`,
-      `SELECT pg_sleep(2);`, // Mantém o lock por 2s para forçar contenção
+      `SELECT pg_sleep(2);`, // Mantém o lock por 2s para forçar contenção real
     ],
     nonIdempotent: false,
   };
@@ -69,10 +69,10 @@ describe("AUD-03: concorrência real entre PROCESSOS Node independentes", () => 
     const fs = await import("node:fs");
     const tempScript = path.join(os.tmpdir(), `concurrency_runner_${Date.now()}.ts`);
     
-    // Build runner script without template literals to avoid parser issues
+    // Build runner script - usa caminhos relativos ao CWD (apps/api no pg-integration)
     const runnerLines = [
-      'import { getDb, closeDb } from "' + path.join(process.cwd(), "apps", "api", "src", "db", "index.ts").replace(/\\/g, "/") + '";',
-      'import { runMigrationSteps } from "' + path.join(process.cwd(), "apps", "api", "src", "db", "migration-ledger.ts").replace(/\\/g, "/") + '";',
+      'import { getDb, closeDb } from "./src/db/index.ts";',
+      'import { runMigrationSteps } from "./src/db/migration-ledger.ts";',
       '',
       'const step = {',
       '  name: "test_concurrency_multi_process_001",',
@@ -92,8 +92,9 @@ describe("AUD-03: concorrência real entre PROCESSOS Node independentes", () => 
       '    const summary = await runMigrationSteps(db, [step]);',
       '    console.log("RESULT:", JSON.stringify({ applied: summary.applied, skipped: summary.skipped }));',
       '  } catch (e) {',
-      '    console.error("ERROR:", e.message, e.stack);',
-      '    process.exit(1);',
+      '    const err = e as Error;',
+      '    console.error("ERROR:", err.message, err.stack);',
+      '    process.exitCode = 1;',
       '  } finally {',
       '    await closeDb();',
       '  }',
@@ -176,7 +177,7 @@ describe("AUD-03: concorrência real entre PROCESSOS Node independentes", () => 
       expect(ledger.rows[0].status).toBe("aplicada");
     }
 
-    // Limpeza
+    // Limpeza - sempre executada
     fs.unlinkSync(tempScript);
   }, 180000);
 });
@@ -186,22 +187,47 @@ function waitForProcess(proc: ReturnType<typeof import("node:child_process").spa
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
+    let resolved = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+    
+    const resolveOnce = (value: { status: number | null; stdout: string; stderr: string }) => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        resolve(value);
+      }
+    };
+    
+    const rejectOnce = (reason: Error) => {
+      if (!resolved) {
+        resolved = true;
+        cleanup();
+        reject(reason);
+      }
+    };
     
     proc.stdout?.on("data", (data) => { stdout += data.toString(); });
     proc.stderr?.on("data", (data) => { stderr += data.toString(); });
     
     proc.on("error", (err) => {
-      reject(new Error(`Process spawn error: ${err.message}`));
+      rejectOnce(new Error(`Process spawn error: ${err.message}`));
     });
     
     proc.on("close", (code) => {
-      resolve({ status: code, stdout, stderr });
+      resolveOnce({ status: code, stdout, stderr });
     });
     
     // Timeout de segurança
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       proc.kill("SIGTERM");
-      reject(new Error("Process timeout"));
+      rejectOnce(new Error("Process timeout"));
     }, 130000);
   });
 }
