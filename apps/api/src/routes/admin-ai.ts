@@ -17,6 +17,7 @@ import { csrfGuard } from "../lib/csrf.js";
 import { authRateLimit } from "../middleware/authRateLimit.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import {
+  AI_HISTORY_MESSAGES,
   AI_MAX_BODY_BYTES,
   AI_MAX_IMAGE_BYTES,
   AI_MAX_IMAGES,
@@ -34,7 +35,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const messageBodySchema = z.object({
   conversationId: z.string().regex(UUID_RE, "Conversa inválida").optional(),
   content: z.string().trim().min(1, "Mensagem vazia").max(4000),
-  images: z.array(z.string().min(1)).max(AI_MAX_IMAGES).default([]),
+  images: z
+    .array(z.string().min(1))
+    .max(AI_MAX_IMAGES, `No máximo ${AI_MAX_IMAGES} imagem por mensagem.`)
+    .default([]),
 });
 
 const draftPatchSchema = z.object({
@@ -142,7 +146,7 @@ export function registerAdminAiRoutes(app: FastifyInstance, db: Db, config: Conf
       }
       const body = parsedBody.data;
       if (body.images.length > AI_MAX_IMAGES) {
-        throw badRequest("ai_too_many_images", `No máximo ${AI_MAX_IMAGES} imagens por mensagem.`);
+        throw badRequest("ai_too_many_images", `No máximo ${AI_MAX_IMAGES} imagem por mensagem.`);
       }
 
       // 1) Imagens: base64 → Buffer, magic bytes, limite de tamanho → bytea.
@@ -166,7 +170,7 @@ export function registerAdminAiRoutes(app: FastifyInstance, db: Db, config: Conf
       // 2) Conversa: valida posse quando informada; cria só após sucesso do Groq.
       let conversationId = body.conversationId ?? null;
       if (conversationId) await ownedConversation(db, conversationId, userId);
-      const prior = conversationId ? await loadHistory(db, conversationId, 11) : [];
+      const prior = conversationId ? await loadHistory(db, conversationId, AI_HISTORY_MESSAGES) : [];
 
       // 3) Grounding real + turno atual (texto + imagens como data URLs).
       const grounding = await buildGrounding(db);
@@ -210,7 +214,7 @@ export function registerAdminAiRoutes(app: FastifyInstance, db: Db, config: Conf
 
       let draft: { id: string; status: string; payload: unknown; flags: string[]; uploadIds: string[] } | null = null;
       if (turn.draft) {
-        const { payload, flags } = await repairDraft(db, turn.draft);
+        const { payload, flags } = await repairDraft(db, turn.draft, grounding);
         const [d] = await db
           .insert(schema.aiDrafts)
           .values({

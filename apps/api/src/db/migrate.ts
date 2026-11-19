@@ -5,6 +5,7 @@
 // interrompidos. Cada statement usa IF NOT EXISTS: reexecutar é seguro em
 // dev, test e prod. Compatível com Postgres e PGlite (PG13+).
 import { sql } from "drizzle-orm";
+import { pathToFileURL } from "node:url";
 import type { Db } from "./index.js";
 import { syncSchemaColumns } from "./sync-columns.js";
 import { migrateLegacyRoles } from "./migrate-roles.js";
@@ -14,9 +15,12 @@ import { runMigrationSteps, type MigrationStep, type MigrationRunSummary } from 
  * Revisões dos passos de código: hash sha256 (truncado) do conteúdo do
  * módulo no momento do refactor. BUMPE O valor quando alterar o módulo —
  * o ledger recusa checksum divergente.
+ *
+ * O hash é conferido por teste (migration-revisions.test.ts): editar o
+ * módulo sem bumpar a revisão quebra o CI.
  */
-const SYNC_SCHEMA_COLUMNS_REVISION = "sha256:692ddfe4c5c193f5827a348c7dd14767";
-const MIGRATE_LEGACY_ROLES_REVISION = "sha256:6b0b93a4cb957a81c1d18cf5c72c87b3";
+export const SYNC_SCHEMA_COLUMNS_REVISION = "sha256:692ddfe4c5c193f5827a348c7dd14767";
+export const MIGRATE_LEGACY_ROLES_REVISION = "sha256:6b0b93a4cb957a81c1d18cf5c72c87b3";
 
 /**
  * Passos de migração, em ordem. Passos SQL: statements executados dentro de
@@ -1215,6 +1219,13 @@ export const MIGRATION_STEPS: MigrationStep[] = [
       await migrateLegacyRoles(db);
     },
   },
+  {
+    name: "031_fraud_rules_action_default",
+    description: "fraud_rules.action ganha DEFAULT 'soma' (schema Drizzle: notNull().default('soma'))",
+    statements: [
+      `ALTER TABLE "fraud_rules" ALTER COLUMN "action" SET DEFAULT 'soma';`,
+    ],
+  },
 ];
 
 /**
@@ -1224,4 +1235,43 @@ export const MIGRATION_STEPS: MigrationStep[] = [
  */
 export async function migrate(db: Db): Promise<MigrationRunSummary> {
   return runMigrationSteps(db, MIGRATION_STEPS);
+}
+
+/**
+ * CLI: `npm run db:migrate` (ou `npm run db:migrate -w @airsoft/api`).
+ *
+ * Aplica os passos no banco apontado por DATABASE_URL (ou PGlite local, se
+ * DATABASE_URL estiver vazio). Passa pelo mesmo motor do boot — advisory lock,
+ * ledger, checksum, recuperação — sem caminho paralelo.
+ *
+ * Em PRODUÇÃO este comando é recusado: o schema é aplicado pelo bootstrap
+ * autorizado (npm run db:bootstrap), que roda as mesmas migrations com o
+ * papel DDL, aplica os dados reais de operação e concede os grants do papel
+ * de runtime.
+ */
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const nodeEnv = (process.env.NODE_ENV ?? "development").trim().toLowerCase();
+  if (nodeEnv === "production") {
+    console.error(
+      "db:migrate recusado em produção (NODE_ENV=production). " +
+        "Em produção o schema é aplicado pelo bootstrap autorizado: " +
+        "npm run db:bootstrap (papel DDL, advisory lock + ledger).",
+    );
+    process.exit(1);
+  }
+
+  const { getDb, closeDb } = await import("./index.js");
+  const db = await getDb();
+  try {
+    const summary = await migrate(db);
+    console.log(
+      `Migrations concluídas em ${summary.durationMs}ms — ` +
+        `aplicadas: ${summary.applied.length}, ignoradas: ${summary.skipped.length}, ` +
+        `recuperadas: ${summary.recovered.length}`,
+    );
+    for (const name of summary.applied) console.log(`  + ${name}`);
+    for (const name of summary.recovered) console.log(`  ~ ${name} (recuperado)`);
+  } finally {
+    await closeDb();
+  }
 }

@@ -20,11 +20,26 @@ import { getCommercialSettings } from "./settings.js";
 import { badRequest, serviceUnavailable } from "../lib/errors.js";
 
 // Limites abaixo do teto de 4,5 MB de body da Vercel (base64 infla ~4/3):
-// 3 × 800 KB binário ≈ 3,2 MB no JSON. Cliente comprime para ~1280px JPEG.
-export const AI_MAX_IMAGES = 3;
+// 1 × 800 KB binário ≈ 1,07 MB no JSON. Cliente comprime para ~1280px JPEG.
+//
+// ORÇAMENTO DE TOKENS (plano free do Groq): qwen/qwen3.8-27b tem TPM = 8.000
+// tokens/minuto somando input+output de TODAS as chamadas do minuto, e cada
+// imagem custa 2.048 tokens fixos. 1 foto + grounding indexado + histórico curto
+// ≈ 5,8 mil de input, deixando folga pro texto digitado e pra saída do rascunho.
+export const AI_MAX_IMAGES = 1;
 export const AI_MAX_IMAGE_BYTES = 800 * 1024;
 export const AI_MAX_BODY_BYTES = 4 * 1024 * 1024;
+/** Mensagens reenviadas ao Groq por turno (imagens antigas nunca reenviam). */
+export const AI_HISTORY_MESSAGES = 6;
+/** Itens de catálogo no grounding: cada linha custa ~40 tokens no prompt do sistema. */
+export const GROUNDING_PRODUCT_LIMIT = 50;
 const GROQ_TIMEOUT_MS = 45_000;
+/** 413 = TPM estourado no Groq; 429 = requisições. Uma tentativa extra cobre a janela de reset. */
+const GROQ_RETRY_STATUSES = new Set([413, 429]);
+const GROQ_RETRY_MIN_MS = 1_000;
+const GROQ_RETRY_MAX_MS = 8_000;
+/** Tamanho do detalhe upstream embutido na mensagem de erro (nunca vaza chave). */
+const GROQ_ERROR_BODY_CHARS = 240;
 
 // ------------------------------------------------------------------ imagem
 /** Valida magic bytes: só jpeg/png/webp entram (o nome do arquivo nunca decide). */
@@ -95,13 +110,22 @@ export async function buildGrounding(db: Db): Promise<Grounding> {
     .select({ name: schema.products.name, slug: schema.products.slug })
     .from(schema.products)
     .orderBy(desc(schema.products.createdAt))
-    .limit(300);
+    .limit(GROUNDING_PRODUCT_LIMIT);
 
   const commercial = await getCommercialSettings(db);
   return { categories, brands: brandRows, recentProducts: productRows, commercial };
 }
 
 // ------------------------------------------------- schema do modelo (saída)
+/**
+ * id devolvido pelo modelo: com grounding indexado ele manda "#3" (ou 3), mas o
+ * UUID direto continua aceito — conversa antiga e modelo teimoso não quebram.
+ */
+const idLike = z
+  .union([z.string().max(64), z.number().int().nonnegative()])
+  .transform((v) => String(v))
+  .default("");
+
 /** O modelo NUNCA emite preço/estoque/slug/SKU — campos ausentes por design. */
 const modelDraftSchema = z.object({
   name: z.string().trim().min(2).max(160),
@@ -111,8 +135,8 @@ const modelDraftSchema = z.object({
   technical: z
     .record(z.string().trim().min(1).max(60), z.string().trim().max(500))
     .default({}),
-  categoryId: z.string().max(64).default(""),
-  brandId: z.string().max(64).default(""),
+  categoryId: idLike,
+  brandId: idLike,
   condicao: z.enum(["novo", "usado", "seminovo"]).default("novo"),
   estadoConservacao: z.string().trim().max(120).default(""),
   tags: z.string().trim().max(500).default(""),
@@ -199,21 +223,30 @@ export type RepairedDraft = {
 /**
  * Contra-bate a saída do modelo com o DB real.
  * id inválido → null + flag; slug/SKU gerados no servidor; preço/estoque fixos em null.
+ * `grounding` (mesma lista, mesma ordem do prompt) habilita a leitura do índice #n:
+ * sem ele, só UUID direto é aceito — nunca se resolve índice contra ordem arbitrária.
  */
-export async function repairDraft(db: Db, raw: AiTurn["draft"]): Promise<RepairedDraft> {
+export async function repairDraft(
+  db: Db,
+  raw: AiTurn["draft"],
+  grounding?: Pick<Grounding, "categories" | "brands">,
+): Promise<RepairedDraft> {
   if (!raw) throw badRequest("ai_no_draft", "O modelo não retornou rascunho.");
   const flags: string[] = [];
 
-  const validCatIds = new Set(
-    (await db.select({ id: schema.categories.id }).from(schema.categories)).map((c) => c.id),
-  );
-  const validBrandIds = new Set(
-    (await db.select({ id: schema.brands.id }).from(schema.brands)).map((b) => b.id),
-  );
+  const catIds = grounding
+    ? grounding.categories.map((c) => c.id)
+    : (await db.select({ id: schema.categories.id }).from(schema.categories)).map((c) => c.id);
+  const brandIds = grounding
+    ? grounding.brands.map((b) => b.id)
+    : (await db.select({ id: schema.brands.id }).from(schema.brands)).map((b) => b.id);
+  const resolve = (value: string, ids: string[]): string | null =>
+    grounding ? resolveGroundingId(value, ids) : ids.includes(value) ? value : null;
 
   let categoryId: string | null = null;
-  if (raw.categoryId && validCatIds.has(raw.categoryId)) {
-    categoryId = raw.categoryId;
+  const resolvedCategory = resolve(raw.categoryId, catIds);
+  if (resolvedCategory) {
+    categoryId = resolvedCategory;
   } else if (raw.categoryId) {
     flags.push("categoryId inválida ignorada — selecione a categoria manualmente");
   } else {
@@ -221,8 +254,9 @@ export async function repairDraft(db: Db, raw: AiTurn["draft"]): Promise<Repaire
   }
 
   let brandId: string | null = null;
-  if (raw.brandId && validBrandIds.has(raw.brandId)) {
-    brandId = raw.brandId;
+  const resolvedBrand = resolve(raw.brandId, brandIds);
+  if (resolvedBrand) {
+    brandId = resolvedBrand;
   } else if (raw.brandId) {
     flags.push("brandId inválida ignorada — selecione a marca manualmente");
   }
@@ -261,16 +295,34 @@ export async function repairDraft(db: Db, raw: AiTurn["draft"]): Promise<Repaire
 }
 
 // ------------------------------------------------------------------ prompt
+/**
+ * Grounding em índices `#n` em vez de UUID: 165 categorias × 36 chars de hex
+ * custam ~2,7 mil tokens no prompt do sistema — o mesmo catálogo em `#n` custa
+ * ~3 mil chars a menos. O servidor devolve o índice → id real na hora do reparo,
+ * conferido contra o banco: o modelo não tem como inventar id que não exista.
+ */
+export function resolveGroundingId(value: string, orderedIds: string[]): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (orderedIds.includes(v)) return v; // UUID enviado em turno anterior (retrocompatível)
+  const m = /^#?(\d+)$/.exec(v);
+  if (m) {
+    const idx = Number(m[1]);
+    if (idx >= 1 && idx <= orderedIds.length) return orderedIds[idx - 1]!;
+  }
+  return null;
+}
+
 function groundingText(g: Grounding): string {
-  const catLines = g.categories.map((c) => `- ${c.id} | ${c.path}`).join("\n") || "(nenhuma)";
-  const brandLines = g.brands.map((b) => `- ${b.id} | ${b.name}`).join("\n") || "(nenhuma)";
+  const catLines = g.categories.map((c, i) => `#${i + 1} | ${c.path}`).join("\n") || "(nenhuma)";
+  const brandLines = g.brands.map((b, i) => `#${i + 1} | ${b.name}`).join("\n") || "(nenhuma)";
   const productLines = g.recentProducts.map((p) => `- ${p.name} (${p.slug})`).join("\n") || "(nenhum)";
   const c = g.commercial;
   return [
-    "CATEGORIAS VÁLIDAS (use exatamente o id, nunca invente outro):",
+    "CATEGORIAS VÁLIDAS (use exatamente o índice #n, nunca invente outro):",
     catLines,
     "",
-    "MARCAS VÁLIDAS (use exatamente o id ou \"\" se nenhuma):",
+    "MARCAS VÁLIDAS (use exatamente o índice #n ou \"\" se nenhuma):",
     brandLines,
     "",
     "PRODUTOS JÁ CADASTRADOS (não repita nem crie slug parecido):",
@@ -289,7 +341,7 @@ export function buildSystemPrompt(g: Grounding): string {
     "Sua tarefa: ler as fotos e o texto do administrador e devolver um rascunho de cadastro completo e fiel ao que existe no material.",
     "",
     "REGRAS RÍGIDAS (violação = alucinação):",
-    "1. categoryId e brandId DEVEM ser ids copiados exatamente da lista de grounding. Se não houver correspondência clara, devolva \"\".",
+    "1. categoryId e brandId DEVEM ser o índice exato (\"#n\") da lista de grounding, nada de UUID. Se não houver correspondência clara, devolva \"\".",
     "2. PROIBIDO inventar preço, promoção, estoque ou prazo de entrega — esses campos não existem no seu schema.",
     "3. PROIBIDO inventar especificação que não esteja visível na foto ou escrita no texto. Especificações duvidosas entram em uncertainFields.",
     "4. Nunca repita o nome/slug de um produto já cadastrado (lista fornecida).",
@@ -310,20 +362,62 @@ export type ChatMessage =
   | { role: "system"; content: string }
   | { role: "user" | "assistant"; content: string | Array<Record<string, unknown>> };
 
+/** Janela de reset do Groq: `retry-after` (segundos) ou `x-ratelimit-reset-tokens` ("7.66s"). */
+function retryDelayMs(res: Response): number {
+  const read = (name: string): number | null => {
+    const raw = typeof res.headers?.get === "function" ? res.headers.get(name) : null;
+    if (!raw) return null;
+    const seconds = Number.parseFloat(raw.replace(/s$/i, ""));
+    return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+  };
+  const delay = read("retry-after") ?? read("x-ratelimit-reset-tokens") ?? GROQ_RETRY_MAX_MS;
+  return Math.min(GROQ_RETRY_MAX_MS, Math.max(GROQ_RETRY_MIN_MS, delay));
+}
+
 /**
- * Chamada única ao Groq (OpenAI-compatible) com JSON Object Mode.
- * Falha vira 503 rotulado — nunca silêncio, nunca resposta inventada.
+ * Corpo do erro devolvido pelo Groq, truncado e sem credenciais.
+ * É ele que transforma um "HTTP 413" mudo em "TPM: Limit 8000, Requested 12345"
+ * na tela do admin — a causa raiz fica visível sem abrir o log da Vercel.
  */
-export async function groqTurn(config: Config, messages: ChatMessage[]): Promise<AiTurn> {
+async function upstreamDetail(res: Response): Promise<string> {
+  let text = "";
+  try {
+    text = typeof res.text === "function" ? await res.text() : "";
+  } catch {
+    return "";
+  }
+  if (!text) return "";
+  let message = text;
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: string } };
+    if (parsed?.error?.message) message = parsed.error.message;
+  } catch {
+    // corpo não-JSON (página de erro do proxy): fica o texto bruto
+  }
+  return message
+    .replace(/gsk_[A-Za-z0-9]+/g, "gsk_***")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, GROQ_ERROR_BODY_CHARS);
+}
+
+export type GroqDeps = { sleep?: (ms: number) => Promise<void> };
+
+/**
+ * Chamada ao Groq (OpenAI-compatible) com JSON Object Mode.
+ * 413/429 esperam a janela de rate limit e tentam mais uma vez; qualquer falha
+ * vira 503 rotulado com o detalhe upstream — nunca silêncio, nunca resposta inventada.
+ */
+export async function groqTurn(config: Config, messages: ChatMessage[], deps: GroqDeps = {}): Promise<AiTurn> {
   if (!config.GROQ_API_KEY) {
     throw serviceUnavailable(
       "ai_not_configured",
       "Assistente de IA não configurado: defina a variável GROQ_API_KEY na API (console.groq.com → API Keys).",
     );
   }
-  let res: Response;
-  try {
-    res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const post = async (): Promise<Response> =>
+    fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -334,10 +428,19 @@ export async function groqTurn(config: Config, messages: ChatMessage[]): Promise
         messages,
         response_format: { type: "json_object" },
         temperature: 0.2,
-        max_completion_tokens: 6000,
+        // teto de saída: rascunho cabe em ~3 mil tokens; 6K somava no TPM de 8K/min
+        max_completion_tokens: 4000,
       }),
       signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
     });
+
+  let res: Response;
+  try {
+    res = await post();
+    if (GROQ_RETRY_STATUSES.has(res.status)) {
+      await sleep(retryDelayMs(res));
+      res = await post();
+    }
   } catch (err) {
     const timedOut = err instanceof Error && err.name === "TimeoutError";
     throw serviceUnavailable(
@@ -346,7 +449,13 @@ export async function groqTurn(config: Config, messages: ChatMessage[]): Promise
     );
   }
   if (!res.ok) {
-    const detail = res.status === 401 ? "chave GROQ_API_KEY inválida" : `HTTP ${res.status}`;
+    const upstream = res.status === 401 ? "" : await upstreamDetail(res);
+    const detail =
+      res.status === 401
+        ? "chave GROQ_API_KEY inválida"
+        : upstream
+          ? `HTTP ${res.status} — ${upstream}`
+          : `HTTP ${res.status}`;
     throw serviceUnavailable("ai_upstream_error", `Serviço de IA recusou a chamada (${detail}).`);
   }
   const data = (await res.json().catch(() => null)) as {
@@ -370,7 +479,7 @@ export async function groqTurn(config: Config, messages: ChatMessage[]): Promise
 
 // ------------------------------------------------------- histórico p/ Groq
 /** Últimas N mensagens em texto (imagens antigas não reenviam — economia de tokens). */
-export async function loadHistory(db: Db, conversationId: string, limit = 12): Promise<ChatMessage[]> {
+export async function loadHistory(db: Db, conversationId: string, limit = AI_HISTORY_MESSAGES): Promise<ChatMessage[]> {
   const rows = await db
     .select({ role: schema.aiMessages.role, content: schema.aiMessages.content, createdAt: schema.aiMessages.createdAt })
     .from(schema.aiMessages)

@@ -35,7 +35,8 @@ type SendResponse = {
   draft: Draft | null;
 };
 
-const MAX_IMAGES = 3;
+/** Uma foto por mensagem: cada imagem custa 2.048 tokens fixos no TPM de 8K/min do Groq. */
+const MAX_IMAGES = 1;
 
 /** Compressão no cliente: máx. 1280px, JPEG ~0.8 — cabe no limite de 800 KB do servidor. */
 async function compressImage(file: File): Promise<string> {
@@ -147,7 +148,7 @@ export default function AssistentePage() {
     setErr(""); setImgBusy(true);
     try {
       const room = MAX_IMAGES - images.length;
-      if (files.length > room) setErr(`Máximo de ${MAX_IMAGES} imagens por mensagem.`);
+      if (files.length > room) setErr(`Máximo de ${MAX_IMAGES} imagem${MAX_IMAGES > 1 ? "s" : ""} por mensagem.`);
       const picked: string[] = [];
       for (const f of files.slice(0, room)) {
         if (!/^image\//.test(f.type)) { setErr("Só arquivos de imagem (JPEG, PNG ou WebP)."); continue; }
@@ -356,8 +357,9 @@ export default function AssistentePage() {
                 <div className="py-8 text-center">
                   <p className="font-display font-black uppercase text-xl text-[#333]">Bancada vazia</p>
                   <p className="font-mono text-xs text-[#666] mt-2">
-                    Envie até {MAX_IMAGES} fotos do produto e diga o que sabe sobre ele. O assistente monta o
-                    rascunho com categoria, marca, cor e ficha técnica reais do catálogo.
+                    Envie a foto principal do produto e diga o que sabe sobre ele — frente, verso e caixa em
+                    mensagens separadas. O assistente monta o rascunho com categoria, marca, cor e ficha técnica
+                    reais do catálogo.
                   </p>
                 </div>
               ) : (

@@ -3,8 +3,10 @@
 //
 // - Ledger: `migration_ledger` registra cada passo (nome único, checksum,
 //   status, instância, duração, erro).
-// - Checksum: sha256 sobre o conteúdo do passo (statements, revision, run) —
-//   divergência entre código e ledger REFUSA o boot (tamper-evident).
+// - Checksum: sha256 sobre o conteúdo LÓGICO do passo (nome, revision,
+//   statements) — divergência entre código e ledger REFUSA o boot
+//   (tamper-evident). O source transpilado NÃO entra no hash (muda entre
+//   toolchains e quebraria o boot em runtime diferente do que migrou).
 // - Coordenação: pg_try_advisory_lock com polling e deadline — duas instâncias
 //   subindo em paralelo executam as migrations em série, nunca intercaladas.
 // - Recuperação: passo marcado in_progress/interrrompida por um run anterior
@@ -98,12 +100,23 @@ export class MigrationNonIdempotentError extends Error {
 /** Chave do advisory lock dedicado às migrations (número fixo do projeto). */
 export const MIGRATION_LOCK_KEY = 723401723;
 
+/**
+ * Checksum do passo — conteúdo LÓGICO, não o source transpilado.
+ *
+ * Entra no hash: nome, `revision` e `statements`.
+ * NÃO entra: `step.run.toString()`. O source transpilado muda entre
+ * toolchains (vitest, tsx, bundle da Vercel) — o mesmo passo produzia
+ * checksums diferentes em cada runtime, e um banco migrado por um caminho
+ * era recusado no boot por outro (MigrationChecksumError). O fingerprint do
+ * passo de código é a `revision`, que é o sha256 do módulo e é conferido por
+ * teste (migration-revisions.test.ts): se o módulo mudar sem bump da
+ * revisão, o CI quebra.
+ */
 export function computeStepChecksum(step: MigrationStep): string {
   const payload = JSON.stringify({
     name: step.name,
     revision: step.revision ?? null,
     statements: step.statements ?? null,
-    runSource: step.run?.toString() ?? null,
   });
   return createHash("sha256").update(payload).digest("hex");
 }

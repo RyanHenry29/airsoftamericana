@@ -10,6 +10,20 @@ import { createInvite } from "../services/invites.js";
 import { randomUUID } from "node:crypto";
 
 async function main() {
+  // Guarda de alvo: o seed de E2E é PGlite exclusivo (PGLITE_DIR dedicado).
+  // Qualquer DATABASE_URL (staging/produção) é recusado antes de conectar.
+  const { assertSeedTargetAllowed } = await import("../db/seed-target.js");
+  try {
+    assertSeedTargetAllowed({
+      nodeEnv: process.env.NODE_ENV ?? "development",
+      databaseUrl: process.env.DATABASE_URL ?? "",
+      requirePglite: true,
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
   const db = await getDb();
   await migrate(db);
   const pass = await hashPassword("Senha123!");

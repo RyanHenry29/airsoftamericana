@@ -13,7 +13,7 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:bootstrap": "tsx src/cli/bootstrap-prod.ts",
-    "db:reset": "node -e \"require('fs').rmSync('data',{recursive:true,force:true})\" && tsx src/db/seed.ts",
+    "db:reset": "tsx src/db/reset-cli.ts",
     "admin:reset-mfa": "tsx src/cli/admin-reset-mfa.ts",
     "admin:set-password": "tsx src/cli/admin-set-password.ts",
     "e2e:seed": "tsx src/cli/e2e-seed.ts"
