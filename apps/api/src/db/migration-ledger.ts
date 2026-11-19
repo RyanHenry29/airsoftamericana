@@ -43,6 +43,12 @@ export type CodeMigrationStep = MigrationStepBase & {
   /** Passo de código: revisão explícita (sha256 do módulo) OBRIGATÓRIA. */
   run: (db: Db) => Promise<void>;
   revision: string;
+  /**
+   * Arquivo do módulo, junto ao `migrate.ts`. Não entra no checksum (o
+   * checksum é {name, revision, statements}) — serve para conferência do
+   * fingerprint e para realinhar ledgers gravados antes da canonicalização.
+   */
+  sourceFile?: string;
 };
 
 export type MigrationStep = SqlMigrationStep | CodeMigrationStep;

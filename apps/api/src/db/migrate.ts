@@ -16,11 +16,17 @@ import { runMigrationSteps, type MigrationStep, type MigrationRunSummary } from 
  * módulo no momento do refactor. BUMPE O valor quando alterar o módulo —
  * o ledger recusa checksum divergente.
  *
+ * O hash é CANÔNICO (CRLF/CR normalizados para LF antes do sha256): o
+ * mesmo módulo é LF no checkout do Linux e CRLF no Windows com
+ * core.autocrlf=true, e bytes crus davam revisões diferentes em cada
+ * plataforma. O CI quebrava e um banco migrado no Windows era recusado
+ * no Linux (MigrationChecksumError).
+ *
  * O hash é conferido por teste (migration-revisions.test.ts): editar o
  * módulo sem bumpar a revisão quebra o CI.
  */
 export const SYNC_SCHEMA_COLUMNS_REVISION = "sha256:692ddfe4c5c193f5827a348c7dd14767";
-export const MIGRATE_LEGACY_ROLES_REVISION = "sha256:6b0b93a4cb957a81c1d18cf5c72c87b3";
+export const MIGRATE_LEGACY_ROLES_REVISION = "sha256:eff4b2ceee87358c3e90462a547757b4";
 
 /**
  * Passos de migração, em ordem. Passos SQL: statements executados dentro de
@@ -1207,6 +1213,7 @@ export const MIGRATION_STEPS: MigrationStep[] = [
     name: "029_sync_schema_columns",
     description: "Sync schema columns (idempotent)",
     revision: SYNC_SCHEMA_COLUMNS_REVISION,
+    sourceFile: "sync-columns.ts",
     run: async (db: Db) => {
       await syncSchemaColumns(db);
     },
@@ -1215,6 +1222,7 @@ export const MIGRATION_STEPS: MigrationStep[] = [
     name: "030_migrate_legacy_roles",
     description: "Migrate legacy roles (idempotent)",
     revision: MIGRATE_LEGACY_ROLES_REVISION,
+    sourceFile: "migrate-roles.ts",
     run: async (db: Db) => {
       await migrateLegacyRoles(db);
     },

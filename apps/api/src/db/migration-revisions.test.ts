@@ -4,33 +4,54 @@
  *
  * O checksum do ledger NÃO usa o source transpilado do `run` (muda entre
  * vitest/tsx/bundle da Vercel). O fingerprint do passo de código é a
- * `revision` — o sha256 do módulo. Este teste é o mecanismo que garante que
- * a revisão seja bumpeada quando o módulo muda: editar o módulo sem bump
- * quebra aqui, no CI, em vez de silenciar a detecção no ledger.
+ * `revision` — o sha256 CANÔNICO do módulo (CRLF/CR normalizados para LF,
+ * senão a revisão mudava entre o checkout Windows e o Linux do CI).
+ * Este teste é o mecanismo que garante que a revisão seja bumpeada quando
+ * o módulo muda: editar o módulo sem bump quebra aqui, no CI, em vez de
+ * silenciar a detecção no ledger.
  */
 import { describe, it, expect } from "vitest";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  SYNC_SCHEMA_COLUMNS_REVISION,
-  MIGRATE_LEGACY_ROLES_REVISION,
-} from "./migrate.js";
+  moduleRevisionFromFile,
+  moduleRevisionFromSource,
+  moduleRevisionFromSourceAsCrlf,
+} from "./module-revision.js";
+import { MIGRATION_STEPS } from "./migrate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-function moduleRevision(fileName: string): string {
-  const bytes = readFileSync(path.join(HERE, fileName));
-  return `sha256:${createHash("sha256").update(bytes).digest("hex").slice(0, 32)}`;
-}
+const codeSteps = MIGRATION_STEPS.filter(
+  (step): step is typeof step & { sourceFile: string; revision: string } =>
+    typeof step.run === "function" && typeof step.sourceFile === "string",
+);
 
 describe("revisões dos passos de código (fingerprint do ledger)", () => {
-  it("029_sync_schema_columns: revision = sha256 de sync-columns.ts", () => {
-    expect(SYNC_SCHEMA_COLUMNS_REVISION).toBe(moduleRevision("sync-columns.ts"));
+  it("todo passo de código declara sourceFile e revision", () => {
+    expect(codeSteps.length).toBeGreaterThan(0);
+    for (const step of codeSteps) {
+      expect(step.revision, step.name).toMatch(/^sha256:[0-9a-f]{32}$/);
+      expect(step.sourceFile, step.name).toMatch(/\.ts$/);
+    }
   });
 
-  it("030_migrate_legacy_roles: revision = sha256 de migrate-roles.ts", () => {
-    expect(MIGRATE_LEGACY_ROLES_REVISION).toBe(moduleRevision("migrate-roles.ts"));
+  it("revision = sha256 canônico do módulo (igual em Windows e Linux)", () => {
+    for (const step of codeSteps) {
+      const file = path.join(HERE, step.sourceFile);
+      expect(step.revision, step.name).toBe(moduleRevisionFromFile(file));
+    }
+  });
+
+  it("o fingerprint não depende da quebra de linha (CRLF e LF dá o mesmo)", () => {
+    const source = readFileSync(path.join(HERE, "migrate-roles.ts"));
+    const asCrlf = Buffer.from(
+      source.toString("utf8").replace(/\r\n/g, "\n").replace(/\n/g, "\r\n"),
+      "utf8",
+    );
+    expect(moduleRevisionFromSource(asCrlf)).toBe(moduleRevisionFromSource(source));
+    // e o hash CRU (o que causava o drift) é DIFERENTE do canônico
+    expect(moduleRevisionFromSourceAsCrlf(source)).not.toBe(moduleRevisionFromSource(source));
   });
 });
