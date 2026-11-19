@@ -1,8 +1,32 @@
 # Checklist Operacional de Lançamento — Airsoft Americana
 
 Versão 2026-11-18. Fases 1–9. Cada afirmação abaixo aponta para código ou
-comando verificável. Nada aqui está validado por evidência de ambiente:
-banco, DNS, variáveis, Resend e Previews ainda **não** foram executados.
+comando verificável.
+
+---
+
+## Registro de execução — 2026-11-19 (validação operacional)
+
+Fase de correções estruturais encerrada. Execução das 9 fases com evidência:
+
+| Fase | Resultado | Evidência |
+|---|---|---|
+| 1 PostgreSQL | PASS | Staging `zuejjupuxegpczgyonha` (PG 17.12) e produção `psswdwsvybsqrflhpuqx` (PG 17.11); papéis `airsoft_ddl`/`airsoft_app` sem super e sem DDL no runtime — `scripts/check-role-privileges.mjs` (19/19, `CREATE TABLE` como runtime → `permission denied for schema public`) |
+| 1.4 Conexão | PASS | `closeDb()` no `finally`; produção e staging testados por pooler Session (`:5432`) |
+| 1.5 Backup | PASS | `pg_dump 17.12 -Fc` de staging (165.717 B, sha256 `0234b806…`) e produção (732.698 B, sha256 `555de63e…`); ambos restaurados em PG 17.12 local com exit 0 e 0 erro — contagens idênticas (staging 60 tabelas/270 linhas; produção 54/417) e GRANTs preservados (658/590) — `scripts/backup-restore-check.mjs` |
+| 2 DNS | **FAIL (bloqueio externo)** | Domínios anexados no Vercel (`api.`, `admin.`, apex, `www`), mas o registrador (Hostgator) ainda publica `airsoftamericana.com.br → 216.172.173.17`; `api.` e `admin.` → NXDOMAIN. Vercel pede `A <host> 76.76.21.21` ou nameservers `ns1/ns2.vercel-dns.com` |
+| 3 Variáveis | PASS | API Production (banco de produção, segredos próprios, `COOKIE_SAMESITE=lax`, `CSRF_ENFORCE=true`, `MAIL_FROM`, `STORE_URL`/`ADMIN_URL` `.com.br`) × Preview (banco de staging, `JWT_SECRET`/`GATEWAY_SECRETS_KEY` novos, `SameSite=lax`, `CSRF_ENFORCE=true`, Supabase do staging). `GATEWAY_ACTIVE` e credenciais reais **ausentes** |
+| 4 Resend | **FAIL (chave ausente)** | Preview responde `503 not_configured` rotulado (degradação correta). A chave de produção é `sensitive` na Vercel — ilegível pela API/CLI; falta chave de Preview e domínio verificado |
+| 5 Schema/seeds | PASS | Staging: 31 passos aplicados via `db:bootstrap` (ledger 31/31 `aplicada`, passo `031_fraud_rules_action_default` incluído). Produção **não** foi migrada (instrução) — o bootstrap de produção criará 6 tabelas: `customer_avatars`, `migration_ledger`, `password_resets`, `support_messages`, `system_locks`, `webhooks` |
+| 6 Pagamentos | PASS | Sem gateway real: checkout → `503 no_payment_gateway_enabled` e **nada** gravado (`orders=0`, `payments=0`, `order_items=0`, `inventory.reserved=0` conferido no banco). Sandbox do app validado no staging (processo local): o checkout passa pelo gateway e só falha na variante inexistente. Suíte `payments-integrity` em PostgreSQL real: 112/112 (cartão, PIX, boleto, webhook duplicado, expiração, concorrência, chargeback) |
+| 7 Cookies/URLs | PASS | `SameSite=lax` + `CSRF_ENFORCE=true` + token por HMAC da sessão; `audit_logs` append-only para o runtime |
+| 8 Previews | **PARTIAL** | 3 previews publicados (Store/Admin/API) + smoke 25/25. Lighthouse: home 85/92/93/100, catálogo 77/93/93/100 — **performance abaixo do alvo 90**. pa11y-ci WCAG2AA: 40 erros em 5 páginas (contraste, `role="presentation"`, `autocomplete` inválido no checkout) |
+| 9 Produção | **NÃO EXECUTADO** | Aguardando autorização explícita: `db:bootstrap` em produção + `workflow_dispatch environment=production` |
+
+Bloqueios que dependem de ação do lojista: (1) registros DNS no registrador;
+(2) chave Resend + domínio verificado; (3) catálogo real (importação CSV — não
+se inventa produto); (4) credenciais de gateway de terceiro para homologar
+pagamento real; (5) correções de performance/acessibilidade da vitrine.
 
 ---
 
