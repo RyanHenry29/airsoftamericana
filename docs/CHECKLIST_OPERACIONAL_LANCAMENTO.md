@@ -21,13 +21,21 @@ Fase de correções estruturais encerrada. Execução das 9 fases com evidência
 | 5.1 Fingerprint de revisão | PASS | Revisão do passo de código = sha256 **canônico** do módulo (CRLF/CR → LF): `apps/api/src/db/module-revision.ts`. Antes, bytes crus davam revisões diferentes no checkout Windows (CRLF) e Linux (LF) — o CI quebrava e um banco migrado no Windows seria recusado no Linux (`MigrationChecksumError`). Ledgers realinhados sob controle (`npm run db:ledger-realign`, 1 linha cada: `030_migrate_legacy_roles` — staging e PGlite de teste); bootstrap reexecutado sem divergência: staging 31/31 `aplicada`, 0 erro |
 | 6 Pagamentos | PASS | Sem gateway real: checkout → `503 no_payment_gateway_enabled` e **nada** gravado (`orders=0`, `payments=0`, `order_items=0`, `inventory.reserved=0` conferido no banco). Sandbox do app validado no staging (processo local): o checkout passa pelo gateway e só falha na variante inexistente. Suíte `payments-integrity` em PostgreSQL real: 112/112 (cartão, PIX, boleto, webhook duplicado, expiração, concorrência, chargeback) |
 | 7 Cookies/URLs | PASS | `SameSite=lax` + `CSRF_ENFORCE=true` + token por HMAC da sessão; `audit_logs` append-only para o runtime |
-| 8 Previews | **PARTIAL** | 3 previews publicados (Store/Admin/API) + smoke 25/25. Lighthouse: home 85/92/93/100, catálogo 77/93/93/100 — **performance abaixo do alvo 90**. pa11y-ci WCAG2AA: 40 erros em 5 páginas (contraste, `role="presentation"`, `autocomplete` inválido no checkout) |
+| 8 Previews | **PARTIAL** | 3 previews publicados (Store/Admin/API) no commit `66bdca1` + smoke **25/25 PASS**. CI `api-gates` verde no push e no PR #3. Lighthouse: home 85/92/93/100, catálogo 77/93/93/100 — **performance abaixo do alvo 90**. pa11y-ci WCAG2AA: 40 erros em 5 páginas (contraste, `role="presentation"`, `autocomplete` inválido no checkout) |
 | 9 Produção | **NÃO EXECUTADO** | Aguardando autorização explícita: `db:bootstrap` em produção + `workflow_dispatch environment=production` |
 
 Bloqueios que dependem de ação do lojista: (1) registros DNS no registrador;
 (2) chave Resend + domínio verificado; (3) catálogo real (importação CSV — não
 se inventa produto); (4) credenciais de gateway de terceiro para homologar
 pagamento real; (5) correções de performance/acessibilidade da vitrine.
+
+Estado do código no encerramento: branch `fix/aud03-migration-ledger` @ `66bdca1`
+(push + PR #3). Gates locais: `npm run verify` (tsc ×4, shared 16/16, api
+337/337, store+admin 76/76 + no type errors) e `node scripts/pg-integration.mjs`
+(PostgreSQL real 17.11, 112/112). CI `api-gates`: success (push + PR).
+Staging após o smoke: `orders=0`, `payments=0`, `order_items=0`,
+`inventory.reserved=0`, ledger 31/31 `aplicada`. Deploys de produção
+intactos (`/healthz` 200, loja 200, login do painel 200) e **não** tocados.
 
 ---
 
