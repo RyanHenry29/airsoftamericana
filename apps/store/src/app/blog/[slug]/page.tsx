@@ -10,7 +10,10 @@ import { loadHome } from "../../lib/store";
 import { OG_IMAGE } from "../../lib/seo";
 import { fetchBlogPost, formatPostDate, paragraphs } from "../../lib/blog";
 
-export const dynamic = "force-dynamic";
+// Página pública da vitrine: revalidação de 60 s (Data Cache). O SSR
+// não lê cookie nenhum — sessão, carrinho e conta são resolvidos no
+// cliente — então a rota serve do cache sem perder estado de ninguém.
+export const revalidate = 60;
 
 type Props = { params: Promise<{ slug: string }> };
 

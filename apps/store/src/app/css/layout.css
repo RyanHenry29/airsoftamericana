@@ -66,7 +66,7 @@
   gap: 1rem 1.25rem;
   padding: 0.5rem clamp(1rem, 4vw, 2.5rem);
   font-family: var(--font-mono);
-  font-size: 0.67rem;
+  font-size: 0.75rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--dim);
@@ -142,7 +142,7 @@
 .brand__accent { color: var(--primary); }
 .brand__tag {
   font-family: var(--font-mono);
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted-foreground);
@@ -167,7 +167,7 @@
 .header-search__go {
   flex: none;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -199,7 +199,7 @@
   display: block;
   padding: 0.5rem 0.6rem;
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -221,7 +221,7 @@
 .suggest__chips { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.4rem 0.6rem 0.6rem; }
 .suggest__chip {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: #c8cbc8;
   text-decoration: none;
   border: 1px solid var(--line);
@@ -239,7 +239,7 @@
   color: #f4f5f2;
   text-decoration: none;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   transition: color 0.2s ease;
@@ -278,7 +278,7 @@
 .header-mobile__label {
   padding: 0.85rem clamp(1rem, 4vw, 2.5rem) 0.35rem;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -402,7 +402,7 @@
   .dept-strip__chev { width: 11px; height: 11px; }
 }
 @media (max-width: 940px) {
-  .dept-strip__item { padding: 0.72rem 0.5rem; font-size: 0.72rem; }
+  .dept-strip__item { padding: 0.72rem 0.5rem; font-size: 0.75rem; }
 }
 /* Mobile (≤860 = mesmo corte do hambúrguer): a barra de categorias some e
    a navegação inteira passa para o menu do hambúrguer — design próprio do
@@ -474,7 +474,7 @@
 .footer__col { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
 .footer__title {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -499,7 +499,7 @@
   padding: 1rem clamp(1rem, 4vw, 2.5rem);
   border-top: 1px solid var(--line);
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: #6f766f;
@@ -543,7 +543,7 @@
 .footer__ico { color: var(--primary); flex: none; margin-top: 2px; }
 .footer__label {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -559,7 +559,7 @@
 address.footer__line { font-style: normal; }
 .footer__title {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -668,13 +668,13 @@ address.footer__line { font-style: normal; }
   padding: 1.1rem clamp(1rem, 4vw, 2.5rem);
   border-top: 1px solid var(--line);
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6f766f;
+  color: #8a918a;
 }
 .footer__copy { color: #c8cbc8; font-weight: 700; flex: 1 1 100%; line-height: 1.7; letter-spacing: 0.08em; }
-.footer__age { color: #6f766f; }
+.footer__age { color: #8a918a; }
 .footer__payments { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-left: auto; }
 .footer__pay {
   display: inline-flex;
@@ -738,7 +738,7 @@ address.footer__line { font-style: normal; }
 .cookie-consent__actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .cookie-consent__btn {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -750,7 +750,7 @@ address.footer__line { font-style: normal; }
 .cookie-consent__btn--ghost:hover { color: #F3F3EF; border-color: #59664A; }
 .cookie-consent__btn--primary { background: #59664A; color: #F3F3EF; border-color: #59664A; }
 .cookie-consent__btn--primary:hover { background: #7A9A5A; border-color: #7A9A5A; }
-@media (max-width: 640px) { .cookie-consent { padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px)); } .cookie-consent__desc { font-size: 0.74rem; } .cookie-consent__actions { width: 100%; } .cookie-consent__btn { flex: 1; text-align: center; padding: 0.55rem 0.5rem; } }
+@media (max-width: 640px) { .cookie-consent { padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px)); } .cookie-consent__desc { font-size: 0.75rem; } .cookie-consent__actions { width: 100%; } .cookie-consent__btn { flex: 1; text-align: center; padding: 0.55rem 0.5rem; } }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    HERO PROFISSIONAL â€” padrÃ£o comercial: texto pesado, confianÃ§a, CTA
@@ -775,10 +775,16 @@ address.footer__line { font-style: normal; }
   .hero__grid { grid-template-columns: 1fr; gap: clamp(1.5rem, 6vw, 2.5rem); }
 }
 .hero__copy { max-width: 52rem; }
+.hero__actions { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem; }
+/* Home sem banner ativo no CMS: hero só de texto, sem imagem inventada. */
+.hero--solo .hero__grid { grid-template-columns: 1fr; }
+.hero--solo .hero__copy { max-width: 62rem; margin-inline: auto; text-align: center; }
+.hero--solo .hero__sub { margin-inline: auto; }
+.hero--solo .hero__actions { justify-content: center; }
 .hero__eyebrow {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.22em;
@@ -872,7 +878,7 @@ address.footer__line { font-style: normal; }
   padding: 0.125rem 0.5rem;
   border-radius: 2px;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -888,7 +894,7 @@ address.footer__line { font-style: normal; }
   right: 0.5rem;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--primary);
@@ -905,7 +911,7 @@ address.footer__line { font-style: normal; }
 }
 .pcard-cat {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -939,7 +945,7 @@ address.footer__line { font-style: normal; }
 }
 .pcard-pix {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: #4d7a08;
   font-weight: 600;
   background: rgb(122 154 90 / 0.14);
@@ -948,13 +954,13 @@ address.footer__line { font-style: normal; }
 }
 .pcard-inst {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
   margin: 0;
 }
 .pcard-stock {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted-foreground);
   margin-top: 0.5rem;
@@ -976,7 +982,7 @@ address.footer__line { font-style: normal; }
   border-radius: 2px;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   cursor: pointer;
@@ -1014,7 +1020,7 @@ address.footer__line { font-style: normal; }
 .pdp__info { display: flex; flex-direction: column; gap: 1.5rem; }
 .pdp__brand {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -1074,7 +1080,7 @@ address.footer__line { font-style: normal; }
 }
 .pdp__inst {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
   margin: 0;
 }
@@ -1086,7 +1092,7 @@ address.footer__line { font-style: normal; }
 }
 .pdp__flag {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1105,7 +1111,7 @@ address.footer__line { font-style: normal; }
 }
 .pdp__specs-title {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -1122,7 +1128,7 @@ address.footer__line { font-style: normal; }
 }
 .spec-list__row dt {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -1144,7 +1150,7 @@ address.footer__line { font-style: normal; }
 .buy__group { display: flex; flex-direction: column; gap: 0.45rem; }
 .buy__label {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -1180,19 +1186,19 @@ address.footer__line { font-style: normal; }
 .buy__chip.is-on .buy__chip-name { color: var(--primary); }
 .buy__chip-price {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
 }
 .buy__chip-out {
   font-family: var(--font-mono);
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: #dc2626;
 }
 .buy__sel {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
   margin: 0;
 }
@@ -1201,7 +1207,7 @@ address.footer__line { font-style: normal; }
 .buy__row { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
 .buy__single {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: var(--foreground);
   border: 1px solid var(--border-strong);
   border-radius: 2px;
@@ -1241,7 +1247,7 @@ address.footer__line { font-style: normal; }
 .buy__qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .buy__stock {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted-foreground);
 }
@@ -1277,7 +1283,7 @@ address.footer__line { font-style: normal; }
 .buy__btn--now:hover:not(:disabled) { background: var(--primary-dark); border-color: var(--primary-dark); transform: translateY(-1px); }
 .buy__error {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: #f87171;
   margin: 0;
 }
@@ -1359,7 +1365,7 @@ address.footer__line { font-style: normal; }
 }
 .orientacao-link {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -1395,7 +1401,7 @@ address.footer__line { font-style: normal; }
 .confianca-item__body { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
 .confianca-item__label {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -1441,7 +1447,7 @@ address.footer__line { font-style: normal; }
 }
 .guia-link {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -1577,7 +1583,7 @@ address.footer__line { font-style: normal; }
 .cart__item-title:hover { color: var(--primary); }
 .cart__item-meta {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
   margin: 0;
 }
@@ -1655,7 +1661,7 @@ address.footer__line { font-style: normal; }
 }
 .cart__summary-label {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -1690,7 +1696,7 @@ address.footer__line { font-style: normal; }
 }
 .cart__note {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
   margin: 0;
 }
@@ -1757,7 +1763,7 @@ address.footer__line { font-style: normal; }
 }
 .checkout-section__title {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -1780,7 +1786,7 @@ address.footer__line { font-style: normal; }
 .checkout-field--full { grid-column: 1 / -1; }
 .checkout-label {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -1833,14 +1839,14 @@ address.footer__line { font-style: normal; }
 }
 .checkout-pay-name {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
 .checkout-pay-desc {
   font-family: var(--font-mono);
-  font-size: 0.58rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
 }
 .checkout-terms {
@@ -1854,7 +1860,7 @@ address.footer__line { font-style: normal; }
 }
 .checkout-terms__legend {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -1915,7 +1921,7 @@ address.footer__line { font-style: normal; }
 }
 .checkout-summary__title {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -1930,7 +1936,7 @@ address.footer__line { font-style: normal; }
 }
 .checkout-summary__label {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -1960,14 +1966,14 @@ address.footer__line { font-style: normal; }
 }
 .checkout-note {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
   margin: 0;
   text-align: center;
 }
 .checkout-cep-hint {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   line-height: 1.4;
   color: var(--muted-foreground);
 }
@@ -1984,7 +1990,7 @@ address.footer__line { font-style: normal; }
   align-items: center;
   gap: 0.5rem;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--muted-foreground);
 }
 .checkout-perk svg { color: var(--primary); flex: none; }
@@ -2003,7 +2009,7 @@ address.footer__line { font-style: normal; }
   align-items: center;
   gap: 0.5rem;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -2051,7 +2057,7 @@ address.footer__line { font-style: normal; }
 .conta-ident { min-width: 0; display: flex; flex-direction: column; gap: 0.2rem; }
 .conta-kicker {
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -2171,7 +2177,7 @@ address.footer__line { font-style: normal; }
   align-items: center;
   gap: 0.45rem;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.18em;
   color: var(--dim);
@@ -2183,7 +2189,7 @@ address.footer__line { font-style: normal; }
   align-items: center;
   gap: 0.4rem;
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2218,7 +2224,7 @@ address.footer__line { font-style: normal; }
 .conta-order__status {
   justify-self: start;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2265,7 +2271,7 @@ address.footer__line { font-style: normal; }
   align-items: center;
   gap: 0.35rem;
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2338,7 +2344,7 @@ address.footer__line { font-style: normal; }
   align-items: center;
   gap: 0.4rem;
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -2353,7 +2359,7 @@ address.footer__line { font-style: normal; }
   align-items: center;
   gap: 0.4rem;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2392,7 +2398,7 @@ address.footer__line { font-style: normal; }
 .conta-form-field--full { grid-column: 1 / -1; }
 .conta-form-label {
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -2488,7 +2494,7 @@ address.footer__line { font-style: normal; }
 .conta-addr__name { font-size: 0.95rem; color: var(--foreground); }
 .conta-addr__badge {
   font-family: var(--font-mono);
-  font-size: 0.56rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -2581,7 +2587,7 @@ address.footer__line { font-style: normal; }
 .omodal__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-top: 0.55rem; }
 .omodal__meta-item {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted-foreground);
@@ -2598,7 +2604,7 @@ address.footer__line { font-style: normal; }
   align-items: center;
   gap: 0.35rem;
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2678,7 +2684,7 @@ address.footer__line { font-style: normal; }
 .omodal__block { display: flex; flex-direction: column; gap: 0.5rem; }
 .omodal__label {
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -2703,7 +2709,7 @@ address.footer__line { font-style: normal; }
 .omodal__item-name a:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 .omodal__item-sku {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   letter-spacing: 0.05em;
   color: var(--muted-foreground);
 }
@@ -2712,7 +2718,7 @@ address.footer__line { font-style: normal; }
 .omodal__item-total { font-family: var(--font-display); font-size: 0.98rem; font-weight: 700; color: var(--foreground); }
 .omodal__na {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #f87171;
@@ -2720,7 +2726,7 @@ address.footer__line { font-style: normal; }
 .omodal__controls { display: flex; flex-direction: column; align-items: flex-end; gap: 0.45rem; }
 .omodal__select {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: var(--foreground);
   background: #0d100f;
   border: 1px solid var(--border-strong);
@@ -2761,7 +2767,7 @@ address.footer__line { font-style: normal; }
 .omodal__qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .omodal__chosen {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--primary);
@@ -2777,7 +2783,7 @@ address.footer__line { font-style: normal; }
 }
 .omodal__added {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2789,7 +2795,7 @@ address.footer__line { font-style: normal; }
 .omodal__pay { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; margin-bottom: 0.6rem; }
 .omodal__pay-status {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -2803,7 +2809,7 @@ address.footer__line { font-style: normal; }
 .omodal__pay-hint {
   display: block;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -2818,7 +2824,7 @@ address.footer__line { font-style: normal; }
   border-radius: 2px;
   color: var(--foreground);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   padding: 0.6rem 0.7rem;
   margin-bottom: 0.5rem;
@@ -2827,7 +2833,7 @@ address.footer__line { font-style: normal; }
 .omodal__pix:focus { outline: 1px solid var(--primary); border-color: var(--primary); }
 .omodal__copy {
   padding: 0.5rem 0.9rem;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -2918,7 +2924,7 @@ address.footer__line { font-style: normal; }
 .qv__info { display: flex; flex-direction: column; gap: 0.55rem; min-width: 0; }
 .qv__brand {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -2948,7 +2954,7 @@ address.footer__line { font-style: normal; }
 }
 .qv__stock {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted-foreground);
 }
@@ -2966,7 +2972,7 @@ address.footer__line { font-style: normal; }
   gap: 0.75rem;
   padding: 0.45rem 0;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--foreground);
 }
 .qv__opt + .qv__opt { border-top: 1px dashed var(--border); }

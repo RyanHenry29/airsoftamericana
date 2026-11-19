@@ -303,7 +303,7 @@ export default function AssistentePage() {
         <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
           Assistente de cadastro
         </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
+        <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-2">
           Foto + descrição → rascunho revisável · o assistente não publica sozinho
         </p>
       </header>
@@ -312,7 +312,7 @@ export default function AssistentePage() {
         {/* -------------------------------------------------- conversas */}
         <aside className="border border-[#111] bg-[#0a0a0a] p-4 h-fit">
           <div className="flex items-center justify-between gap-2 mb-3">
-            <h2 className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666]">Conversas</h2>
+            <h2 className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666]">Conversas</h2>
             <button type="button" className="btn btn-outline btn-sm" onClick={newConversation}>Nova</button>
           </div>
           {loadingList ? (
@@ -365,7 +365,7 @@ export default function AssistentePage() {
               ) : (
                 messages.map((m) => (
                   <article key={m.id} className={m.role === "assistant" ? "max-w-[85%]" : "max-w-[85%] ml-auto"}>
-                    <p className="font-mono text-[0.6rem] uppercase tracking-widest text-[#555] mb-1">
+                    <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#555] mb-1">
                       {m.role === "assistant" ? "Assistente" : "Você"}
                     </p>
                     <div className={`border p-3 text-sm leading-relaxed whitespace-pre-wrap ${
@@ -461,7 +461,7 @@ export default function AssistentePage() {
                   <h2 className="font-display font-black text-2xl uppercase tracking-tighter text-[#a6f51b]">
                     Rascunho pronto
                   </h2>
-                  <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-1">
+                  <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-1">
                     Revisado contra o catálogo real · preço e estoque são seus
                   </p>
                 </div>
@@ -537,7 +537,7 @@ export default function AssistentePage() {
                 {/* ficha técnica editável */}
                 <div className="md:col-span-2">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-mono text-[0.7rem] font-black uppercase tracking-widest text-[#666]">Ficha técnica</span>
+                    <span className="font-mono text-[0.75rem] font-black uppercase tracking-widest text-[#666]">Ficha técnica</span>
                     <button type="button" className="btn btn-outline btn-sm" onClick={addSpec}>+ Especificação</button>
                   </div>
                   {Object.keys(form.technical).length === 0 ? (
@@ -564,7 +564,7 @@ export default function AssistentePage() {
 
                 {/* valores — sempre do operador */}
                 <div className="md:col-span-2 border border-[#333] p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <p className="md:col-span-4 font-mono text-[0.65rem] uppercase tracking-widest text-[#8bcf16]">
+                  <p className="md:col-span-4 font-mono text-[0.75rem] uppercase tracking-widest text-[#8bcf16]">
                     Definição do lojista (a IA não preenche)
                   </p>
                   <div className="field">

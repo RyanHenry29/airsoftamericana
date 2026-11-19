@@ -54,7 +54,7 @@ body:has(.auth-shell) {
 }
 .auth-brand__sub {
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.16em;
   color: var(--muted-foreground);
@@ -68,7 +68,7 @@ body:has(.auth-shell) {
 }
 .auth-kicker {
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.22em;
@@ -132,7 +132,7 @@ body:has(.auth-shell) {
 .spec-plate__row:last-child { border-bottom: 0; }
 .spec-plate__k {
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--muted-foreground);
@@ -177,7 +177,7 @@ body:has(.auth-shell) {
 .auth-hours,
 .auth-handle {
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   line-height: 1.7;
   letter-spacing: 0.08em;
   color: var(--muted-foreground);
@@ -207,7 +207,7 @@ body:has(.auth-shell) {
   position: absolute;
   bottom: 0.7rem;
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.5rem;
+  font-size: 0.75rem;
   letter-spacing: 0.16em;
   color: var(--muted-foreground);
 }
@@ -299,7 +299,7 @@ body:has(.auth-shell) {
 }
 .auth-label svg { color: var(--primary); flex: none; }
 .auth-optional {
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 400;
   letter-spacing: 0.06em;
   text-transform: lowercase;
@@ -379,7 +379,7 @@ body:has(.auth-shell) {
 .auth-block__num {
   display: block;
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -413,7 +413,7 @@ body:has(.auth-shell) {
 .strength[data-level="4"] span { background: var(--primary-dark); }
 .strength-label {
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted-foreground);
@@ -450,7 +450,7 @@ body:has(.auth-shell) {
   margin-top: 0.7rem;
   text-align: center;
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted-foreground);
@@ -550,7 +550,7 @@ body:has(.auth-shell) {
 .auth-legal a:hover { color: var(--primary); border-color: var(--primary); }
 .auth-legal__mark {
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   color: var(--muted-foreground);
   white-space: nowrap;
@@ -563,7 +563,7 @@ body:has(.auth-shell) {
   gap: 0.75rem;
   margin: 1.25rem 0;
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted-foreground);

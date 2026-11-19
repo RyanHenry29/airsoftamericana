@@ -113,7 +113,7 @@ export default function NewProductPage() {
         <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
           Novo produto
         </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
+        <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-2">
           Variação única com SKU + estoque inicial
         </p>
       </header>
@@ -192,7 +192,7 @@ export default function NewProductPage() {
         <div className="field"><label htmlFor="acess">Acess?rios inclu?dos</label><input id="acess" className="input" value={data.acessoriosIncluidos} onChange={e=>setData({...data,acessoriosIncluidos:e.target.value})} /></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="field"><label htmlFor="tags">Tags (v?rgula)</label><input id="tags" className="input" value={data.tags} onChange={e=>setData({...data,tags:e.target.value})} /></div>
-          {canCost ? <div className="field"><label htmlFor="cost">Custo interno (R$)</label><input id="cost" className="input" inputMode="decimal" value={data.costCents} onChange={e=>setData({...data,costCents:e.target.value})} /><p className="font-mono text-[0.6rem] text-[#666] mt-1">Apenas pap?is autorizados; nunca p?blico.</p></div> : <p className="font-mono text-[0.6rem] text-[#666] self-end">Custo interno oculto (papel sem permiss?o).</p>}
+          {canCost ? <div className="field"><label htmlFor="cost">Custo interno (R$)</label><input id="cost" className="input" inputMode="decimal" value={data.costCents} onChange={e=>setData({...data,costCents:e.target.value})} /><p className="font-mono text-[0.75rem] text-[#666] mt-1">Apenas pap?is autorizados; nunca p?blico.</p></div> : <p className="font-mono text-[0.75rem] text-[#666] self-end">Custo interno oculto (papel sem permiss?o).</p>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="field"><label htmlFor="seot">SEO title</label><input id="seot" className="input" value={data.seoTitle} onChange={e=>setData({...data,seoTitle:e.target.value})} /></div>
@@ -209,7 +209,7 @@ export default function NewProductPage() {
           <button type="submit" className="btn-primary px-8 py-3" disabled={busy}>
             {busy ? "Cadastrando..." : "Cadastrar produto"}
           </button>
-          <Link href="/products" className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] hover:text-[#8bcf16] transition-colors underline underline-offset-4">
+          <Link href="/products" className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] hover:text-[#8bcf16] transition-colors underline underline-offset-4">
             Cancelar
           </Link>
         </div>

@@ -10,6 +10,7 @@ import "./css/pages.css";
 import "./css/responsive.css"; // por último: vence layout/home/catalog/pdp/pages
 import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, Inter } from "next/font/google";
+import { cache } from "react";
 import { AutoLayout } from "./components/AutoLayout";
 import { CookieConsent } from "./components/CookieConsent";
 import { API_URL, formatBRL, storeGet } from "./lib/store";
@@ -37,7 +38,10 @@ const mono = IBM_Plex_Mono({
   display: "swap",
 });
 
-async function fetchSettings() {
+// cache() do React: generateMetadata e o JSON-LD do layout precisam das
+// mesmas condições comerciais — sem o memo, a página fazia DUAS idas à API
+// (uma em cada chamada) e o head atrasava o documento inteiro.
+const fetchSettings = cache(async () => {
   // Mesmo canal com retry do storeGet: as condições do title/description não
   // podem sumir do head por um 500 transitório.
   return storeGet<{
@@ -48,7 +52,7 @@ async function fetchSettings() {
     service_hours?: string;
     email?: string;
   } | null>(`${API_URL}/api/store/settings`, null);
-}
+});
 
 export async function generateMetadata() {
   const s = await fetchSettings();

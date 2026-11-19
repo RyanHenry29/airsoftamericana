@@ -7,11 +7,13 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        // Telas de app, nunca conteúdo: painel, carrinho/checkout/conta (URLs de
-        // sessão) e a API. /busca fica FORA daqui de propósito — ela se exclui
-        // do índice com noindex na própria página, e bloquear em robots.txt
-        // esconderia o noindex do Googlebot.
-        disallow: ["/admin", "/cart", "/checkout", "/conta", "/api/"],
+        // Telas de app, nunca conteúdo: o painel e a API. Carrinho, checkout
+        // e conta ficam FORA daqui de propósito — eles se excluem do índice
+        // com noindex na própria página (canonical próprio, robots noindex),
+        // e bloquear em robots.txt esconderia essa diretiva do Googlebot:
+        // a URL apareceria indexada como "bloqueada por robots.txt".
+        // /busca segue a mesma regra.
+        disallow: ["/admin", "/api/"],
       },
     ],
     sitemap: `${base}/sitemap.xml`,

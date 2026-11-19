@@ -179,7 +179,16 @@ export function Header() {
 
       <div className="header-main">
         <Link href="/" className="brand" aria-label="Airsoft Americana — página inicial">
-          <Image src="/emblema.png" alt="" width={537} height={512} className="brand__logo" priority quality={90} />
+          <Image
+            src="/emblema.png"
+            alt=""
+            width={537}
+            height={512}
+            className="brand__logo"
+            priority
+            quality={75}
+            sizes="(max-width: 640px) 52px, 68px"
+          />
           <span className="brand__text">
             <span className="brand__name">
               AIRSOFT <span className="brand__accent">AMERICANA</span>
@@ -234,6 +243,7 @@ export function Header() {
                         key={c.id}
                         href={`/catalogo?categoria=${c.slug}`}
                         className="suggest__chip"
+                        prefetch={false}
                         onClick={() => setSuggestions(null)}
                       >
                         {c.name}
@@ -251,6 +261,7 @@ export function Header() {
                         key={b.id}
                         href={`/marca/${b.slug}`}
                         className="suggest__chip"
+                        prefetch={false}
                         onClick={() => setSuggestions(null)}
                       >
                         {b.name}
@@ -266,18 +277,18 @@ export function Header() {
         <nav className="header-actions" aria-label="Conta e carrinho">
           {customer ? (
             <Link href="/conta" className="header-action header-action--account">
-              <User size={20} />
+              <User size={20} aria-hidden="true" />
               <span className="header-action__label">{customer.name.split(" ")[0]}</span>
             </Link>
           ) : (
             <Link href="/entrar" className="header-action header-action--account">
-              <User size={20} />
+              <User size={20} aria-hidden="true" />
               <span className="header-action__label">Entrar</span>
             </Link>
           )}
-          <Link href="/cart" className="header-action">
+          <Link href="/cart" className="header-action" aria-label="Carrinho">
             <span className="header-action__cart">
-              <ShoppingCart size={20} />
+              <ShoppingCart size={20} aria-hidden="true" />
               {count > 0 && <span className="cart-badge">{count}</span>}
             </span>
             <span className="header-action__label">Carrinho</span>
@@ -303,7 +314,12 @@ export function Header() {
             <div className="header-mobile__group">
               <span className="header-mobile__label">Categorias</span>
               {categories.map((c) => (
-                <Link key={c.id} href={`/catalogo?categoria=${c.slug}`} onClick={() => setMenuOpen(false)}>
+                <Link
+                  key={c.id}
+                  href={`/catalogo?categoria=${c.slug}`}
+                  prefetch={false}
+                  onClick={() => setMenuOpen(false)}
+                >
                   {c.name}
                 </Link>
               ))}

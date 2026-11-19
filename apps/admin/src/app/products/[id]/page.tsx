@@ -127,13 +127,13 @@ export default function EditProductPage() {
       <header className="mb-8 border-b border-[#111] pb-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display font-black text-2xl md:text-3xl uppercase text-white">Editar produto</h1>
-          <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-1">{p.slug} · {p.published ? "Publicado" : "Rascunho"}{p.featured ? " · Destaque" : ""}</p>
+          <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-1">{p.slug} · {p.published ? "Publicado" : "Rascunho"}{p.featured ? " · Destaque" : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-2 px-3 border border-[#111] text-[#666] hover:text-[#8bcf16]" onClick={() => action(p.published ? "Despublicar este produto?" : "Publicar este produto?", { published: !p.published })} disabled={saving}>{p.published ? "Despublicar" : "Publicar"}</button>
-          <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-2 px-3 border border-[#111] text-[#666] hover:text-[#8bcf16]" onClick={() => save({ featured: !p.featured })} disabled={saving}>{p.featured ? "Remover destaque" : "Destacar"}</button>
-          <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-2 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => action("Arquivar este produto? Ele será despublicado e removido do destaque.", { archived: true })} disabled={saving}>Arquivar</button>
-          <Link href="/products" className="font-mono text-[0.65rem] uppercase text-[#666] underline py-2 px-1">Voltar</Link>
+          <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-2 px-3 border border-[#111] text-[#666] hover:text-[#8bcf16]" onClick={() => action(p.published ? "Despublicar este produto?" : "Publicar este produto?", { published: !p.published })} disabled={saving}>{p.published ? "Despublicar" : "Publicar"}</button>
+          <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-2 px-3 border border-[#111] text-[#666] hover:text-[#8bcf16]" onClick={() => save({ featured: !p.featured })} disabled={saving}>{p.featured ? "Remover destaque" : "Destacar"}</button>
+          <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-2 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => action("Arquivar este produto? Ele será despublicado e removido do destaque.", { archived: true })} disabled={saving}>Arquivar</button>
+          <Link href="/products" className="font-mono text-[0.75rem] uppercase text-[#666] underline py-2 px-1">Voltar</Link>
         </div>
       </header>
 
@@ -164,9 +164,9 @@ export default function EditProductPage() {
             <div className="field"><label htmlFor="seod">SEO description</label><input id="seod" className="input" value={p.seoDescription||""} onChange={e=>setP({...p,seoDescription:e.target.value})} /></div>
           </div>
           {canCost ? (
-            <div className="field"><label htmlFor="cost">Custo interno (centavos, restrito)</label><input id="cost" className="input" type="number" min={0} value={p.costCents ?? ""} onChange={e=>setP({...p,costCents:e.target.value===""?null:Number(e.target.value)})} /><p className="font-mono text-[0.6rem] text-[#666] mt-1">Visível/editável apenas para papéis autorizados; nunca público.</p></div>
+            <div className="field"><label htmlFor="cost">Custo interno (centavos, restrito)</label><input id="cost" className="input" type="number" min={0} value={p.costCents ?? ""} onChange={e=>setP({...p,costCents:e.target.value===""?null:Number(e.target.value)})} /><p className="font-mono text-[0.75rem] text-[#666] mt-1">Visível/editável apenas para papéis autorizados; nunca público.</p></div>
           ) : (
-            <p className="font-mono text-[0.6rem] text-[#666]">Custo interno: oculto para este papel (protegido no backend).</p>
+            <p className="font-mono text-[0.75rem] text-[#666]">Custo interno: oculto para este papel (protegido no backend).</p>
           )}
           <div className="flex gap-3"><button type="button" className="btn-primary px-6 py-2" onClick={()=>save()} disabled={saving}>{saving?"Salvando…":"Salvar alterações"}</button></div>
         </section>
@@ -181,7 +181,7 @@ export default function EditProductPage() {
           {(p.videos||[]).length===0 ? <p className="text-[#666] font-mono text-xs">Nenhum vídeo.</p> : (
             <ul className="grid gap-2">{(p.videos||[]).map((v,i)=>(<li key={i} className="flex items-center justify-between border border-[#111] p-2 font-mono text-xs"><span className="truncate mr-2"><span className="text-[#8bcf16]">[{v.type}]</span> {v.url}</span><button type="button" className="text-[#dc2626] underline" onClick={()=>removeVideo(i)}>Remover</button></li>))}</ul>
           )}
-          <p className="text-[#666] font-mono text-[0.6rem]">Salve o produto após alterar vídeos.</p>
+          <p className="text-[#666] font-mono text-[0.75rem]">Salve o produto após alterar vídeos.</p>
         </section>
 
         <section className="border border-[#111] bg-[#0a0a0a] p-6 grid gap-4">
@@ -211,12 +211,12 @@ export default function EditProductPage() {
           <h2 className="font-display font-black text-lg text-white uppercase">Relacionados e compatíveis</h2>
           <div className="grid md:grid-cols-2 gap-6">
             <div className="grid gap-2">
-              <label htmlFor="rel" className="font-mono text-[0.65rem] uppercase text-[#666]">ID do produto relacionado</label>
+              <label htmlFor="rel" className="font-mono text-[0.75rem] uppercase text-[#666]">ID do produto relacionado</label>
               <div className="flex gap-2"><input id="rel" className="input flex-1" value={relId} onChange={e=>setRelId(e.target.value)} /><button type="button" className="btn-primary px-3 py-2" onClick={addRelated} disabled={saving}>Adicionar</button></div>
               {related.length===0 ? <p className="text-[#666] font-mono text-xs">Nenhum.</p> : <ul className="grid gap-1">{related.map(r=>{ const rid=(r as any).relatedProductId||r.id; return <li key={rid} className="flex justify-between border border-[#111] p-2 font-mono text-xs"><span className="truncate mr-2">{rid}</span><button type="button" className="text-[#dc2626] underline" onClick={()=>removeRelated(rid)}>Remover</button></li>; })}</ul>}
             </div>
             <div className="grid gap-2">
-              <label htmlFor="comp" className="font-mono text-[0.65rem] uppercase text-[#666]">ID do produto compatível</label>
+              <label htmlFor="comp" className="font-mono text-[0.75rem] uppercase text-[#666]">ID do produto compatível</label>
               <div className="flex gap-2"><input id="comp" className="input flex-1" value={compId} onChange={e=>setCompId(e.target.value)} /><button type="button" className="btn-primary px-3 py-2" onClick={addCompatible} disabled={saving}>Adicionar</button></div>
               {compatible.length===0 ? <p className="text-[#666] font-mono text-xs">Nenhum.</p> : <ul className="grid gap-1">{compatible.map(r=>{ const cid=(r as any).compatibleProductId||(r as any).compatibleId||r.id; return <li key={cid} className="flex justify-between border border-[#111] p-2 font-mono text-xs"><span className="truncate mr-2">{cid}</span><button type="button" className="text-[#dc2626] underline" onClick={()=>removeCompatible(cid)}>Remover</button></li>; })}</ul>}
             </div>
@@ -225,7 +225,7 @@ export default function EditProductPage() {
 
         <section className="border border-[#111] bg-[#0a0a0a] p-6 grid gap-4">
           <h2 className="font-display font-black text-lg text-white uppercase">Preço e estoque (variantes)</h2>
-          <p className="text-[#666] font-mono text-[0.6rem]">Preço/estoque residem em variantes e inventário. Edição abaixo reflete a variante principal; movimentações de estoque usam o endpoint de inventário (auditado/RBAC).</p>
+          <p className="text-[#666] font-mono text-[0.75rem]">Preço/estoque residem em variantes e inventário. Edição abaixo reflete a variante principal; movimentações de estoque usam o endpoint de inventário (auditado/RBAC).</p>
           {variants.length===0 ? <p className="text-[#666] font-mono text-xs">Nenhuma variante.</p> : (
             <div className="overflow-x-auto"><table><thead><tr><th>SKU</th><th>Preço</th><th>Promo</th><th>Físico</th><th>Reservado</th><th>Disponível</th><th>Mín.</th></tr></thead>
               <tbody>{variants.map(v=>{ const inv=v.inventory; const avail=inv?(inv.physical-inv.reserved):null; return <tr key={v.id}><td className="font-mono text-xs">{v.sku}</td><td>{brl(v.priceCents)}</td><td>{v.promoPriceCents!=null?brl(v.promoPriceCents):"—"}</td><td>{inv?.physical ?? "—"}</td><td>{inv?.reserved ?? "—"}</td><td>{avail ?? "—"}</td><td>{inv?.minQuantity ?? "—"}</td></tr>; })}</tbody>
@@ -236,7 +236,7 @@ export default function EditProductPage() {
         <section className="border border-[#111] bg-[#0a0a0a] p-6 grid gap-4">
           <h2 className="font-display font-black text-lg text-white uppercase">Histórico de alterações (append-only)</h2>
           {history.length===0 ? <p className="text-[#666] font-mono text-xs">Sem histórico registrado.</p> : (
-            <ul className="grid gap-2 max-h-80 overflow-auto">{history.map(h=>(<li key={h.id} className="border border-[#111] p-2 font-mono text-[0.65rem]"><span className="text-white">{h.field}</span> <span className="text-[#666]">{new Date(h.createdAt).toLocaleString("pt-BR")}</span>{h.actorLabel?` · ${h.actorLabel}`:""}<div className="text-[#999] break-all">antes: {h.beforeValue ?? "—"} → depois: {h.afterValue ?? "—"}</div></li>))}</ul>
+            <ul className="grid gap-2 max-h-80 overflow-auto">{history.map(h=>(<li key={h.id} className="border border-[#111] p-2 font-mono text-[0.75rem]"><span className="text-white">{h.field}</span> <span className="text-[#666]">{new Date(h.createdAt).toLocaleString("pt-BR")}</span>{h.actorLabel?` · ${h.actorLabel}`:""}<div className="text-[#999] break-all">antes: {h.beforeValue ?? "—"} → depois: {h.afterValue ?? "—"}</div></li>))}</ul>
           )}
         </section>
       </div>

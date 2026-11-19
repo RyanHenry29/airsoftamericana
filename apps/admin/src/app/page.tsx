@@ -26,7 +26,7 @@ export default function LoginPage() {
               </p>
             </div>
           </div>
-          <div className="text-[10px] font-mono text-gray-600 tracking-[0.3em] uppercase">
+          <div className="text-[12px] font-mono text-gray-600 tracking-[0.3em] uppercase">
             airsoftamericana.vercel.app
           </div>
         </section>

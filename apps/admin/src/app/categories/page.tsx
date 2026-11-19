@@ -192,7 +192,7 @@ export default function CategoriesPage() {
           </select>
         </div>
         <div className="flex items-center gap-4">
-          <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+          <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
             <input
               type="checkbox"
               checked={form.ageRestricted}
@@ -252,8 +252,8 @@ export default function CategoriesPage() {
                   </td>
                   <td className="font-mono text-sm text-[#666]">{c.position}</td>
                   <td className="flex flex-wrap gap-2 items-center">
-                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#333]">{c.depth === 0 ? "departamento" : "subcategoria"}</span>
-                    <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-2 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => remove(c)} disabled={busy}>Excluir</button>
+                    <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#333]">{c.depth === 0 ? "departamento" : "subcategoria"}</span>
+                    <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-2 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => remove(c)} disabled={busy}>Excluir</button>
                   </td>
                 </tr>
               ))}

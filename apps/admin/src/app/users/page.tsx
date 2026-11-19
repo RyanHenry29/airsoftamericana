@@ -418,7 +418,7 @@ export default function UsersPage() {
                         {u.id === actorId ? <span className="text-[#666] font-normal"> (você)</span> : null}
                       </div>
                       {u.needsRoleReview ? (
-                        <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#dc2626] block mt-1">
+                        <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#dc2626] block mt-1">
                           needs_role_review
                         </span>
                       ) : null}
@@ -508,11 +508,11 @@ export default function UsersPage() {
                       <td className="font-mono text-sm text-white">{i.email}</td>
                       <td className="font-mono text-sm text-[#666]">{i.role}</td>
                       <td className="font-mono text-sm text-[#666]">{fmt(i.expiresAt)}</td>
-                      <td className="font-mono text-[0.6rem] uppercase text-[#666]">{i.status === "active" ? "Ativo" : i.status === "expired" ? "Expirado" : "Usado"}</td>
+                      <td className="font-mono text-[0.75rem] uppercase text-[#666]">{i.status === "active" ? "Ativo" : i.status === "expired" ? "Expirado" : "Usado"}</td>
                       <td>
                         {i.status === "active" ? (
-                          <button type="button" onClick={() => revokeInvite(i.id, i.email)} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626]">Revogar</button>
-                        ) : <span className="font-mono text-[0.6rem] text-[#333]">—</span>}
+                          <button type="button" onClick={() => revokeInvite(i.id, i.email)} className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626]">Revogar</button>
+                        ) : <span className="font-mono text-[0.75rem] text-[#333]">—</span>}
                       </td>
                     </tr>
                   ))}
@@ -530,7 +530,7 @@ export default function UsersPage() {
             <h2 className="admin-section-head__title">Minhas sessões</h2>
           </div>
           {sessions.length > 1 ? (
-            <button type="button" onClick={revokeOthers} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626]">
+            <button type="button" onClick={revokeOthers} className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626]">
               Revogar outras sessões
             </button>
           ) : null}
@@ -548,14 +548,14 @@ export default function UsersPage() {
                   <tr key={s.id}>
                     <td className="font-mono text-sm text-white">
                       <span className="block max-w-[260px] truncate" title={s.userAgent ?? ""}>{s.userAgent ?? "desconhecido"}</span>
-                      {s.current ? <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#8bcf16] block mt-1">sessão atual</span> : null}
+                      {s.current ? <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#8bcf16] block mt-1">sessão atual</span> : null}
                     </td>
                     <td className="font-mono text-sm text-[#666]">{s.ip ?? "—"}</td>
                     <td className="font-mono text-sm text-[#666]">{fmt(s.createdAt)}</td>
                     <td className="font-mono text-sm text-[#666]">{fmt(s.lastSeenAt)}</td>
                     <td className="font-mono text-sm text-[#666]">{fmt(s.expiresAt)}</td>
                     <td>
-                      <button type="button" onClick={() => revokeSession(s.id)} disabled={s.current} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626] transition-colors disabled:text-[#333] disabled:hover:border-[#111]">
+                      <button type="button" onClick={() => revokeSession(s.id)} disabled={s.current} className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626] transition-colors disabled:text-[#333] disabled:hover:border-[#111]">
                         {s.current ? "Atual" : "Revogar"}
                       </button>
                     </td>
@@ -574,10 +574,10 @@ export default function UsersPage() {
             <h2 className="admin-section-head__title">Minhas passkeys</h2>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button type="button" onClick={registerPasskey} disabled={busy} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] disabled:text-[#333]">
+            <button type="button" onClick={registerPasskey} disabled={busy} className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] disabled:text-[#333]">
               {busy ? "Aguarde..." : "Cadastrar passkey"}
             </button>
-            <button type="button" onClick={regenerateRecovery} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16]">
+            <button type="button" onClick={regenerateRecovery} className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16]">
               Regenerar códigos de recuperação
             </button>
           </div>
@@ -597,8 +597,8 @@ export default function UsersPage() {
                     <td className="font-mono text-sm text-[#666]">{fmt(p.createdAt)}</td>
                     <td className="font-mono text-sm text-[#666]">{fmt(p.lastUsedAt)}</td>
                     <td className="flex gap-2">
-                      <button type="button" onClick={() => renamePasskey(p.id, p.label)} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16]">Renomear</button>
-                      <button type="button" onClick={() => removePasskey(p.id, p.label)} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626]">Remover</button>
+                      <button type="button" onClick={() => renamePasskey(p.id, p.label)} className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16]">Renomear</button>
+                      <button type="button" onClick={() => removePasskey(p.id, p.label)} className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#dc2626] hover:text-[#dc2626]">Remover</button>
                     </td>
                   </tr>
                 ))}

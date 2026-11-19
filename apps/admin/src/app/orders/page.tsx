@@ -118,13 +118,13 @@ export default function OrdersPage() {
                 <tr key={o.id} className="group">
                   <td>
                     <div className="font-mono text-sm font-bold text-white">#{o.number}</div>
-                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mt-1">
+                    <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mt-1">
                       {new Date(o.createdAt).toLocaleString("pt-BR")}
                     </span>
                   </td>
                   <td>
                     <div className="font-mono text-sm text-white">{o.customerName}</div>
-                    <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mt-1">
+                    <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mt-1">
                       {o.customerEmail}
                     </span>
                   </td>
@@ -145,7 +145,7 @@ export default function OrdersPage() {
                         <button
                           type="button"
                           onClick={() => transition(o.id, "pagamento_aprovado")}
-                          className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#8bcf16] text-[#8bcf16] hover:bg-[#8bcf16] hover:text-[#000] transition-colors"
+                          className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#8bcf16] text-[#8bcf16] hover:bg-[#8bcf16] hover:text-[#000] transition-colors"
                         >
                           Aprovar
                         </button>
@@ -154,7 +154,7 @@ export default function OrdersPage() {
                         <button
                           type="button"
                           onClick={() => transition(o.id, "cancelado")}
-                          className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#dc2626] text-[#dc2626] hover:bg-[#dc2626] hover:text-[#fff] transition-colors"
+                          className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#dc2626] text-[#dc2626] hover:bg-[#dc2626] hover:text-[#fff] transition-colors"
                         >
                           Cancelar
                         </button>

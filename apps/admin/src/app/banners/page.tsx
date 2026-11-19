@@ -202,7 +202,7 @@ export default function BannersPage() {
           <input id="bn-cta" className="input w-full" value={form.ctaLabel ?? ""} placeholder="ex.: Ver catálogo" onChange={e => setForm({ ...form, ctaLabel: e.target.value })} />
         </div>
         <div className="field flex items-end">
-          <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+          <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
             <input type="checkbox" checked={form.active ?? true} onChange={e => setForm({ ...form, active: e.target.checked })} />
             Ativo
           </label>
@@ -253,7 +253,7 @@ export default function BannersPage() {
                       ) : (
                         <>
                           <div className="font-mono text-sm font-bold text-white">{b.title}</div>
-                          {b.subtitle ? <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] mt-1 block">{b.subtitle}</span> : null}
+                          {b.subtitle ? <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-1 block">{b.subtitle}</span> : null}
                         </>
                       )}
                     </td>
@@ -278,8 +278,8 @@ export default function BannersPage() {
                         </>
                       ) : (
                         <>
-                          <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={() => { setEditing(b.id); setForm({ ...b, active: !!b.active, imageUploadId: b.imageUploadId ?? "" }); }}>Editar</button>
-                          <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => remove(b)} disabled={busy}>Excluir</button>
+                          <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={() => { setEditing(b.id); setForm({ ...b, active: !!b.active, imageUploadId: b.imageUploadId ?? "" }); }}>Editar</button>
+                          <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => remove(b)} disabled={busy}>Excluir</button>
                         </>
                       )}
                     </td>

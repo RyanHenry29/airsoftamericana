@@ -82,6 +82,7 @@ export function DeptStrip({ categories = [] }: { categories?: StoreCategoryNode[
               className={`dept-strip__item ${panel?.id === cat.id ? "is-open" : ""}`}
               onClick={closeNow}
               aria-expanded={panel?.id === cat.id}
+              prefetch={false}
             >
               {cat.name}
               <ChevronDown size={13} strokeWidth={2.2} className="dept-strip__chev" aria-hidden="true" />
@@ -112,13 +113,13 @@ export function DeptStrip({ categories = [] }: { categories?: StoreCategoryNode[
             <div className="mega-cols">
               {panel.children?.map((child) => (
                 <div key={child.id} className="mega-col">
-                  <Link href={`/catalogo?categoria=${child.slug}`} className="mega-group-title">
+                  <Link href={`/catalogo?categoria=${child.slug}`} className="mega-group-title" prefetch={false}>
                     {child.name}
                   </Link>
                   <ul className="mega-links">
                     {child.children?.map((grand) => (
                       <li key={grand.id}>
-                        <Link href={`/catalogo?categoria=${grand.slug}`}>
+                        <Link href={`/catalogo?categoria=${grand.slug}`} prefetch={false}>
                           {grand.name}
                           {grand.ageRestricted && <span className="age18">18+</span>}
                         </Link>
@@ -126,7 +127,7 @@ export function DeptStrip({ categories = [] }: { categories?: StoreCategoryNode[
                     ))}
                     {!child.children?.length && (
                       <li>
-                        <Link href={`/catalogo?categoria=${child.slug}`}>Ver todos</Link>
+                        <Link href={`/catalogo?categoria=${child.slug}`} prefetch={false}>Ver todos</Link>
                       </li>
                     )}
                   </ul>
@@ -136,7 +137,7 @@ export function DeptStrip({ categories = [] }: { categories?: StoreCategoryNode[
                 <div className="mega-col">
                   <ul className="mega-links">
                     <li>
-                      <Link href={`/catalogo?categoria=${panel.slug}`}>
+                      <Link href={`/catalogo?categoria=${panel.slug}`} prefetch={false}>
                         Ver tudo em {panel.name}
                         {panel.ageRestricted && <span className="age18">18+</span>}
                       </Link>
@@ -162,7 +163,7 @@ export function DeptStrip({ categories = [] }: { categories?: StoreCategoryNode[
                 <span className="mega-title">Categoria</span>
                 <h4>{panel.name}</h4>
                 {panel.description && <p>{panel.description}</p>}
-                <Link href={`/catalogo?categoria=${panel.slug}`} className="mega-all">
+                <Link href={`/catalogo?categoria=${panel.slug}`} className="mega-all" prefetch={false}>
                   Ver tudo em {panel.name} →
                 </Link>
               </div>

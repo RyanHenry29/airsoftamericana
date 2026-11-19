@@ -67,7 +67,7 @@ export function AdminNav() {
           type="button"
           onClick={logout}
           disabled={busy}
-          className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] hover:text-[#dc2626] transition-colors text-left mt-2"
+          className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] hover:text-[#dc2626] transition-colors text-left mt-2"
         >
           {busy ? "Saindo..." : "Sair"}
         </button>

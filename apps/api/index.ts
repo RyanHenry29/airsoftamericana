@@ -566,7 +566,12 @@ async function route(
   if (method === "GET" && path === "/api/auth/me") {
     const cookies = parseCookies(req);
     const token = cookies["aa_customer"] || (req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : "");
-    if (!token) return json(res, 401, { error: { code: "unauthorized", message: "Não autenticado" } });
+    // Sondagem de sessão pública: sem cookie de cliente a resposta é 200 com
+    // customer nulo. O cabeçalho da loja chama isto em TODA página — um 401
+    // para o visitante anônimo virava "Failed to load resource" no console do
+    // navegador (e quebrava o audit de console do Lighthouse). Token inválido
+    // ou expirado continua 401: aí é falha de sessão de verdade.
+    if (!token) return json(res, 200, { customer: null });
     try {
       const payload = await verifyJwt(token);
       if (payload.type !== "customer") throw new Error("wrong type");

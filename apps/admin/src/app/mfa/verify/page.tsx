@@ -178,7 +178,7 @@ export default function MfaVerifyPage() {
               setCode("");
               setError("");
             }}
-            className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] hover:text-[#8bcf16] transition-colors underline underline-offset-4"
+            className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] hover:text-[#8bcf16] transition-colors underline underline-offset-4"
           >
             {mode === "totp"
               ? "Usar código de recuperação"
@@ -188,7 +188,7 @@ export default function MfaVerifyPage() {
             type="button"
             onClick={usePasskey}
             disabled={busy || passkeys === 0}
-            className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] hover:text-[#8bcf16] transition-colors underline underline-offset-4 disabled:text-[#333] disabled:no-underline"
+            className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] hover:text-[#8bcf16] transition-colors underline underline-offset-4 disabled:text-[#333] disabled:no-underline"
           >
             {passkeys === 0 ? "Sem passkey registrada" : "Usar passkey"}
           </button>

@@ -223,6 +223,14 @@ export async function fetchWithTimeout(
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Janela de revalidação dos dados públicos da vitrine (Data Cache do Next).
+ *  O SSR ia à API a cada requisição (`cache: "no-store"`) e o documento da
+ *  home levava 4,2 s para sair do servidor. Com 60 s de revalidação, a
+ *  vitrine responde do Data Cache e preço/estoque/CRM do CMS refletem em até
+ *  60 s. Páginas de sessão (/cart, /checkout, /conta) não passam por aqui:
+ *  elas leem a conta no cliente. */
+const STORE_REVALIDATE_SECONDS = 60;
+
 export async function storeGet<T>(path: string, fallback: T): Promise<T> {
   const url = /^https?:\/\//i.test(path) ? path : `${API_URL}${path}`;
   const started = Date.now();
@@ -237,7 +245,11 @@ export async function storeGet<T>(path: string, fallback: T): Promise<T> {
       const budget = 9500 - (Date.now() - started);
       if (budget < 800) break;
       const timeout = attempt === 0 ? Math.min(6500, budget) : Math.min(3000, budget);
-      const res = await fetchWithTimeout(url, { cache: "no-store" }, timeout);
+      const res = await fetchWithTimeout(
+        url,
+        { next: { revalidate: STORE_REVALIDATE_SECONDS } },
+        timeout,
+      );
       if (res.ok) {
         return (await res.json()) as T;
       }

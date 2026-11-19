@@ -35,7 +35,7 @@
 }
 .hero-full__eyebrow {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.24em;
@@ -96,7 +96,7 @@
 .brand-tile:hover .brand-tile__name { color: var(--primary); }
 .brand-tile__count {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--dim);
@@ -160,7 +160,7 @@
 }
 .pcard-tag {
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -177,7 +177,7 @@
   left: 0.55rem;
   bottom: 0.55rem;
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: #c8cbc8;
@@ -192,7 +192,7 @@
 }
 .pcard-cat {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--dim);
@@ -208,7 +208,7 @@
 .pcard-title a:hover { color: var(--primary); }
 .pcard-was {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: #6f766f;
   text-decoration: line-through;
 }
@@ -223,17 +223,17 @@
 }
 .pcard-pix {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   color: var(--primary);
 }
 .pcard-inst {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: var(--dim);
 }
 .pcard-stock {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: #6f766f;

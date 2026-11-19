@@ -139,36 +139,36 @@ export default function GatewaysPage() {
               <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                 <div>
                   <h2 className="font-display font-black text-xl uppercase text-white">{p.label}</h2>
-                  <p className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] mt-1">
+                  <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-1">
                     {p.id} · {g?.enabled ? "ativo" : "inativo"} · {g?.isDefault ? "padrão" : "não padrão"} · credenciais: {g?.hasCredentials ? "configuradas" : "ausentes"}
                   </p>
                 </div>
-                <button type="button" className="font-mono text-[0.65rem] uppercase font-bold py-2 px-4 border border-[#333] text-white" onClick={() => isEdit ? setEdit(null) : openEdit(p.id)}>
+                <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-2 px-4 border border-[#333] text-white" onClick={() => isEdit ? setEdit(null) : openEdit(p.id)}>
                   {isEdit ? "Fechar" : "Configurar"}
                 </button>
               </div>
 
               {isEdit ? (
                 <div className="border-t border-[#111] pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+                  <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
                     <input type="checkbox" checked={Boolean(form.enabled)} onChange={e => setForm({ ...form, enabled: e.target.checked })} />
                     Habilitado
                   </label>
-                  <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+                  <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
                     <input type="checkbox" checked={Boolean(form.isDefault)} onChange={e => setForm({ ...form, isDefault: e.target.checked })} />
                     Gateway padrão
                   </label>
-                  <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+                  <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
                     <input type="checkbox" checked={Boolean(form.captureAfterReview)} onChange={e => setForm({ ...form, captureAfterReview: e.target.checked })} />
                     Captura após revisão manual
                   </label>
-                  <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+                  <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
                     <input type="checkbox" checked={Boolean(form.require3ds)} onChange={e => setForm({ ...form, require3ds: e.target.checked })} />
                     Exigir 3DS (quando suportado)
                   </label>
 
                   <div className="field">
-                    <span className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] block mb-2">Métodos</span>
+                    <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mb-2">Métodos</span>
                     <div className="flex flex-wrap gap-3">
                       {ALL_METHODS.map((m) => (
                         <label key={m} className="font-mono text-xs text-white flex items-center gap-2">
@@ -180,16 +180,16 @@ export default function GatewaysPage() {
                   </div>
 
                   <div className="field">
-                    <label htmlFor={`${p.id}-pix`} className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] block mb-1">Desconto PIX (%)</label>
+                    <label htmlFor={`${p.id}-pix`} className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mb-1">Desconto PIX (%)</label>
                     <input id={`${p.id}-pix`} className="input w-full" type="number" min={0} max={100} value={Number(form.pixDiscountPercent ?? 0)} onChange={e => setForm({ ...form, pixDiscountPercent: Number(e.target.value) })} />
                   </div>
 
                   <div className="md:col-span-2 border border-[#111] p-4">
-                    <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#8bcf16] mb-3">Credenciais (envie para atualizar; não são exibidas)</p>
+                    <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#8bcf16] mb-3">Credenciais (envie para atualizar; não são exibidas)</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {p.fields.map((f) => (
                         <div key={f.key} className="field">
-                          <label htmlFor={`${p.id}-${f.key}`} className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-1">{f.label}</label>
+                          <label htmlFor={`${p.id}-${f.key}`} className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mb-1">{f.label}</label>
                           <input
                             id={`${p.id}-${f.key}`}
                             className="input w-full"
@@ -199,7 +199,7 @@ export default function GatewaysPage() {
                             value={creds[f.key] ?? ""}
                             onChange={e => setCreds({ ...creds, [f.key]: e.target.value })}
                           />
-                          {f.hint ? <p className="font-mono text-[0.55rem] text-[#444] mt-1">{f.hint}</p> : null}
+                          {f.hint ? <p className="font-mono text-[0.75rem] text-[#444] mt-1">{f.hint}</p> : null}
                         </div>
                       ))}
                     </div>

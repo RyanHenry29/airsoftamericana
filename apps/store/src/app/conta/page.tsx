@@ -10,11 +10,14 @@ import { ContaArea } from "./ContaArea";
 
 export const dynamic = "force-dynamic";
 
-// Área logada: robots.txt bloqueia /conta (URL de sessão). Title/desc para a
-// aba do cliente — sem keyword, não há busca que deva desembocar aqui.
+// Área logada: URL de sessão, fora do índice (noindex próprio — o robots.txt
+// deixa o caminho rastreável para o crawler ler a diretiva). Title/desc para
+// a aba do cliente — sem keyword, não há busca que deva desembocar aqui.
 export const metadata: Metadata = {
   title: "Minha conta",
   description: "Acesse seus dados, endereços e pedidos na sua conta da Airsoft Americana.",
+  alternates: { canonical: "/conta" },
+  robots: { index: false, follow: false },
 };
 
 export default async function ContaPage() {

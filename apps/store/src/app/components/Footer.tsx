@@ -116,7 +116,7 @@ export function Footer({
         <nav className="footer__col" aria-label="Informações">
           <span className="footer__title">Informações</span>
           {infoLinks.map((l) => (
-            <Link key={`${l.href}-${l.label}`} href={l.href} className="footer__link">
+            <Link key={`${l.href}-${l.label}`} href={l.href} className="footer__link" prefetch={false}>
               {l.label}
             </Link>
           ))}

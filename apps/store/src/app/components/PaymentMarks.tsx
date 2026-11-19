@@ -8,7 +8,7 @@ const CHIP = { width: 48, height: 30 } as const;
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <svg viewBox={`0 0 ${CHIP.width} ${CHIP.height}`} role="presentation" focusable="false">
+    <svg viewBox={`0 0 ${CHIP.width} ${CHIP.height}`} aria-hidden="true" focusable="false">
       {children}
     </svg>
   );

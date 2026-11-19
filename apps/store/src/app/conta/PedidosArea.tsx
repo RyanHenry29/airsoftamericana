@@ -53,7 +53,9 @@ export function PedidosArea() {
         } catch {
           setOrdersFailed(true);
         }
-      } else if (res.status !== 401) {
+      } else if (!res.ok && res.status !== 401) {
+        // 200 sem customer = deslogado (estado vazio legítimo); 401 = sessão
+        // inválida; o resto é falha de carga.
         setLoadError(true);
       }
     } catch {
