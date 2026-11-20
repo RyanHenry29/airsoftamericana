@@ -21,6 +21,9 @@ beforeAll(async () => {
   server = http.createServer((req, res) => {
     void withDbTrace(res, req.headers["x-db-trace"] !== undefined, async () => {
       const url = req.url ?? "/";
+      if (url === "/lento") {
+        await new Promise<void>((resolve) => setTimeout(resolve, 80));
+      }
       if (url === "/falha") {
         noteAttempt();
         noteAcquire(1_500);
@@ -60,7 +63,7 @@ describe("formato do cabeçalho", () => {
     trace.acquireMs = 1_400;
     trace.queryMs = 1_900;
     expect(traceHeader(trace)).toMatch(
-      /^total=1900;acq=1400;sql=500;att=2;retry=0;acqto=0;emax=0;est=0;bstop=0;pmax=0;ctmo=0;inst=[0-9a-f]{8}$/,
+      /^total=1900;acq=1400;sql=500;att=2;retry=0;acqto=0;emax=0;est=0;bstop=0;pmax=0;ctmo=0;inst=[0-9a-f]{8};inl=\d+;inpk=\d+$/,
     );
     expect(traceServerTiming(trace)).toBe('db;dur=1900;desc="acq=1400,sql=500,att=2,retry=0"');
   });
@@ -78,7 +81,7 @@ describe("withDbTrace", () => {
     const res = await fetch(`${base}/ok`, { headers: { "x-db-trace": "1" } });
     expect(res.status).toBe(200);
     const trace = res.headers.get("x-db-trace") ?? "";
-    expect(trace).toMatch(/^total=180;acq=30;sql=150;att=1;retry=0;acqto=0;emax=0;est=0;bstop=0;pmax=\d+;ctmo=\d+;inst=[0-9a-f]{8}$/);
+    expect(trace).toMatch(/^total=180;acq=30;sql=150;att=1;retry=0;acqto=0;emax=0;est=0;bstop=0;pmax=\d+;ctmo=\d+;inst=[0-9a-f]{8};inl=\d+;inpk=\d+$/);
     expect(res.headers.get("server-timing")).toContain("db;dur=180");
   });
 
@@ -97,8 +100,7 @@ describe("withDbTrace", () => {
     await res.text();
   });
 
-  it("cada requisição tem o próprio acumulador", async () => {
-    const [a, b] = await Promise.all([
+  it("cada requisição tem o próprio acumulador", async () => {    const [a, b] = await Promise.all([
       fetch(`${base}/ok`, { headers: { "x-db-trace": "1" } }),
       fetch(`${base}/retry`, { headers: { "x-db-trace": "1" } }),
     ]);
@@ -111,5 +113,19 @@ describe("withDbTrace", () => {
     expect(tb).toContain("acq=2000");
     // nenhum vazamento de uma requisição para a outra
     expect(ta).toContain("acq=30");
+  });
+
+  it("mede a concorrência real do processo", async () => {
+    // O número que decide se `max: 1` do pool serializa: quantas requisições
+    // o MESMO processo atendeu ao mesmo tempo. Três requisições lentas em
+    // paralelo têm de aparecer no pico.
+    const respostas = await Promise.all([
+      fetch(`${base}/lento`, { headers: { "x-db-trace": "1" } }),
+      fetch(`${base}/lento`, { headers: { "x-db-trace": "1" } }),
+      fetch(`${base}/lento`, { headers: { "x-db-trace": "1" } }),
+    ]);
+    const picos = respostas.map((r) => Number(/inpk=(\d+)/.exec(r.headers.get("x-db-trace") ?? "")?.[1] ?? 0));
+    expect(Math.max(...picos)).toBeGreaterThanOrEqual(2);
+    for (const r of respostas) await r.text();
   });
 });

@@ -48,6 +48,39 @@ export type DbTrace = {
 
 const storage = new AsyncLocalStorage<DbTrace>();
 
+/**
+ * Requisições EM VOO neste processo.
+ *
+ * A janela medida pelo cliente não serve: o harness dispara as 300 requisições
+ * ao mesmo tempo, então o "pico" calculado no cliente é só a contagem de
+ * requisições que caíram na mesma instância — não a sobreposição real. Para
+ * decidir se `max: 1` do pool serializa, é preciso o número que o SERVIDOR
+ * sabe: quantas requisições estavam sendo atendidas ao mesmo tempo pela mesma
+ * instância.
+ *
+ * `inl`  requisições em voo no instante em que o cabeçalho foi escrito;
+ * `inpk` pico de requisições em voo visto por este processo desde o boot.
+ */
+let inFlight = 0;
+let inFlightPeak = 0;
+
+/** Abre uma requisição em voo e devolve a contagem resultante. */
+export function enterRequest(): number {
+  inFlight += 1;
+  if (inFlight > inFlightPeak) inFlightPeak = inFlight;
+  return inFlight;
+}
+
+/** Fecha uma requisição em voo. */
+export function exitRequest(): void {
+  if (inFlight > 0) inFlight -= 1;
+}
+
+/** Estado de concorrência do processo. */
+export function inFlightState(): { current: number; peak: number } {
+  return { current: inFlight, peak: inFlightPeak };
+}
+
 export function newTrace(): DbTrace {
   return {
     queryMs: 0,
@@ -125,6 +158,8 @@ export function traceHeader(trace: DbTrace): string {
     `pmax=${runtimeInfo.poolMax}`,
     `ctmo=${runtimeInfo.acquireTimeoutMs}`,
     `inst=${instanceId}`,
+    `inl=${inFlightState().current}`,
+    `inpk=${inFlightState().peak}`,
   ].join(";");
 }
 
@@ -196,5 +231,8 @@ export function withDbTrace<T>(res: TraceResponse, wantsTrace: boolean, fn: () =
       return originalWriteHead.apply(res, args as [any]);
     };
   }
-  return runWithTrace(trace, fn);
+  enterRequest();
+  return runWithTrace(trace, fn).finally(() => {
+    exitRequest();
+  });
 }
