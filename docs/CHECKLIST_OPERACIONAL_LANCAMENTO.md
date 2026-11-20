@@ -41,6 +41,33 @@ intactos (`/healthz` 200, loja 200, login do painel 200) e **não** tocados.
 
 ---
 
+## Registro de execução — 2026-11-20 (teto global de conexões do pooler)
+
+Fase de qualidade encerrada. Esta rodada fecha a verificação do PR #3, mede o
+teto de conexões do pooler e implementa a mitigação. **Nenhuma operação de
+produção executada** — sem merge, sem `db:bootstrap`, sem workflow de
+produção, sem DNS, sem gateway real, sem cobrança, sem escrita em dados de
+produção.
+
+| Verificação | Resultado | Evidência |
+|---|---|---|
+| PR #3 — diff completo e `5c98b55` preservado | PASS | base `5d6a978` (origin/master) · head `80b9aa2` · 19 commits · 110 arquivos · +12.552/−1.304. `git merge-base --is-ancestor 5c98b55 80b9aa2` → 0; blobs idênticos entre `5c98b55` e o head (`pool-mode.ts` `8d8250b8`, `db/index.ts` `a8b0d71d`, `config.ts` `bb51354e`, `api/index.ts` `87c10e46`); `git diff 5c98b55 80b9aa2` nos caminhos de código → **vazio** |
+| Head `80b9aa2` só com documentação | PASS | 1 arquivo: `docs/CHECKLIST_OPERACIONAL_LANCAMENTO.md` (+37/−10) — nenhum código, nenhuma config |
+| Separação Session (CLI/DDL) × Transaction (runtime) | PASS | `runtimeDatabaseUrl` prioriza `DATABASE_URL_RUNTIME` e **recusa o fallback em produção**; `getDb()` sem argumento usa `config.DATABASE_URL`; `assertSessionScopeSafe` em `db:migrate`, `db:bootstrap` e `db:ledger-realign`. Ambiente: Preview `:5432` + `:6543`; Production só `:5432` (sem `DATABASE_URL_RUNTIME`) |
+| PR CLEAN e MERGEABLE | PASS | `state=open` · `mergeable=true` · `mergeable_state=clean` · `draft=false`; `api-gates` ×2 SUCCESS; Vercel (3 projetos) SUCCESS |
+| Três Previews no mesmo commit | PASS | store `dpl_71xydFq3iwoXFTGwK3hWwU4FysVq`, admin `dpl_6FbchLWrLsxQkojoH1Giwnu2fqZ3`, api `dpl_FjJkETnp9tewx9X15hTFbcBuJ8K8` — os três com `githubCommitSha` `5c98b55c97159efdce1a5e49722be0043a21e9f8` |
+| Teto global de conexões do pooler | **RISCO CONHECIDO** | 200 clientes por projeto, medido (ver 1.3.1). Mitigação de código implementada; o teto do provedor permanece |
+
+### Autorizações separadas — nenhuma concedida nesta rodada
+
+| # | Autorização | Estado |
+|---|---|---|
+| 1 | Integração do PR #3 na `master` (sem deploy de produção) | **aguardando** |
+| 2 | Configuração operacional e validação dos serviços externos (DNS, Resend, catálogo real, gateway sandbox) | **aguardando** |
+| 3 | `db:bootstrap` + deploy de produção (autorização específica) | **não recomendada agora** — falta `DATABASE_URL_RUNTIME` em Production, catálogo real, DNS propagado e homologação de pagamento |
+
+---
+
 ## 0. Princípios
 
 | # | Regra | Evidência |
@@ -102,6 +129,46 @@ modo Transaction. Em transaction mode o pooler multiplexa clientes sobre
 poucos backends e o pool por instância fica com `max: 1`
 (`apps/api/src/db/pool-mode.ts`, `apps/api/src/db/index.ts`).
 
+### 1.3.1 Teto global de conexões — 200 clientes por projeto (medido)
+
+O `max: 1` por instância reduz a pressão no pooler, mas **não** impõe limite
+global. O teto é do **add-on de compute do Supabase** e vale para o projeto
+inteiro — todas as aplicações e deployments compartilham a mesma cota
+(documentação do Supabase: *"Max client connections reached — the number of
+connections to Supavisor is more than the allowed limit of your compute
+add-on"*).
+
+Medição no staging (`zuejjupuxegpczgyonha`, pooler em transaction mode,
+`:6543`), uma conexão por instância:
+
+| Clientes simultâneos | Resultado |
+|---|---|
+| 10 / 25 / 50 / 75 / 100 / 150 / 200 | 100% sucesso |
+| 300 | **200 sucesso · 100 erro** `XX000: (EMAXCONN) max client connections reached, limit: 200` |
+
+Efeito na API (rajada de 300 GETs contra `/api/store/categories`):
+
+| Cenário | Resultado |
+|---|---|
+| Deployment **aquecido** (instâncias reutilizadas) | **300/300 HTTP 200** |
+| Deployment **a frio** (fan-out de instâncias novas) | **100 HTTP 200 · 200 HTTP 500** — mesma causa no log: `EMAXCONN … limit: 200` |
+
+Mitigação implementada no código (`apps/api/src/db/db-retry.ts`):
+
+| Medida | Efeito |
+|---|---|
+| `idleTimeoutMillis` (10 s nos modos com pooler) | conexão ociosa devolve a vaga ao pooler: instância aquecida não segura vaga do teto |
+| Retry limitado (3 tentativas, backoff exponencial com jitter, orçamento total de 5 s) | pico vira espera, não 500 |
+| Retry só de falha **provavelmente não executada** | recusa do pooler (`EMAXCONN`/`EMAXCONNSESSION`) e falha de estabelecimento de conexão; erro de statement (constraint, timeout do comando) **nunca** é repetido — reescrever não é idempotente |
+| Token bucket (10 retries/s, rajada 20) + disjuntor (3 falhas → 5 s aberto) | trava contra tempestade de retries: com o pooler saturado a falha volta na hora em vez de amplificar a fila |
+| `DATABASE_URL_RUNTIME` **obrigatória** em produção | sem ela a API recusa subir (`assertProductionEnv`) e `runtimeDatabaseUrl` recusa o fallback — configuração esquecida não reativa o Session Mode em silêncio |
+
+Risco residual (fora do código): o teto de 200 continua valendo. Para um pico
+maior que isso, a mitigação é do lado do provedor — subir o add-on de compute do
+Supabase (lojista) ou limitar a concorrência da função na Vercel. Monitorar
+`EMAXCONN` no log da API: ele é o sinal early-warning de que o teto foi
+atingido.
+
 ### 1.4 Teste de conexão (local, temporário/staging — nunca produção)
 
 ```cmd
@@ -152,7 +219,7 @@ nslookup api.airsoftamericana.com.br
 | Grupo | Variáveis | Quando |
 |---|---|---|
 | Boot (7) | `JWT_SECRET`, `GATEWAY_SECRETS_KEY` (32 bytes base64), `DATABASE_URL`, `STORE_URL`, `ADMIN_URL`, `COOKIE_SAMESITE=lax`, `CSRF_ENFORCE=true` | sempre |
-| Runtime do banco | `DATABASE_URL_RUNTIME` = mesma base em **transaction mode** (`:6543`) — o pool do runtime serverless | sempre (ver 1.3) |
+| Runtime do banco | `DATABASE_URL_RUNTIME` = mesma base em **transaction mode** (`:6543`) — o pool do runtime serverless | **obrigatória**: sem ela a API recusa subir em produção e o fallback para `DATABASE_URL` (session mode) fica bloqueado (ver 1.3 e 1.3.1) |
 | E-mail transacional | `RESEND_API_KEY`, `MAIL_FROM` | **só quando** o e-mail transacional estiver habilitado; sem elas o recurso responde 503 "não configurado" e o boot não é impedido (`apps/api/src/config.ts:62-67`) |
 | Gateway (autorização financeira) | `MERCADOPAGO_ACCESS_TOKEN` / `PAGBANK_API_KEY` / `CIELO_CLIENT_ID` + `CIELO_CLIENT_SECRET` | **só após** autorização financeira por escrito |
 | `GATEWAY_ACTIVE` | **ausente** até a autorização financeira | ver 3.3 |
@@ -164,7 +231,9 @@ nslookup api.airsoftamericana.com.br
   teste automatizado — em serverless o filesystem é efêmero e não serve para
   validar pedidos, estoque, concorrência, webhook e persistência.
 - `DATABASE_URL_RUNTIME` = a mesma base de staging no pooler **transaction
-  mode** (`:6543`) — sem isso a API erra 500 em rajada (ver 1.3).
+  mode** (`:6543`) — sem isso a API erra 500 em rajada (ver 1.3). No Preview o
+  `NODE_ENV` é `production`: a variável é **obrigatória** e a API recusa subir
+  sem ela.
 - `JWT_SECRET` e `GATEWAY_SECRETS_KEY` **próprios**, diferentes de produção.
 - `GATEWAY_ACTIVE` = nome do provider sandbox usado no staging
   (`mercadopago` | `pagbank` | `cielo`), com credenciais de teste.
@@ -368,7 +437,8 @@ Pré-requisitos (todos verificados antes do pedido de deploy):
 - [ ] DNS propagado (comparado com o painel do Vercel)
 - [ ] 7 variáveis de boot + Store/Admin configuradas por Environment
 - [ ] `DATABASE_URL_RUNTIME` configurada no Environment Production (pooler em
-      transaction mode, `:6543`) — sem ela a vitrine erra 500 em rajada (1.3)
+      transaction mode, `:6543`) — **obrigatória**: sem ela a API recusa subir
+      (ver 1.3 e 1.3.1); o fallback para o session mode está bloqueado
 - [ ] Resend verificado (ou recurso de e-mail desabilitado de propósito)
 - [ ] Gateway sandbox validado nos Previews
 - [ ] `GATEWAY_ACTIVE` **ausente** e credenciais reais **ausentes** até a
