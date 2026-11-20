@@ -47,6 +47,9 @@ try {
     ...process.env,
     NODE_ENV: "test",
     DATABASE_URL: `postgresql://postgres:integration@localhost:${PORT}/postgres`,
+    // A suíte apaga DATABASE_URL no setup (PGlite); a trilha com Postgres real
+    // lê esta variável própria.
+    PG_INTEGRATION_URL: `postgresql://postgres:integration@localhost:${PORT}/postgres`,
     JWT_SECRET: "integration-secret",
     GATEWAY_SECRETS_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   };
@@ -57,9 +60,12 @@ try {
       "vitest",
       "run",
       "src/services/payments-integrity.test.ts",
+      "src/db/migration-ledger.test.ts",
+      "src/db/migration-concurrency.test.ts",
       "src/services/checkout.test.ts",
       "src/services/orders.test.ts",
       "src/routes/price-stock-transactional.test.ts",
+      "src/db/db-trace.integration.test.ts",
     ],
     {
       cwd: path.join(process.cwd(), "apps", "api"),

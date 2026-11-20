@@ -277,7 +277,7 @@ export default function HomepageSectionsPage() {
           </div>
         ) : null}
         <div className="field flex items-end">
-          <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+          <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
             <input
               type="checkbox"
               checked={form.active}
@@ -358,7 +358,7 @@ export default function HomepageSectionsPage() {
                             {s.title || KIND_LABELS[s.kind] || s.kind}
                           </div>
                           {s.subtitle ? (
-                            <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] mt-1 block">
+                            <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-1 block">
                               {s.subtitle}
                             </span>
                           ) : null}
@@ -432,7 +432,7 @@ export default function HomepageSectionsPage() {
                         <>
                           <button
                             type="button"
-                            className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]"
+                            className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]"
                             onClick={() => {
                               setEditing(s.id);
                               setForm(formFrom(s));
@@ -442,7 +442,7 @@ export default function HomepageSectionsPage() {
                           </button>
                           <button
                             type="button"
-                            className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]"
+                            className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]"
                             onClick={() => remove(s)}
                             disabled={busy}
                           >

@@ -129,7 +129,7 @@ export function AdminLoginForm() {
       <button type="submit" className="btn-primary w-full py-3" disabled={busy}>
         {busy ? "Entrando..." : "Entrar no Sistema"}
       </button>
-      <p className="font-mono text-[0.6rem] uppercase tracking-widest text-[#333]">
+      <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#333]">
         Acesso restrito a operadores · verificação em duas etapas obrigatória
       </p>
     </form>

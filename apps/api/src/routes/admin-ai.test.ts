@@ -1,7 +1,8 @@
 // language: TS, file: apps/api/src/routes/admin-ai.test.ts, target: vitest
 // HTTP + integração (app.inject, migrações reais, PGlite isolado por worker)
 // Cobre: RBAC 401/403, CSRF, 503 rotulado sem GROQ_API_KEY, contrato do rascunho
-// (zod + reparo de id inválido), magic bytes de imagem, roundtrip upload→serve, rate limit.
+// (zod + reparo de id inválido), magic bytes de imagem, roundtrip upload→serve, rate limit,
+// grounding indexado #n → id do banco, teto de 1 imagem por mensagem e 413 do Groq (TPM).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import fastify from "fastify";
 import cookie from "@fastify/cookie";
@@ -67,6 +68,28 @@ function groqJson(payload: unknown) {
     json: async () => ({
       choices: [{ message: { content: JSON.stringify(payload) } }],
     }),
+  };
+}
+
+/** Rascunho completo no contrato do modelo — preço/estoque/slug/SKU ficam de fora por design. */
+function draftWith(overrides: Record<string, unknown> = {}) {
+  return {
+    name: `Réplica M4 CQB ${RUN}`,
+    description: "Réplica full metal com internal gearbox.",
+    shortDescription: "M4 CQB full metal",
+    color: "Preto",
+    technical: { Material: "Metal" },
+    categoryId: "",
+    brandId: "",
+    condicao: "novo",
+    estadoConservacao: "",
+    tags: "m4",
+    seoTitle: "Réplica M4 CQB",
+    seoDescription: "M4 CQB full metal",
+    variantName: "Padrão",
+    weightGrams: 3200,
+    uncertainFields: [],
+    ...overrides,
   };
 }
 
@@ -213,12 +236,16 @@ describe("Rascunho anti-alucinação", () => {
     expect(flags.some((f) => f.includes("categoryId"))).toBe(true);
     expect(flags.some((f) => f.includes("incerto"))).toBe(true);
 
-    // grounding enviado ao Groq contém ids reais do banco (nada inventado)
+    // grounding indexado: o prompt leva `#n | caminho`, nunca o UUID cru —
+    // 165 categorias em hex custavam ~2,7 mil tokens do TPM de 8K/min do plano free
     const sent = fetchMock.mock.calls[0]![1]! as { body: string };
     const reqBody = JSON.parse(sent.body);
-    const systemText = reqBody.messages[0].content;
-    expect(systemText).toContain(catId);
-    expect(systemText).toContain(brandId);
+    const systemText: string = reqBody.messages[0].content;
+    expect(systemText).toMatch(/^#\d+ \| /m);
+    expect(systemText).toContain(`[DEMO] ai-cat-${RUN}`);
+    expect(systemText).toContain(`[DEMO] ai-brand-${RUN}`);
+    expect(systemText).not.toContain(catId);
+    expect(systemText).not.toContain(brandId);
     expect(reqBody.response_format).toEqual({ type: "json_object" });
     expect(reqBody.temperature).toBeLessThanOrEqual(0.3);
 
@@ -514,6 +541,122 @@ describe("Rate limit do assistente", () => {
     }
     expect(codes).toContain(429);
     expect(codes[0]).toBe(200); // as primeiras passam
+    await app.close();
+  });
+});
+
+describe("Grounding indexado (#n) — índice do prompt vira id do banco", () => {
+  it("#n devolvido pelo modelo resolve para o id real (nada inventado)", async () => {
+    const cfg = { ...testConfig, GROQ_API_KEY: "gsk_test" };
+    const app = await buildApp(cfg);
+    fetchMock.mockImplementation(async (_url: string, init: { body: string }) => {
+      const reqBody = JSON.parse(init.body);
+      const lines: string[] = reqBody.messages[0].content.split("\n");
+      const catLine = lines.find((l) => l.includes(`[DEMO] ai-cat-${RUN}`))!;
+      const brandLine = lines.find((l) => l.includes(`[DEMO] ai-brand-${RUN}`))!;
+      return groqJson({
+        reply: "Rascunho pronto.",
+        draft: draftWith({
+          categoryId: catLine.match(/^#(\d+) \|/)![1], // sem "#": modelo pode devolver número puro
+          brandId: `#${brandLine.match(/^#(\d+) \|/)![1]}`,
+        }),
+      });
+    });
+    const a = await makeAuthed("superadmin");
+    const res = await app.inject({
+      method: "POST", url: "/api/admin/ai/messages",
+      cookies: { aa_session: a.token }, headers: { "x-csrf-token": a.csrf },
+      payload: { content: "foto da réplica" },
+    });
+    expect(res.statusCode).toBe(200);
+    const payload = res.json().draft.payload;
+    expect(payload.categoryId).toBe(catId);
+    expect(payload.brandId).toBe(brandId);
+    await app.close();
+  });
+
+  it("índice fora da lista vira null + flag visível (nunca id inexistente)", async () => {
+    const cfg = { ...testConfig, GROQ_API_KEY: "gsk_test" };
+    const app = await buildApp(cfg);
+    fetchMock.mockResolvedValue(groqJson({ reply: "ok", draft: draftWith({ categoryId: "#9999" }) }));
+    const a = await makeAuthed("superadmin");
+    const res = await app.inject({
+      method: "POST", url: "/api/admin/ai/messages",
+      cookies: { aa_session: a.token }, headers: { "x-csrf-token": a.csrf },
+      payload: { content: "x" },
+    });
+    expect(res.statusCode).toBe(200);
+    const { payload, flags } = res.json().draft;
+    expect(payload.categoryId).toBeNull();
+    expect(flags.some((f: string) => f.includes("categoryId inválida"))).toBe(true);
+    await app.close();
+  });
+});
+
+describe("413 do Groq (TPM estourado) — detalhe upstream e nova tentativa", () => {
+  const TPM_413 =
+    "Request too large for model 'qwen/qwen3.8-27b' on tokens per minute (TPM): Limit 8000, Requested 12345";
+
+  function upstream413() {
+    return {
+      ok: false,
+      status: 413,
+      headers: { get: (name: string) => (name.toLowerCase() === "retry-after" ? "0" : null) },
+      text: async () => JSON.stringify({ error: { message: TPM_413 } }),
+    };
+  }
+
+  async function post(content: string, token: string, csrf: string) {
+    const app = await buildApp({ ...testConfig, GROQ_API_KEY: "gsk_test" });
+    const res = await app.inject({
+      method: "POST", url: "/api/admin/ai/messages",
+      cookies: { aa_session: token }, headers: { "x-csrf-token": csrf },
+      payload: { content },
+    });
+    return { app, res };
+  }
+
+  it("causa do Groq aparece na mensagem do assistente (sem vazar a chave)", async () => {
+    fetchMock.mockResolvedValue(upstream413());
+    const a = await makeAuthed("superadmin");
+    const { app, res } = await post("foto", a.token, a.csrf);
+
+    expect(res.statusCode).toBe(503);
+    const body = res.json();
+    expect(body.code).toBe("ai_upstream_error");
+    expect(body.message).toContain("HTTP 413");
+    expect(body.message).toContain("(TPM): Limit 8000, Requested 12345");
+    expect(body.message).not.toContain("gsk_test");
+    expect(fetchMock).toHaveBeenCalledTimes(2); // uma repetição após a janela, nunca loop
+    await app.close();
+  });
+
+  it("413 seguido de sucesso repete uma vez e devolve 200", async () => {
+    fetchMock
+      .mockResolvedValueOnce(upstream413())
+      .mockResolvedValueOnce(groqJson({ reply: "Rascunho pronto.", draft: null }));
+    const a = await makeAuthed("superadmin");
+    const { app, res } = await post("foto", a.token, a.csrf);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().conversationId).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+});
+
+describe("Orçamento de imagens (cada foto = 2.048 tokens do TPM de 8K)", () => {
+  it("2 imagens na mesma mensagem → 400 com aviso claro", async () => {
+    const app = await buildApp();
+    const a = await makeAuthed("superadmin");
+    const res = await app.inject({
+      method: "POST", url: "/api/admin/ai/messages",
+      cookies: { aa_session: a.token }, headers: { "x-csrf-token": a.csrf },
+      payload: { content: "duas fotos", images: [PNG_B64, PNG_B64] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(errCode(res).message).toContain("No máximo 1 imagem");
+    expect(fetchMock).not.toHaveBeenCalled(); // nem chega perto do Groq
     await app.close();
   });
 });

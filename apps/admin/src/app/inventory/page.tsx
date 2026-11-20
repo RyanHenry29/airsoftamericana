@@ -210,7 +210,7 @@ export default function InventoryPage() {
               <tbody>
                 {movements.map((m) => (
                   <tr key={m.id} className="border-b border-[#111]">
-                    <td className="p-3 font-mono text-[0.65rem] text-[#666]">{m.createdAt ? new Date(m.createdAt).toLocaleString("pt-BR") : "—"}</td>
+                    <td className="p-3 font-mono text-[0.75rem] text-[#666]">{m.createdAt ? new Date(m.createdAt).toLocaleString("pt-BR") : "—"}</td>
                     <td className="p-3 font-mono text-xs uppercase text-white">{m.type}</td>
                     <td className="p-3 font-mono text-sm text-white">{m.quantity}</td>
                     <td className="p-3 font-mono text-xs text-[#666]">{m.beforePhysical ?? "—"} → {m.afterPhysical ?? "—"}</td>

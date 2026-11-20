@@ -17,7 +17,10 @@ import {
   type StoreProduct,
 } from "./lib/store";
 
-export const dynamic = "force-dynamic";
+// Página pública da vitrine: revalidação de 60 s (Data Cache). O SSR
+// não lê cookie nenhum — sessão, carrinho e conta são resolvidos no
+// cliente — então a rota serve do cache sem perder estado de ninguém.
+export const revalidate = 60;
 
 type SectionRow = StoreHome["sections"][number];
 
@@ -171,7 +174,7 @@ export default async function HomePage() {
                   {heroContent.title}
                 </h1>
                 <p className="hero__sub">{heroContent.subtitle}</p>
-                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "1.5rem" }}>
+                <div className="hero__actions">
                   <Link href={heroContent.link} className="btn-primary btn-lg">
                     {heroContent.ctaLabel}
                   </Link>
@@ -249,6 +252,36 @@ export default async function HomePage() {
   }
 
   const rendered: React.ReactNode[] = [];
+
+  // Sem banner ativo no CMS a home ficava sem H1 e sem entrada comercial clara.
+  // O hero de texto usa o mesmo vocabulário do head da loja e do rodapé — nada
+  // de imagem, número ou promessa inventada.
+  if (!heroContent) {
+    rendered.push(
+      <section key="hero-fallback" className="hero hero--solo" aria-labelledby="hero-title">
+        <div className="hero__grid">
+          <div className="hero__copy">
+            <span className="hero__eyebrow">Airsoft Americana</span>
+            <h1 id="hero-title" className="hero__title">
+              Réplicas de airsoft e equipamentos táticos
+            </h1>
+            <p className="hero__sub">
+              Carabinas de pressão, upgrades e loadout com entrega para todo o Brasil.
+            </p>
+            <div className="hero__actions">
+              <Link href="/catalogo" className="btn-primary btn-lg">
+                Ver catálogo
+              </Link>
+              <Link href="/por-que-comprar" className="btn-secondary hero__secondary">
+                Por que comprar aqui
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>,
+    );
+  }
+
   if (injectAt < 0) rendered.push(...extras);
   sections.forEach((section, index) => {
     rendered.push(...renderSection(section, index));

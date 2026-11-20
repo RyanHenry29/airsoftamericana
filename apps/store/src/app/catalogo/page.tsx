@@ -16,7 +16,10 @@ import {
 } from "../lib/store";
 import { PRICE_BANDS } from "../lib/filters";
 
-export const dynamic = "force-dynamic";
+// Página pública da vitrine: revalidação de 60 s (Data Cache). O SSR
+// não lê cookie nenhum — sessão, carrinho e conta são resolvidos no
+// cliente — então a rota serve do cache sem perder estado de ninguém.
+export const revalidate = 60;
 
 // Canonical fixo em /catalogo: as variantes com ?categoria/?brand/?q vivem todas
 // nesta raiz (o redirect de /departamento/* aponta para cá) — nenhuma outra URL
@@ -196,6 +199,8 @@ export default async function CatalogPage({
               <ul className="filters__list">
                 <li>
                   <Link
+                    prefetch={false}
+
                     href={buildHref({ categoria: "", page: "1" })}
                     className={`filters__item ${!categoria ? "is-active" : ""}`}
                   >
@@ -206,6 +211,8 @@ export default async function CatalogPage({
                 {facets.categories.slice(0, 24).map((cat) => (
                   <li key={cat.id}>
                     <Link
+                      prefetch={false}
+
                       href={buildHref({ categoria: cat.slug, page: "1" })}
                       className={`filters__item ${categoria === cat.slug ? "is-active" : ""}`}
                     >
@@ -224,6 +231,8 @@ export default async function CatalogPage({
               <ul className="filters__list">
                 <li>
                   <Link
+                    prefetch={false}
+
                     href={buildHref({ brand: "", page: "1" })}
                     className={`filters__item ${!brand ? "is-active" : ""}`}
                   >
@@ -233,6 +242,8 @@ export default async function CatalogPage({
                 {facets.brands.map((b) => (
                   <li key={b.id}>
                     <Link
+                      prefetch={false}
+
                       href={buildHref({ brand: b.slug, page: "1" })}
                       className={`filters__item ${brand === b.slug ? "is-active" : ""}`}
                     >
@@ -252,6 +263,8 @@ export default async function CatalogPage({
                 {PRICE_BANDS.map((range) => (
                   <li key={range.label}>
                     <Link
+                      prefetch={false}
+
                       href={buildHref({ minPrice: range.min, maxPrice: range.max, page: "1" })}
                       className={`filters__item ${
                         minPrice === range.min && maxPrice === range.max ? "is-active" : ""
@@ -279,6 +292,8 @@ export default async function CatalogPage({
               ].map((c) => (
                 <li key={c.key || "all"}>
                   <Link
+                    prefetch={false}
+
                     href={buildHref({ condicao: c.key, page: "1" })}
                     className={`filters__item ${condicao === c.key ? "is-active" : ""}`}
                   >
@@ -294,6 +309,8 @@ export default async function CatalogPage({
             <ul className="filters__list">
               <li>
                 <Link
+                  prefetch={false}
+
                   href={buildHref({ disponivel: disponivel === "1" ? "" : "1", page: "1" })}
                   className={`filters__item ${disponivel === "1" ? "is-active" : ""}`}
                 >
@@ -357,7 +374,7 @@ export default async function CatalogPage({
           {totalPages > 1 && (
             <nav className="pager" aria-label="Paginação">
               {page > 1 ? (
-                <Link href={buildHref({ page: String(page - 1) })} className="btn-secondary">
+                <Link href={buildHref({ page: String(page - 1) })} prefetch={false} className="btn-secondary">
                   ← Anterior
                 </Link>
               ) : (
@@ -367,7 +384,7 @@ export default async function CatalogPage({
                 Página {page} de {totalPages}
               </span>
               {page < totalPages ? (
-                <Link href={buildHref({ page: String(page + 1) })} className="btn-secondary">
+                <Link href={buildHref({ page: String(page + 1) })} prefetch={false} className="btn-secondary">
                   Próxima →
                 </Link>
               ) : (

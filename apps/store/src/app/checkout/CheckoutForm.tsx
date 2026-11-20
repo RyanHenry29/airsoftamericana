@@ -57,7 +57,9 @@ export function CheckoutForm() {
       } catch { /* offline */ }
       try {
         const me = await fetch(`${API_URL}/api/auth/me`, { credentials: "include" });
-        if (!me.ok) {
+        const meJson = (await me.json().catch(() => ({}))) as { customer?: unknown };
+        // 200 sem customer = visitante sem sessão; 401 = token inválido/expirado.
+        if (!me.ok || !meJson.customer) {
           setNeedLogin(true);
         } else {
           // Endereço padrão da conta preenche o formulário (só campos vazios).
@@ -190,12 +192,13 @@ export function CheckoutForm() {
           <div className="checkout-grid">
             <div className="checkout-field">
               <label htmlFor="recipient" className="checkout-label">Quem vai receber</label>
-              <input id="recipient" className="checkout-input" autoComplete="name" value={data.recipient} onChange={set("recipient")} required />
+              <input id="recipient" type="text" className="checkout-input" autoComplete="name" value={data.recipient} onChange={set("recipient")} required />
             </div>
             <div className="checkout-field">
               <label htmlFor="zip" className="checkout-label">CEP</label>
               <input
                 id="zip"
+                type="text"
                 className="checkout-input"
                 inputMode="numeric"
                 placeholder="00000-000"
@@ -218,27 +221,27 @@ export function CheckoutForm() {
             </div>
             <div className="checkout-field checkout-field--full">
               <label htmlFor="street" className="checkout-label">Rua</label>
-              <input id="street" className="checkout-input" autoComplete="address-line1" value={data.street} onChange={set("street")} required />
+              <input id="street" type="text" className="checkout-input" autoComplete="address-line1" value={data.street} onChange={set("street")} required />
             </div>
             <div className="checkout-field">
               <label htmlFor="number" className="checkout-label">Número</label>
-              <input id="number" className="checkout-input" value={data.number} onChange={set("number")} required />
+              <input id="number" type="text" className="checkout-input" value={data.number} onChange={set("number")} required />
             </div>
             <div className="checkout-field">
               <label htmlFor="complement" className="checkout-label">Complemento (opcional)</label>
-              <input id="complement" className="checkout-input" value={data.complement} onChange={set("complement")} />
+              <input id="complement" type="text" className="checkout-input" value={data.complement} onChange={set("complement")} />
             </div>
             <div className="checkout-field">
               <label htmlFor="neighborhood" className="checkout-label">Bairro</label>
-              <input id="neighborhood" className="checkout-input" autoComplete="address-level2" value={data.neighborhood} onChange={set("neighborhood")} required />
+              <input id="neighborhood" type="text" className="checkout-input" autoComplete="address-level2" value={data.neighborhood} onChange={set("neighborhood")} required />
             </div>
             <div className="checkout-field">
               <label htmlFor="city" className="checkout-label">Cidade</label>
-              <input id="city" className="checkout-input" autoComplete="address-level2" value={data.city} onChange={set("city")} required />
+              <input id="city" type="text" className="checkout-input" autoComplete="address-level1" value={data.city} onChange={set("city")} required />
             </div>
             <div className="checkout-field">
               <label htmlFor="state" className="checkout-label">UF</label>
-              <input id="state" className="checkout-input" maxLength={2} placeholder="SP" value={data.state} onChange={set("state")} required />
+              <input id="state" type="text" className="checkout-input" maxLength={2} placeholder="SP" value={data.state} onChange={set("state")} required />
             </div>
           </div>
         </section>
@@ -268,11 +271,11 @@ export function CheckoutForm() {
           <div className="checkout-grid">
             <div className="checkout-field">
               <label htmlFor="coupon" className="checkout-label">Cupom (opcional)</label>
-              <input id="coupon" className="checkout-input" placeholder="Ex: PIX5" value={data.coupon} onChange={set("coupon")} />
+              <input id="coupon" type="text" className="checkout-input" placeholder="Ex: PIX5" value={data.coupon} onChange={set("coupon")} />
             </div>
             <div className="checkout-field">
               <label htmlFor="notes" className="checkout-label">Observações (opcional)</label>
-              <input id="notes" className="checkout-input" value={data.notes} onChange={set("notes")} />
+              <input id="notes" type="text" className="checkout-input" value={data.notes} onChange={set("notes")} />
             </div>
           </div>
         </section>

@@ -1,12 +1,13 @@
 // language: TS, file: apps/api/src/config.test.ts, target: vitest
 import { describe, it, expect } from "vitest";
-import { assertProductionEnv, DefaultJwtSecret } from "./config.js";
+import { assertProductionEnv, DefaultJwtSecret, runtimeDatabaseUrl } from "./config.js";
 
 const COMPLETE: NodeJS.ProcessEnv = {
   NODE_ENV: "production",
   JWT_SECRET: "a".repeat(64),
   GATEWAY_SECRETS_KEY: Buffer.alloc(32, 7).toString("base64"),
   DATABASE_URL: "postgres://user:pass@db:5432/airsoft",
+  DATABASE_URL_RUNTIME: "postgres://user:pass@aws-1-ca-central-1.pooler.supabase.com:6543/postgres",
   STORE_URL: "https://airsoftamericana.com.br",
   ADMIN_URL: "https://admin.airsoftamericana.com.br",
 };
@@ -69,5 +70,74 @@ describe("arranque em produção", () => {
   it("B.1: em produção, CSRF_ENFORCE=false recusa subir", () => {
     expect(problemas({ CSRF_ENFORCE: "false" })).toContain("CSRF_ENFORCE");
     expect(problemas({ CSRF_ENFORCE: "true" })).not.toContain("CSRF_ENFORCE");
+  });
+});
+
+describe("DATABASE_URL_RUNTIME (pooler do runtime serverless)", () => {
+  it("tem precedência sobre DATABASE_URL", () => {
+    expect(
+      runtimeDatabaseUrl({
+        DATABASE_URL: "postgres://u:p@pooler:5432/postgres",
+        DATABASE_URL_RUNTIME: "postgres://u:p@pooler:6543/postgres",
+      }),
+    ).toBe("postgres://u:p@pooler:6543/postgres");
+  });
+
+  it("cai em DATABASE_URL quando não há URL de runtime", () => {
+    expect(runtimeDatabaseUrl({ DATABASE_URL: "postgres://u:p@pooler:5432/postgres" })).toBe(
+      "postgres://u:p@pooler:5432/postgres",
+    );
+    expect(runtimeDatabaseUrl({})).toBe("");
+  });
+
+  it("recusa URL de runtime que não é Postgres", () => {
+    expect(problemas({ DATABASE_URL_RUNTIME: "https://banco.example.com" })).toContain("DATABASE_URL_RUNTIME");
+    expect(problemas({ DATABASE_URL_RUNTIME: "postgres://u:p@pooler:6543/postgres" })).not.toContain(
+      "DATABASE_URL_RUNTIME",
+    );
+  });
+
+  it("recusa arrancar em produção sem DATABASE_URL_RUNTIME (fallback silencioso pro session mode)", () => {
+    const found = assertProductionEnv({ ...COMPLETE, DATABASE_URL_RUNTIME: "" } as NodeJS.ProcessEnv);
+    expect(found.map((p) => p.variable)).toContain("DATABASE_URL_RUNTIME");
+    expect(found.find((p) => p.variable === "DATABASE_URL_RUNTIME")?.message).toMatch(/transaction mode/i);
+  });
+
+  it("recusa DATABASE_URL_RUNTIME apontada para o session mode do pooler", () => {
+    const found = assertProductionEnv({
+      ...COMPLETE,
+      DATABASE_URL_RUNTIME: "postgres://u:p@aws-1-ca-central-1.pooler.supabase.com:5432/postgres",
+    } as NodeJS.ProcessEnv);
+    expect(found.map((p) => p.variable)).toContain("DATABASE_URL_RUNTIME");
+    expect(found.find((p) => p.variable === "DATABASE_URL_RUNTIME")?.message).toMatch(/6543/);
+  });
+
+  it("aceita DATABASE_URL_RUNTIME em transaction mode e conexão direta", () => {
+    expect(problemas({})).not.toContain("DATABASE_URL_RUNTIME");
+    expect(
+      problemas({ DATABASE_URL_RUNTIME: "postgres://u:p@db.abc.supabase.co:5432/postgres" }),
+    ).not.toContain("DATABASE_URL_RUNTIME");
+  });
+
+  it("runtimeDatabaseUrl recusa o fallback em produção", () => {
+    expect(() =>
+      runtimeDatabaseUrl({ NODE_ENV: "production", DATABASE_URL: "postgres://u:p@pooler:5432/postgres" }),
+    ).toThrow(/DATABASE_URL_RUNTIME/);
+    expect(
+      runtimeDatabaseUrl({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://u:p@pooler:5432/postgres",
+        DATABASE_URL_RUNTIME: "postgres://u:p@pooler:6543/postgres",
+      }),
+    ).toBe("postgres://u:p@pooler:6543/postgres");
+  });
+
+  it("runtimeDatabaseUrl mantém o fallback fora de produção", () => {
+    expect(
+      runtimeDatabaseUrl({
+        NODE_ENV: "development",
+        DATABASE_URL: "postgres://u:p@aws-1-ca-central-1.pooler.supabase.com:5432/postgres",
+      }),
+    ).toBe("postgres://u:p@aws-1-ca-central-1.pooler.supabase.com:5432/postgres");
   });
 });

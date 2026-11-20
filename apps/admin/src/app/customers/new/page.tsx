@@ -47,7 +47,7 @@ export default function NewCustomerPage() {
         <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">
           Novo cliente
         </h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">
+        <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-2">
           Cadastro manual pelo operador
         </p>
       </header>
@@ -86,7 +86,7 @@ export default function NewCustomerPage() {
           <button type="submit" className="btn-primary px-8 py-3" disabled={busy}>
             {busy ? "Cadastrando..." : "Cadastrar cliente"}
           </button>
-          <Link href="/customers" className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] hover:text-[#8bcf16] transition-colors underline underline-offset-4">
+          <Link href="/customers" className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] hover:text-[#8bcf16] transition-colors underline underline-offset-4">
             Cancelar
           </Link>
         </div>

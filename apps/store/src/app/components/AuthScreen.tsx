@@ -296,7 +296,7 @@ function BrandCompact() {
       {/* sem classe `block`: a casa usa .block como seção (padding de seção colava aqui) */}
       <span className="flex flex-col leading-tight">
         <span className="text-sm font-bold tracking-wide text-foreground">AIRSOFT AMERICANA</span>
-        <span className="text-[11px] text-muted-foreground">Equipamentos e acessórios</span>
+        <span className="text-[12px] text-muted-foreground">Equipamentos e acessórios</span>
       </span>
     </Link>
   );
@@ -351,8 +351,12 @@ export function AuthScreen({ initialMode = "login", onLogin, onRegister, onGoogl
     if (initialMode !== "login") return;
     let alive = true;
     fetch(`${API_URL}/api/auth/me`, { credentials: "include" })
-      .then((r) => {
-        if (alive && r.ok) router.replace(safeNext());
+      .then(async (r) => {
+        // A sondagem responde 200 com customer nulo quando não há sessão —
+        // só existe sessão de verdade quando o customer vem preenchido.
+        if (!alive || !r.ok) return;
+        const json = (await r.json().catch(() => ({}))) as { customer?: unknown };
+        if (json.customer) router.replace(safeNext());
       })
       .catch(() => {
         /* sem sessão — deixa o formulário à vista */

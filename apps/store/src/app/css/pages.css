@@ -93,7 +93,7 @@
   left: 1.1rem;
   top: 1.15rem;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--primary);
 }
@@ -160,7 +160,7 @@
 .ticket label {
   display: block;
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -227,7 +227,7 @@
 .track__form label {
   display: block;
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -292,7 +292,7 @@
   font-size: 0.9rem;
   color: #f4f5f2;
 }
-.track__shipment span { font-family: var(--font-mono); font-size: 0.72rem; color: var(--dim); }
+.track__shipment span { font-family: var(--font-mono); font-size: 0.75rem; color: var(--dim); }
 .track__items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .track__items li {
   display: flex;
@@ -315,7 +315,7 @@
   box-shadow: 0 0 0 3px rgb(139 207 22 / 0.18);
 }
 .track__event strong { display: block; font-size: 0.9rem; color: #ffffff; font-weight: 600; }
-.track__event span { font-family: var(--font-mono); font-size: 0.68rem; color: var(--dim); }
+.track__event span { font-family: var(--font-mono); font-size: 0.75rem; color: var(--dim); }
 
 /* ————— Capa de marca ————— */
 .brand-hero {
@@ -341,7 +341,7 @@
 .brand-hero__count {
   margin: 0 0 0.5rem;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--dim);
@@ -369,7 +369,7 @@
 }
 .cat-chip span {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   color: #6f766f;
 }
 .cat-chip:hover { color: var(--primary); border-color: var(--primary); }
@@ -404,7 +404,7 @@
 }
 .blog-cats__chip span {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   color: #6f766f;
 }
 .blog-cats__chip:hover { color: var(--primary); border-color: var(--primary); }
@@ -446,7 +446,7 @@
   align-items: center;
   gap: 0.35rem 0.75rem;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--dim);
@@ -470,7 +470,7 @@
 .blog-card__cta {
   margin-top: 0.25rem;
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -510,7 +510,7 @@
 }
 .blog-pagination__btn {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -524,7 +524,7 @@
 .blog-pagination__btn.is-disabled { color: #4f554f; pointer-events: none; }
 .blog-pagination__info {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--dim);
@@ -543,7 +543,7 @@
   align-items: center;
   gap: 0.5rem;
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--dim);
@@ -573,7 +573,7 @@
   flex-wrap: wrap;
   gap: 0.5rem 1.25rem;
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--dim);
@@ -609,7 +609,7 @@
 }
 .blog-article__tags li {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--dim);
@@ -639,7 +639,7 @@
 }
 .compare-table thead th {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;

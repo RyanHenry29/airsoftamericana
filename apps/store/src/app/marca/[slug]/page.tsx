@@ -14,7 +14,10 @@ import {
   type StoreHome,
 } from "../../lib/store";
 
-export const dynamic = "force-dynamic";
+// Página pública da vitrine: revalidação de 60 s (Data Cache). O SSR
+// não lê cookie nenhum — sessão, carrinho e conta são resolvidos no
+// cliente — então a rota serve do cache sem perder estado de ninguém.
+export const revalidate = 60;
 
 const EMPTY_RESULT: CatalogResult = {
   items: [],

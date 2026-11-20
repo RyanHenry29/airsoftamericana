@@ -206,11 +206,46 @@ describe("checkout service", () => {
       ),
     ).rejects.toMatchObject({ code: "no_payment_gateway_enabled", status: 503 });
 
-    // Nenhuma escrita: pedido e estoque intocados.
+    // Nenhuma escrita: pedido, pagamento e estoque intocados.
     const orders = await db.select().from(schema.orders);
     expect(orders.length).toBe(0);
+    const payments = await db.select().from(schema.payments);
+    expect(payments.length).toBe(0);
     const inv = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
     expect(inv[0]!.reserved).toBe(0);
+  });
+
+  it("produção sem gateway real: sandbox é ignorado → 503 sem pedido, pagamento ou reserva", async () => {
+    const prevNodeEnv = process.env.NODE_ENV;
+    const customerId = await getCustomerId();
+    const variant = await getPublishedVariantId();
+    // Único gateway configurado é o sandbox — em produção ele NÃO vale.
+    await seedSandboxGateway();
+    process.env.NODE_ENV = "production";
+    try {
+      await expect(
+        handleCheckout(
+          db,
+          {
+            items: [{ variantId: variant.id, quantity: 1 }],
+            address: addr("100"),
+            paymentMethod: "pix",
+            acceptedTerms: true,
+            ageConfirmed: true,
+          } as any,
+          { customerId, ip: "127.0.0.1", correlationId: "test-prod-nogw" },
+        ),
+      ).rejects.toMatchObject({ code: "no_payment_gateway_enabled", status: 503 });
+
+      // Bloqueio ANTES de qualquer escrita: zero pedido, zero pagamento, zero reserva.
+      expect((await db.select().from(schema.orders)).length).toBe(0);
+      expect((await db.select().from(schema.payments)).length).toBe(0);
+      const inv = await db.select().from(schema.inventory).where(eq(schema.inventory.variantId, variant.id));
+      expect(inv[0]!.reserved).toBe(0);
+    } finally {
+      if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = prevNodeEnv;
+    }
   });
 
   it("idempotência: checkout repetido devolve o MESMO pedido", async () => {
@@ -445,16 +480,19 @@ describe("concorrencia de estoque", () => {
     const customerId = await getCustomerId();
     await seedSandboxGateway();
 
-    let [cat] = await db.select().from(schema.categories).limit(1);
-    if (!cat) {
-      const inserted = await db.insert(schema.categories).values({
-        name: "Fuzis e Rifles",
-        slug: "fusis-e-rifles",
-        ageRestricted: true,
+    // Categoria DEDICADA, sem restrição 18+: o que se mede aqui é a corrida
+    // de estoque. Reaproveitar uma categoria age-restricted fazia o checkout
+    // morrer no age gate (age_verification_required) ANTES da reserva — os 20
+    // pedidos morriam por motivo errado e a corrida nunca era exercitada.
+    const [cat] = await db
+      .insert(schema.categories)
+      .values({
+        name: "Categoria Sem Restricao",
+        slug: `categoria-sem-restricao-${crypto.randomUUID()}`,
+        ageRestricted: false,
         active: true,
-      }).returning();
-      cat = inserted[0]!;
-    }
+      })
+      .returning();
     let [brand] = await db.select().from(schema.brands).limit(1);
     if (!brand) {
       const inserted = await db.insert(schema.brands).values({ name: "Teste", slug: "teste" }).returning();
@@ -497,6 +535,7 @@ describe("concorrencia de estoque", () => {
           address: addr(String(100 + i)),
           paymentMethod: "pix",
           acceptedTerms: true,
+          ageConfirmed: true,
         },
         { customerId, ip: `127.0.0.${i % 255 + 1}`, correlationId: `test-conc-${i}` },
       ),

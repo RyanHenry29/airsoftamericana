@@ -188,7 +188,7 @@ export default function FraudPage() {
 
       <div className="flex flex-wrap gap-2 mb-8">
         {(["queue", "rules", "watchlist"] as const).map((t) => (
-          <button key={t} type="button" className={`font-mono text-[0.65rem] uppercase font-bold py-2 px-4 border ${tab === t ? "border-[#8bcf16] text-[#8bcf16]" : "border-[#333] text-[#666]"}`} onClick={() => setTab(t)}>
+          <button key={t} type="button" className={`font-mono text-[0.75rem] uppercase font-bold py-2 px-4 border ${tab === t ? "border-[#8bcf16] text-[#8bcf16]" : "border-[#333] text-[#666]"}`} onClick={() => setTab(t)}>
             {t === "queue" ? "Avaliações" : t === "rules" ? "Regras" : "Watchlist"}
           </button>
         ))}
@@ -198,7 +198,7 @@ export default function FraudPage() {
         <section>
           <div className="flex items-end gap-4 mb-4">
             <div className="field">
-              <label htmlFor="fr-level" className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-1">Nível</label>
+              <label htmlFor="fr-level" className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mb-1">Nível</label>
               <select id="fr-level" className="select" value={levelFilter} onChange={e => setLevelFilter(e.target.value)}>
                 <option value="">Todos</option>
                 <option value="baixo">Baixo</option>
@@ -232,23 +232,23 @@ export default function FraudPage() {
                       <tr key={a.id}>
                         <td className="p-3">
                           <div className="font-mono text-sm font-bold text-white">#{row.orderNumber ?? a.orderId.slice(0, 8)}</div>
-                          <div className="font-mono text-[0.6rem] text-[#666] mt-1">{brl(row.orderTotalCents)} · {row.orderStatus?.replace(/_/g, " ") ?? "—"}</div>
-                          <div className="font-mono text-[0.55rem] text-[#444] mt-1">{new Date(a.createdAt).toLocaleString("pt-BR")}</div>
+                          <div className="font-mono text-[0.75rem] text-[#666] mt-1">{brl(row.orderTotalCents)} · {row.orderStatus?.replace(/_/g, " ") ?? "—"}</div>
+                          <div className="font-mono text-[0.75rem] text-[#444] mt-1">{new Date(a.createdAt).toLocaleString("pt-BR")}</div>
                         </td>
                         <td className="p-3">
                           <div className="font-mono text-xs text-white">{row.customerName ?? "—"}</div>
-                          <div className="font-mono text-[0.6rem] text-[#666]">{row.customerEmail ?? "—"}</div>
+                          <div className="font-mono text-[0.75rem] text-[#666]">{row.customerEmail ?? "—"}</div>
                         </td>
                         <td className="p-3">
                           <span className={`admin-badge ${a.level === "alto" ? "admin-badge--err" : a.level === "medio" ? "admin-badge--warn" : "admin-badge--ok"}`}>
                             {a.level} ({a.score})
                           </span>
-                          {a.autoDecision ? <div className="font-mono text-[0.55rem] text-[#444] mt-1">auto</div> : <div className="font-mono text-[0.55rem] text-[#8bcf16] mt-1">revisado</div>}
+                          {a.autoDecision ? <div className="font-mono text-[0.75rem] text-[#444] mt-1">auto</div> : <div className="font-mono text-[0.75rem] text-[#8bcf16] mt-1">revisado</div>}
                         </td>
                         <td className="p-3 font-mono text-xs text-[#999]">{a.action}</td>
-                        <td className="p-3 font-mono text-[0.65rem] text-[#666] max-w-md">{reasonsText(a.reasons)}</td>
+                        <td className="p-3 font-mono text-[0.75rem] text-[#666] max-w-md">{reasonsText(a.reasons)}</td>
                         <td className="p-3">
-                          <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#333] text-white" onClick={() => setReview({ id: a.id, note: a.reviewNote ?? "" })}>
+                          <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#333] text-white" onClick={() => setReview({ id: a.id, note: a.reviewNote ?? "" })}>
                             Revisar
                           </button>
                         </td>
@@ -265,14 +265,14 @@ export default function FraudPage() {
               <div className="border border-[#111] bg-[#0a0a0a] p-6 max-w-lg w-full">
                 <h3 className="font-display font-black text-xl uppercase text-white mb-4">Revisão antifraude</h3>
                 <div className="field mb-4">
-                  <label htmlFor="rv-note" className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-1">Nota (opcional)</label>
+                  <label htmlFor="rv-note" className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mb-1">Nota (opcional)</label>
                   <textarea id="rv-note" className="input w-full min-h-[90px]" value={review.note} onChange={e => setReview({ ...review, note: e.target.value })} />
                 </div>
-                <p className="font-mono text-[0.6rem] text-[#666] mb-4">Aprovar tenta mover pedido para pagamento aprovado; rejeitar tenta cancelar (quando a transição for válida).</p>
+                <p className="font-mono text-[0.75rem] text-[#666] mb-4">Aprovar tenta mover pedido para pagamento aprovado; rejeitar tenta cancelar (quando a transição for válida).</p>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" disabled={busy} className="font-mono text-[0.65rem] uppercase font-bold py-2 px-4 border border-[#8bcf16] text-[#8bcf16]" onClick={() => doReview("approve")}>Aprovar</button>
-                  <button type="button" disabled={busy} className="font-mono text-[0.65rem] uppercase font-bold py-2 px-4 border border-[#dc2626] text-[#dc2626]" onClick={() => doReview("reject")}>Rejeitar</button>
-                  <button type="button" disabled={busy} className="font-mono text-[0.65rem] uppercase font-bold py-2 px-4 border border-[#333] text-[#999]" onClick={() => doReview("hold")}>Manter em análise</button>
+                  <button type="button" disabled={busy} className="font-mono text-[0.75rem] uppercase font-bold py-2 px-4 border border-[#8bcf16] text-[#8bcf16]" onClick={() => doReview("approve")}>Aprovar</button>
+                  <button type="button" disabled={busy} className="font-mono text-[0.75rem] uppercase font-bold py-2 px-4 border border-[#dc2626] text-[#dc2626]" onClick={() => doReview("reject")}>Rejeitar</button>
+                  <button type="button" disabled={busy} className="font-mono text-[0.75rem] uppercase font-bold py-2 px-4 border border-[#333] text-[#999]" onClick={() => doReview("hold")}>Manter em análise</button>
                   <button type="button" className="font-mono text-xs underline text-[#666] ml-auto" onClick={() => setReview(null)}>Cancelar</button>
                 </div>
               </div>
@@ -309,7 +309,7 @@ export default function FraudPage() {
                 <option value="review">review</option>
               </select>
             </div>
-            <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2 md:col-span-2">
+            <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2 md:col-span-2">
               <input type="checkbox" checked={ruleForm.enabled} onChange={e => setRuleForm({ ...ruleForm, enabled: e.target.checked })} />
               Ativa
             </label>
@@ -337,7 +337,7 @@ export default function FraudPage() {
                       <td className="p-3 font-mono text-xs text-[#666]">{r.threshold ?? "—"}</td>
                       <td className="p-3 font-mono text-xs text-[#666]">{r.action}</td>
                       <td className="p-3"><span className={`admin-badge ${r.enabled ? "admin-badge--ok" : "admin-badge--err"}`}>{r.enabled ? "Ativa" : "Inativa"}</span></td>
-                      <td className="p-3"><button type="button" className="font-mono text-[0.6rem] uppercase border border-[#333] text-[#999] py-1 px-2" onClick={() => setRuleForm({ key: r.key, name: r.name, enabled: r.enabled, weight: r.weight, threshold: r.threshold ?? null, action: r.action })}>Editar</button></td>
+                      <td className="p-3"><button type="button" className="font-mono text-[0.75rem] uppercase border border-[#333] text-[#999] py-1 px-2" onClick={() => setRuleForm({ key: r.key, name: r.name, enabled: r.enabled, weight: r.weight, threshold: r.threshold ?? null, action: r.action })}>Editar</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -393,8 +393,8 @@ export default function FraudPage() {
                       <td className="p-3 font-mono text-xs uppercase text-white">{w.kind}</td>
                       <td className="p-3 font-mono text-xs text-[#999]">{w.value}</td>
                       <td className="p-3 font-mono text-xs text-[#666]">{w.reason}</td>
-                      <td className="p-3 font-mono text-[0.65rem] text-[#666]">{w.expiresAt ? new Date(w.expiresAt).toLocaleString("pt-BR") : "—"}</td>
-                      <td className="p-3"><button type="button" disabled={busy} className="font-mono text-[0.6rem] uppercase border border-[#dc2626]/40 text-[#dc2626] py-1 px-2" onClick={() => removeWatch(w.id)}>Remover</button></td>
+                      <td className="p-3 font-mono text-[0.75rem] text-[#666]">{w.expiresAt ? new Date(w.expiresAt).toLocaleString("pt-BR") : "—"}</td>
+                      <td className="p-3"><button type="button" disabled={busy} className="font-mono text-[0.75rem] uppercase border border-[#dc2626]/40 text-[#dc2626] py-1 px-2" onClick={() => removeWatch(w.id)}>Remover</button></td>
                     </tr>
                   ))}
                 </tbody>

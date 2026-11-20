@@ -7,7 +7,10 @@ import { Header } from "../../components/Header";
 import { SiteFooter } from "../../components/SiteFooter";
 import { loadHome } from "../../lib/store";
 
-export const dynamic = "force-dynamic";
+// Página pública da vitrine: revalidação de 60 s (Data Cache). O SSR
+// não lê cookie nenhum — sessão, carrinho e conta são resolvidos no
+// cliente — então a rota serve do cache sem perder estado de ninguém.
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Como escolher sua primeira AEG",

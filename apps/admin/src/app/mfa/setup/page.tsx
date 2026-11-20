@@ -257,13 +257,13 @@ export default function MfaSetupPage() {
           )}
           {secret ? (
             <div className="mt-6">
-              <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mb-2">
+              <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mb-2">
                 Chave manual
               </span>
               <code className="block font-mono text-xs tracking-[0.2em] text-white border border-[#111] bg-[#000] px-3 py-2 break-all">
                 {secret}
               </code>
-              <p className="font-mono text-[0.6rem] text-[#333] mt-2">
+              <p className="font-mono text-[0.75rem] text-[#333] mt-2">
                 Digite essa chave em "Configurar conta manualmente" no app.
               </p>
             </div>

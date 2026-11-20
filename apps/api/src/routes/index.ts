@@ -683,9 +683,12 @@ export async function routes(app: FastifyInstance, config: Config, db: Db) {
 
   app.get("/api/auth/me", async (request, reply) => {
     const token = customerToken(request as never);
+    // Sondagem de sessão pública: sem cookie de cliente a resposta é 200 com
+    // customer nulo (o cabeçalho da loja chama isto em toda página — 401
+    // anônimo virava erro de console no navegador). Token inválido ou
+    // expirado continua 401: aí é falha de sessão de verdade.
     if (!token) {
-      reply.status(401);
-      reply.send({ error: { code: "unauthorized", message: "Não autenticado" } });
+      reply.send({ customer: null });
       return;
     }
     try {

@@ -1,7 +1,7 @@
 import { drizzle as drizzlePglite, type PgliteDatabase } from "drizzle-orm/pglite";
 import { drizzle as drizzlePg, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { PGlite } from "@electric-sql/pglite";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import tls from "node:tls";
 import path from "node:path";
 import fs from "node:fs";
@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
 import * as schema from "./schema.js";
 import { SUPABASE_ROOT_CA_PEM } from "./supabase-root-ca.js";
+import { assertSessionScopeSafe, classifyPooler, poolSizing } from "./pool-mode.js";
+import { createResilientPool, errorCode } from "./db-retry.js";
 import { benchLogger } from "../lib/query-bench.js";
 
 /**
@@ -153,28 +155,43 @@ function poolSsl(connectionString: string): { url: string; ssl?: boolean | tls.C
   return { url: url.toString() };
 }
 
-export async function getDb(): Promise<Db> {
+/**
+ * Abre o pool do Postgres.
+ *
+ * `connectionString` explícita vence a `DATABASE_URL` da config: o runtime
+ * serverless passa a URL do pooler em transaction mode (DATABASE_URL_RUNTIME),
+ * enquanto o CLI de migrations usa a DATABASE_URL de session mode (o advisory
+ * lock do ledger é de sessão).
+ */
+export async function getDb(connectionString?: string): Promise<Db> {
   if (db) return db;
 
   // Em teste, logger no-op ativa contagem só quando benchStart() é chamado (benchmark/N+1).
   const bench = process.env.NODE_ENV === "test" ? { logger: benchLogger } : {};
-  if (config.DATABASE_URL) {
-    const { url, ssl } = poolSsl(config.DATABASE_URL);
-    // Pooler de transação (porta 6543) não suporta prepared statements; manter
-    // pool pequeno em serverless para não esgotar conexões do Supabase.
-    const isTransactionPooler = /:6543(?:\/|\?|$)/.test(url);
-    poolInstance = new Pool({
-      connectionString: url,
-      max: isTransactionPooler ? 1 : 5,
-      ssl,
-      ...(isTransactionPooler ? { connectionTimeoutMillis: 10000 } : {}),
-    });
-    // pg + Supavisor transaction mode: desativa named prepared statements.
-    if (isTransactionPooler) poolInstance.on("connect", (client) => {
-      // no-op hook kept for clarity; drizzle/node-postgres uses unnamed prepares by default
-      // but we also pass prepare:false to drizzle when needed? drizzle-pg doesn't take prepare here.
-      void client;
-    });
+  const raw = (connectionString ?? config.DATABASE_URL ?? "").trim();
+  if (raw) {
+    const { url, ssl } = poolSsl(raw);
+    // Dimensiona por modo de pooler: transaction/session aceitam uma conexão
+    // por instância (o pooler limita os clientes do projeto, não a instância).
+    const sizing = poolSizing(classifyPooler(raw));
+    poolInstance = createResilientPool(
+      {
+        connectionString: url,
+        max: sizing.max,
+        ssl,
+        connectionTimeoutMillis: sizing.connectionTimeoutMillis,
+        // Conexão ociosa devolve a vaga ao pooler: instância aquecida não
+        // segura vaga do teto global (200 clientes por projeto).
+        idleTimeoutMillis: sizing.idleTimeoutMillis,
+      },
+      {
+        onRetry: ({ attempt, delayMs, error, phase, budgetLeftMs }) => {
+          console.warn(
+            `[db] retry ${attempt} em ${delayMs}ms (${phase}) — ${errorCode(error) ?? "erro transitório"} · resta ${budgetLeftMs}ms`,
+          );
+        },
+      },
+    );
     db = drizzlePg(poolInstance, { schema, ...bench });
   } else {
     const configured = process.env.PGLITE_DIR;
@@ -195,6 +212,51 @@ export function setDb(instance: Db): void {
   db = instance;
 }
 
+/**
+ * Verifica se há pool PostgreSQL configurado (para migrations).
+ */
+export function poolInstanceExists(): boolean {
+  return !!poolInstance;
+}
+
+/**
+ * Sessão EXCLUSIVA para migrations (AUD-03): o advisory lock é por SESSÃO —
+ * executado no pool genérico, cada query pode cair em conexão diferente e a
+ * coordenação multi-instância não serializa nada. Aqui: um cliente dedicado
+ * do pool carrega lock + ledger + DDL do começo ao fim do run.
+ *
+ * Exige pooler em SESSION MODE (porta 5432) ou conexão direta: em transaction
+ * mode (6543) o backend pode trocar entre comandos e o lock se perde.
+ * `assertSessionScopeSafe` recusa a URL errada antes de qualquer DDL.
+ *
+ * SOMENTE para backends com pool (Postgres). PGlite é single-session por
+ * natureza: qualquer query fora do callback de transaction() trava atrás do
+ * BEGIN aberto — passar o db do módulo aqui causaria deadlock quando o
+ * chamador rodar migrate() DENTRO de uma transação (fault-injection, seed).
+ * Nesses casos o motor usa o db recebido (tx-aware), como o blob original.
+ */
+export async function getMigrationSession(): Promise<{
+  db: Db;
+  release: (lockFailed?: boolean) => Promise<void>;
+}> {
+  if (!poolInstance) {
+    throw new Error(
+      "getMigrationSession exige pool (Postgres); PGlite usa o db do chamador (single-session)",
+    );
+  }
+  const client = await poolInstance.connect();
+  return {
+    db: drizzlePg(client, { schema }),
+    release: async (lockFailed?: boolean) => {
+      if (lockFailed) {
+        client.release(new Error("Migration advisory lock cleanup failed"));
+        return;
+      }
+      client.release();
+    },
+  };
+}
+
 export async function closeDb(): Promise<void> {
   if (pgliteInstance) await pgliteInstance.close();
   if (poolInstance) await poolInstance.end();
@@ -206,3 +268,4 @@ export async function closeDb(): Promise<void> {
 }
 
 export { schema };
+export { assertSessionScopeSafe };

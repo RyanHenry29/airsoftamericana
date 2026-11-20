@@ -162,10 +162,10 @@ body {
 .table-responsive { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
-thead th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em; color: #666666; font-weight: 900; }
+thead th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.14em; color: #666666; font-weight: 900; }
 
-.field label { display: block; font-size: 0.7rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.12em; color: #666666; margin-bottom: 0.5rem; }
-.field .hint { font-size: 0.7rem; color: #333333; margin-top: 0.35rem; }
+.field label { display: block; font-size: 0.75rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.12em; color: #666666; margin-bottom: 0.5rem; }
+.field .hint { font-size: 0.75rem; color: #333333; margin-top: 0.35rem; }
 
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
   outline: 3px solid var(--primary);
@@ -226,7 +226,7 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
 }
 .admin-card__kicker {
   font-family: var(--font-body);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -244,7 +244,7 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
 }
 .admin-card__sub {
   font-family: var(--font-body);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   color: #666666;
   margin: 0;
   text-transform: uppercase;
@@ -252,7 +252,7 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
 }
 .admin-card__delta {
   font-family: var(--font-body);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
   margin-top: 0.25rem;
 }
@@ -272,7 +272,7 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
 }
 .admin-table thead th {
   font-family: var(--font-body);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -305,7 +305,7 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
 }
 .admin-section-head__kicker {
   font-family: var(--font-body);
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -407,7 +407,7 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
   padding: 0.25rem 0.6rem;
   border-radius: 2px;
   font-family: var(--font-body);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -454,7 +454,7 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
 }
 .image-picker__hint {
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   color: #666666;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -481,7 +481,7 @@ h1, h2, h3 { text-transform: uppercase; letter-spacing: 0.02em; font-weight: 900
   margin: 0;
   padding: 0.5rem 0.75rem;
   font-family: var(--font-body);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   color: #666666;
   text-transform: uppercase;
   letter-spacing: 0.1em;

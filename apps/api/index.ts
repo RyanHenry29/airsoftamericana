@@ -8,9 +8,11 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { config } from "./src/config.js";
+import { config, runtimeDatabaseUrl } from "./src/config.js";
 import { withSystemLock } from "./src/services/payments/system-locks.js";
 import { getDb } from "./src/db/index.js";
+import { withDbTrace } from "./src/db/db-trace.js";
+import { describeErrorChain } from "./src/lib/error-chain.js";
 import { schema } from "./src/db/index.js";
 import { buildHome, getCommercialSettings, searchSuggestions } from "./src/services/homepage.js";
 import { getCompanyData } from "./src/services/settings.js";
@@ -103,7 +105,8 @@ async function getFastifyApp() {
       const app = Fastify({ logger: false, trustProxy: true });
       await app.register(cookie);
       await app.register(cors, { origin: true, credentials: true });
-      const db = await getDb();
+      // Runtime serverless: pooler em transaction mode (DATABASE_URL_RUNTIME).
+      const db = await getDb(runtimeDatabaseUrl(process.env));
       (app as any).db = db;
       
       // Security headers for Fastify (local dev)
@@ -250,6 +253,21 @@ export default async function handler(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
+  // Instrumentação por requisição (experimento B2). O log da Vercel é amostrado
+  // — em janela de saturação o contador de retries voltou 0 com a curva de
+  // latência provando que houve espera. A trilha é anexada à própria resposta,
+  // então a evidência não depende da plataforma nem de log.
+  return withDbTrace(
+    res,
+    req.headers["x-db-trace"] !== undefined,
+    () => handleRequest(req, res),
+  );
+}
+
+async function handleRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   const method = req.method ?? "GET";
   const { path, query } = parseUrl(req.url ?? "/");
 
@@ -272,8 +290,7 @@ export default async function handler(
     try {
       await delegateToFastify(req, res);
     } catch (e) {
-      const err = e as Error;
-      console.error(`[api:admin] ${method} ${path}:`, err?.message, err?.stack?.split("\n")[1]);
+      console.error(`[api:admin] ${method} ${path}:`, describeErrorChain(e));
       json(res, 500, { error: { code: "internal_error", message: "Erro interno do servidor" } });
     }
     return;
@@ -282,8 +299,7 @@ export default async function handler(
   try {
     await route(method, path, query, req, res);
   } catch (e) {
-    const err = e as Error;
-    console.error(`[api] ${method} ${path}:`, err?.message, err?.stack?.split("\n")[1]);
+    console.error(`[api] ${method} ${path}:`, describeErrorChain(e));
     json(res, 500, { error: { code: "internal_error", message: "Erro interno do servidor" } });
   }
 }
@@ -295,7 +311,7 @@ async function route(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const db = await getDb();
+  const db = await getDb(runtimeDatabaseUrl(process.env));
 
   // ── Storefront: home ──────────────────────────────────────────────────────
   if (method === "GET" && path === "/api/store/home") {
@@ -566,7 +582,12 @@ async function route(
   if (method === "GET" && path === "/api/auth/me") {
     const cookies = parseCookies(req);
     const token = cookies["aa_customer"] || (req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : "");
-    if (!token) return json(res, 401, { error: { code: "unauthorized", message: "Não autenticado" } });
+    // Sondagem de sessão pública: sem cookie de cliente a resposta é 200 com
+    // customer nulo. O cabeçalho da loja chama isto em TODA página — um 401
+    // para o visitante anônimo virava "Failed to load resource" no console do
+    // navegador (e quebrava o audit de console do Lighthouse). Token inválido
+    // ou expirado continua 401: aí é falha de sessão de verdade.
+    if (!token) return json(res, 200, { customer: null });
     try {
       const payload = await verifyJwt(token);
       if (payload.type !== "customer") throw new Error("wrong type");

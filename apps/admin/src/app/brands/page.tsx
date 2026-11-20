@@ -93,7 +93,7 @@ export default function BrandsPage() {
             <label htmlFor="bslug">Slug</label>
             <input id="bslug" className="input" value={form.slug} onChange={e=>setForm({...form,slug:e.target.value})} placeholder="gerado pelo nome" />
           </div>
-          <label className="font-mono text-[0.65rem] uppercase text-[#666] flex items-center gap-2 mt-6"><input type="checkbox" checked={form.active} onChange={e=>setForm({...form,active:e.target.checked})} /> Ativa</label>
+          <label className="font-mono text-[0.75rem] uppercase text-[#666] flex items-center gap-2 mt-6"><input type="checkbox" checked={form.active} onChange={e=>setForm({...form,active:e.target.checked})} /> Ativa</label>
         </div>
         <div className="field">
           <label htmlFor="bdesc">Descrição</label>
@@ -130,7 +130,7 @@ export default function BrandsPage() {
                 <td className="font-mono text-xs text-[#666]">{editing===b.id ? <input className="input" aria-label="Slug" value={edit.slug ?? b.slug} onChange={e=>setEdit({...edit,slug:e.target.value})} /> : b.slug}</td>
                 <td>{editing===b.id ? <label className="font-mono text-xs"><input type="checkbox" checked={edit.active ?? b.active} onChange={e=>setEdit({...edit,active:e.target.checked})} /> ativa</label> : <span className={`admin-badge ${b.active?"admin-badge--ok":"admin-badge--err"}`}>{b.active?"Sim":"Não"}</span>}</td>
                 <td className="flex flex-wrap gap-2">
-                  {editing===b.id ? (<><button type="button" className="btn-primary px-3 py-1 text-xs" onClick={()=>saveEdit(b.id)} disabled={busy}>Salvar</button><button type="button" className="font-mono text-xs underline text-[#666]" onClick={()=>setEditing(null)}>Cancelar</button></>) : (<><button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={()=>{setEditing(b.id); setEdit({name:b.name,slug:b.slug,active:b.active,description:b.description??"",seoTitle:b.seoTitle??"",seoDescription:b.seoDescription??""});}}>Editar</button><button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={()=>remove(b)} disabled={busy}>Excluir</button></>)}
+                  {editing===b.id ? (<><button type="button" className="btn-primary px-3 py-1 text-xs" onClick={()=>saveEdit(b.id)} disabled={busy}>Salvar</button><button type="button" className="font-mono text-xs underline text-[#666]" onClick={()=>setEditing(null)}>Cancelar</button></>) : (<><button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={()=>{setEditing(b.id); setEdit({name:b.name,slug:b.slug,active:b.active,description:b.description??"",seoTitle:b.seoTitle??"",seoDescription:b.seoDescription??""});}}>Editar</button><button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={()=>remove(b)} disabled={busy}>Excluir</button></>)}
                 </td>
               </tr>
             ))}</tbody>

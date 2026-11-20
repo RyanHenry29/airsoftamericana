@@ -238,8 +238,9 @@ export function ContaArea() {
           setHasAvatar(false);
         }
         await loadAddresses();
-      } else if (res.status !== 401) {
-        // 401 = deslogado (estado vazio legítimo); o resto é falha de carga.
+      } else if (!res.ok && res.status !== 401) {
+        // 200 sem customer = deslogado (estado vazio legítimo); 401 = sessão
+        // inválida; o resto é falha de carga.
         setLoadError(true);
       }
     } catch {

@@ -2457,9 +2457,13 @@ describe("withSystemLock: incerteza do heartbeat (correção pós-revisão)", ()
 describe("migrate: DDL obrigatório propaga falha (correção pós-revisão)", () => {
   it("FALHA de DDL obrigatório rejeita o migrate — silêncio não é sucesso", async () => {
     let rejected = false;
-    // DROP COLUMN dentro de transação: rollback SEMPRE restaura o schema.
+    // Era do ledger (AUD-03): passo marcado 'aplicada' com checksum válido é
+    // PULADO — para exercitar o DDL obrigatório, simula um passo interrompido
+    // removendo a linha do passo no ledger DENTRO da transação (o rollback
+    // restaura tanto a linha quanto o schema).
     await db
       .transaction(async (tx: Db) => {
+        await tx.execute(`DELETE FROM "migration_ledger" WHERE "step_name" = '008_pagamentos'`);
         await tx.execute(`ALTER TABLE "payment_events" DROP COLUMN "processed_at"`);
         try {
           await migrate(tx as unknown as Db);
@@ -2472,13 +2476,17 @@ describe("migrate: DDL obrigatório propaga falha (correção pós-revisão)", (
       .catch(() => {});
     expect(rejected).toBe(true);
 
-    // A coluna voltou (rollback da transação).
+    // A coluna voltou (rollback da transação) e a linha do ledger também.
     const cols = await db.execute(`SELECT column_name FROM information_schema.columns WHERE table_name = 'payment_events' AND column_name = 'processed_at'`);
     expect((cols as any).rows?.length ?? 0).toBe(1);
+    const ledger = await db.execute(`SELECT count(*)::int AS n FROM "migration_ledger" WHERE "step_name" = '008_pagamentos'`);
+    expect((ledger as any).rows?.[0]?.n ?? 0).toBe(1);
   });
 
   it("IDEMPOTÊNCIA preservada: migrate reexecutado é no-op (sem erro)", async () => {
-    await expect(migrate(db as unknown as Db)).resolves.toBeUndefined();
+    const summary = await migrate(db as unknown as Db);
+    expect(summary.applied).toEqual([]);
+    expect(summary.recovered).toEqual([]);
   });
 });
 

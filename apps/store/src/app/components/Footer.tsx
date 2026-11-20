@@ -8,7 +8,7 @@ import { AtSign, Mail, MessageCircle } from "lucide-react";
 import type { CommercialSettings } from "../lib/store";
 import type { Company } from "../lib/store";
 import { PaymentMarks } from "./PaymentMarks";
-import { COOKIE_PREFS_EVENT } from "./CookieConsent";
+import { COOKIE_PREFS_EVENT } from "../lib/cookie-consent";
 
 const infoLinks = [
   { label: "Por que comprar aqui", href: "/por-que-comprar" },
@@ -116,7 +116,7 @@ export function Footer({
         <nav className="footer__col" aria-label="Informações">
           <span className="footer__title">Informações</span>
           {infoLinks.map((l) => (
-            <Link key={`${l.href}-${l.label}`} href={l.href} className="footer__link">
+            <Link key={`${l.href}-${l.label}`} href={l.href} className="footer__link" prefetch={false}>
               {l.label}
             </Link>
           ))}

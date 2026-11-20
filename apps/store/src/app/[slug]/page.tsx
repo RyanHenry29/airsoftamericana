@@ -3,6 +3,7 @@
 // ficha técnica, produtos relacionados e breadcrumb de navegação.
 import Link from "next/link";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { ChevronRight, ShieldCheck, Truck, Zap } from "lucide-react";
 import { Header } from "../components/Header";
 import { ProductCard } from "../components/ProductCard";
@@ -22,7 +23,10 @@ import {
 } from "../lib/store";
 import { OG_IMAGE } from "../lib/seo";
 
-export const dynamic = "force-dynamic";
+// Página pública da vitrine: revalidação de 60 s (Data Cache). O SSR
+// não lê cookie nenhum — sessão, carrinho e conta são resolvidos no
+// cliente — então a rota serve do cache sem perder estado de ninguém.
+export const revalidate = 60;
 
 type PdpProduct = StoreProduct & {
   specs?: { id: string; key: string; label: string; value: string; position: number }[];
@@ -54,7 +58,17 @@ async function getProduct(slug: string): Promise<PdpProduct | null> {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const product = await getProduct(slug);
-  const name = product?.name ?? slug;
+  // Slug inexistente: 404 de verdade, fora do índice. Sem isso a rota
+  // respondia 200 indexável com o título do próprio slug.
+  if (!product) {
+    return {
+      title: "Página não encontrada",
+      description: "O produto não existe ou saiu do catálogo da Airsoft Americana.",
+      alternates: { canonical: `/${slug}` },
+      robots: { index: false, follow: false },
+    };
+  }
+  const name = product.name;
   const description =
     product?.shortDescription ||
     product?.description?.slice(0, 155) ||
@@ -108,20 +122,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   ]);
 
   if (!product) {
-    return (
-      <main className="page-shell">
-        <Header />
-        <div className="notfound">
-          <p className="notfound__num">404</p>
-          <h1>Produto não encontrado</h1>
-          <p>Verifique o endereço ou volte ao catálogo.</p>
-          <Link href="/catalogo" className="btn-primary">
-            Ver catálogo
-          </Link>
-        </div>
-        <SiteFooter settings={home.settings} />
-      </main>
-    );
+    // 404 com status HTTP correto (antes: 200 indexável). O casco da loja
+    // vem do not-found.tsx deste mesmo segmento.
+    notFound();
   }
 
   const settings = home.settings;

@@ -250,7 +250,7 @@ export default function SettingsPage() {
               value={comm.minInst} onChange={(e) => setComm({ ...comm, minInst: e.target.value })} />
           </div>
           <div className="field flex items-end">
-            <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+            <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
               <input type="checkbox" checked={comm.noInterest}
                 onChange={(e) => setComm({ ...comm, noInterest: e.target.checked })} />
               Parcelamento sem juros
@@ -331,7 +331,7 @@ export default function SettingsPage() {
           <button type="submit" className="btn-primary px-6 py-2" disabled={busy}>
             {busy ? "Salvando…" : "Salvar condições comerciais"}
           </button>
-          <span className="font-mono text-[0.65rem] text-[#666]">
+          <span className="font-mono text-[0.75rem] text-[#666]">
             Vale para PIX, parcelamento, frete grátis, topbar, home, checkout e termos.
           </span>
         </div>
@@ -377,7 +377,7 @@ export default function SettingsPage() {
           <button type="submit" className="btn-primary px-6 py-2" disabled={busy}>
             {busy ? "Salvando…" : "Salvar dados da empresa"}
           </button>
-          <span className="font-mono text-[0.65rem] text-[#666]">
+          <span className="font-mono text-[0.75rem] text-[#666]">
             Razão social e CNPJ saem no rodapé de todas as páginas da loja.
           </span>
         </div>

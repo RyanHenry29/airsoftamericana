@@ -3,12 +3,20 @@
  * Segredos nunca são logados.
  */
 import { z } from "zod";
+import { classifyPooler } from "./db/pool-mode.js";
 
 const envSchema = z.object({
   API_PORT: z.coerce.number().default(4000),
   API_HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().optional().default(""),
+  // URL do Postgres usada pelo RUNTIME SERVERLESS (a função na Vercel).
+  // Opcional: quando ausente, o runtime usa DATABASE_URL. Defina com o pooler
+  // em transaction mode (porta 6543) — o session mode (5432) do Supavisor
+  // aceita no máximo 15 clientes simultâneos e estoura em rajada, derrubando
+  // a vitrine com 500. O CLI de migrations/bootstrap continua na DATABASE_URL
+  // (session mode), porque o advisory lock do ledger é de sessão.
+  DATABASE_URL_RUNTIME: z.string().optional().default(""),
   JWT_SECRET: z.string().default("dev-insecure-secret-troque-em-producao"),
   GATEWAY_SECRETS_KEY: z.string().optional().default(""),
   STORE_URL: z.string().default("http://localhost:3000"),
@@ -86,6 +94,28 @@ function isLocal(url: string): boolean {
 }
 
 /**
+ * URL que o runtime serverless deve usar para abrir o pool.
+ * `DATABASE_URL_RUNTIME` tem precedência; fora de produção, sem ela, cai em
+ * `DATABASE_URL`.
+ *
+ * Em PRODUÇÃO o fallback é PROIBIDO: a `DATABASE_URL` aponta para o pooler em
+ * session mode (15 clientes) e o runtime em rajada responderia 500 em tudo
+ * (EMAXCONNSESSION). Sem `DATABASE_URL_RUNTIME` configurada, a API não sobe —
+ * assim uma configuração esquecida não reativa o Session Mode em silêncio.
+ */
+export function runtimeDatabaseUrl(env: NodeJS.ProcessEnv): string {
+  const runtime = (env.DATABASE_URL_RUNTIME ?? "").trim();
+  if (runtime) return runtime;
+  if ((env.NODE_ENV ?? "") === "production") {
+    throw new Error(
+      "DATABASE_URL_RUNTIME ausente em produção — o runtime serverless exige o pooler em " +
+        "transaction mode (porta 6543).",
+    );
+  }
+  return (env.DATABASE_URL ?? "").trim();
+}
+
+/**
  * Checklist de arranque em produção.
  *
  * Função pura: recebe o ambiente e devolve a lista de problemas. Quem chama
@@ -132,6 +162,30 @@ export function assertProductionEnv(env: NodeJS.ProcessEnv): EnvProblem[] {
       variable: "DATABASE_URL",
       message:
         "DATABASE_URL ausente — em produção a API exige Postgres (o PGlite em arquivo é só para desenvolvimento e teste).",
+    });
+  }
+
+  const runtimeUrl = (env.DATABASE_URL_RUNTIME ?? "").trim();
+  if (!runtimeUrl) {
+    problems.push({
+      variable: "DATABASE_URL_RUNTIME",
+      message:
+        "DATABASE_URL_RUNTIME ausente — em produção o runtime serverless exige o pooler em transaction mode " +
+        "(porta 6543). Sem ela a API cairia na DATABASE_URL (session mode, 5432), que aceita no máximo 15 " +
+        "clientes simultâneos e derruba a vitrine com 500 em rajada (EMAXCONNSESSION).",
+    });
+  } else if (!/^postgres(ql)?:\/\//i.test(runtimeUrl)) {
+    problems.push({
+      variable: "DATABASE_URL_RUNTIME",
+      message:
+        "DATABASE_URL_RUNTIME não é uma URL de Postgres — o runtime serverless não conseguiu montar o pool.",
+    });
+  } else if (classifyPooler(runtimeUrl) === "session") {
+    problems.push({
+      variable: "DATABASE_URL_RUNTIME",
+      message:
+        "DATABASE_URL_RUNTIME aponta para o pooler em session mode (porta 5432) — o runtime serverless exige " +
+        "transaction mode (porta 6543). A sessão de 15 clientes estoura em rajada (EMAXCONNSESSION).",
     });
   }
 

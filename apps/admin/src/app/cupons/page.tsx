@@ -233,7 +233,7 @@ export default function CuponsPage() {
           <input id="cp-end" className="input w-full" type="datetime-local" value={form.endsAt} onChange={e => setForm({ ...form, endsAt: e.target.value })} />
         </div>
         <div className="field flex items-end">
-          <label className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
+          <label className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] flex items-center gap-2">
             <input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} />
             Ativo
           </label>
@@ -271,7 +271,7 @@ export default function CuponsPage() {
                   <td className="p-3 font-mono text-sm text-white">{fmtValue(c)}</td>
                   <td className="p-3 font-mono text-xs text-[#666]">{c.minOrderCents ? (c.minOrderCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</td>
                   <td className="p-3 font-mono text-xs text-[#666]">{c.usedCount}{c.maxUses == null ? "" : ` / ${c.maxUses}`}</td>
-                  <td className="p-3 font-mono text-[0.65rem] text-[#666]">
+                  <td className="p-3 font-mono text-[0.75rem] text-[#666]">
                     <div>{fmtDate(c.startsAt)}</div>
                     <div>{fmtDate(c.endsAt)}</div>
                   </td>
@@ -282,9 +282,9 @@ export default function CuponsPage() {
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-2 items-center">
-                      <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={() => { setEditing(c.id); setForm(formFrom(c)); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Editar</button>
-                      <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={() => toggleActive(c)} disabled={busy}>{c.active ? "Desativar" : "Ativar"}</button>
-                      <button type="button" className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => remove(c)} disabled={busy}>Excluir</button>
+                      <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={() => { setEditing(c.id); setForm(formFrom(c)); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Editar</button>
+                      <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666]" onClick={() => toggleActive(c)} disabled={busy}>{c.active ? "Desativar" : "Ativar"}</button>
+                      <button type="button" className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#dc2626]/40 text-[#dc2626]" onClick={() => remove(c)} disabled={busy}>Excluir</button>
                     </div>
                   </td>
                 </tr>

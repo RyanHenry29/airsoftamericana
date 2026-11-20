@@ -108,14 +108,14 @@ export default function ImportCsvPage() {
     <main className="px-6 pb-24">
       <header className="mb-12 border-b border-[#111] pb-6">
         <h1 className="font-display font-black text-3xl md:text-4xl uppercase leading-none tracking-tighter text-white">Importar CSV</h1>
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-[#666] mt-2">Duas etapas: pré-visualização (sem gravar) → confirmação explícita → aplicação transacional</p>
+        <p className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] mt-2">Duas etapas: pré-visualização (sem gravar) → confirmação explícita → aplicação transacional</p>
       </header>
 
       <section className="border border-[#111] bg-[#0a0a0a] p-8 max-w-4xl grid gap-6">
         <div className="field">
           <label htmlFor="csvfile">Arquivo CSV (UTF-8, .csv/.txt, máx. 2 MiB)</label>
           <input id="csvfile" ref={fileRef} type="file" accept=".csv,.txt,text/csv,text/plain" onChange={onFile} disabled={busy} className="input" />
-          <p className="text-[#666] font-mono text-[0.6rem] mt-2">Cabeçalho obrigatório: slug;nome;sku;preco;category_slug (opcionais: brand_slug, condicao, estoque). Use dados próprios/DEMO.</p>
+          <p className="text-[#666] font-mono text-[0.75rem] mt-2">Cabeçalho obrigatório: slug;nome;sku;preco;category_slug (opcionais: brand_slug, condicao, estoque). Use dados próprios/DEMO.</p>
         </div>
 
         {stage === "reading" || stage === "previewing" ? (
@@ -127,19 +127,19 @@ export default function ImportCsvPage() {
         {preview && !["file_too_large","invalid_extension","invalid_mime","empty_file","missing_header"].some(c => preview.errors?.some(e => e.code === c)) && (
           <div className="grid gap-4">
             <h2 className="font-display font-black text-xl text-white uppercase">Resumo da pré-visualização</h2>
-            <p className="font-mono text-[0.65rem] text-[#666]">Arquivo: {fileName} · checksum <span className="text-white">{preview.checksum.slice(0, 12)}…</span> · nada gravado ainda</p>
+            <p className="font-mono text-[0.75rem] text-[#666]">Arquivo: {fileName} · checksum <span className="text-white">{preview.checksum.slice(0, 12)}…</span> · nada gravado ainda</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 ["Válidas", preview.valid], ["Inválidas", preview.invalid], ["Criar", preview.wouldCreate], ["Atualizar (SKU)", preview.wouldUpdate],
               ].map(([l,v]) => (
-                <div key={String(l)} className="border border-[#111] p-3"><div className="font-mono text-[0.6rem] text-[#666] uppercase">{l}</div><div className="font-display font-black text-2xl text-white">{v as number}</div></div>
+                <div key={String(l)} className="border border-[#111] p-3"><div className="font-mono text-[0.75rem] text-[#666] uppercase">{l}</div><div className="font-display font-black text-2xl text-white">{v as number}</div></div>
               ))}
             </div>
             {preview.warnings?.length ? (
-              <div><h3 className="font-mono text-[0.65rem] uppercase text-[#666] mb-2">Avisos</h3><ul className="text-xs text-[#999] font-mono grid gap-1">{preview.warnings.slice(0, 20).map((w,i)=><li key={i}>• {w}</li>)}</ul></div>
+              <div><h3 className="font-mono text-[0.75rem] uppercase text-[#666] mb-2">Avisos</h3><ul className="text-xs text-[#999] font-mono grid gap-1">{preview.warnings.slice(0, 20).map((w,i)=><li key={i}>• {w}</li>)}</ul></div>
             ) : null}
             {preview.errors?.length ? (
-              <div><h3 className="font-mono text-[0.65rem] uppercase text-[#dc2626] mb-2">Erros por linha ({preview.errors.length})</h3>
+              <div><h3 className="font-mono text-[0.75rem] uppercase text-[#dc2626] mb-2">Erros por linha ({preview.errors.length})</h3>
                 <ul className="text-xs font-mono grid gap-1 max-h-64 overflow-auto border border-[#111] p-3">
                   {preview.errors.map((e,i)=><li key={i} className="text-[#dc2626]">Linha {e.line}{e.field?` · ${e.field}`:""}: {e.message}{e.value?` (${e.value})`:""}</li>)}
                 </ul>
@@ -155,7 +155,7 @@ export default function ImportCsvPage() {
             {stage === "ready" && preview.invalid === 0 && preview.valid > 0 && (
               <div className="border border-[#111] p-4 grid gap-3">
                 <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} className="accent-[#8bcf16] mt-1" /> <span>Confirmo a aplicação desta importação (checksum verificado). Linhas válidas serão gravadas em transação; em falha, rollback total.</span></label>
-                <div className="flex gap-4"><button type="button" className="btn-primary px-8 py-3" onClick={apply} disabled={busy || !confirmed}>{busy ? "Aplicando…" : "Confirmar e aplicar"}</button><button type="button" className="font-mono text-[0.65rem] uppercase text-[#666] underline" onClick={reset} disabled={busy}>Cancelar</button></div>
+                <div className="flex gap-4"><button type="button" className="btn-primary px-8 py-3" onClick={apply} disabled={busy || !confirmed}>{busy ? "Aplicando…" : "Confirmar e aplicar"}</button><button type="button" className="font-mono text-[0.75rem] uppercase text-[#666] underline" onClick={reset} disabled={busy}>Cancelar</button></div>
               </div>
             )}
             {stage === "ready" && preview.invalid > 0 && (
@@ -173,7 +173,7 @@ export default function ImportCsvPage() {
         )}
 
         {stage === "error" && preview?.errors?.length ? (
-          <div className="grid gap-2"><ul className="text-xs font-mono grid gap-1">{preview.errors.slice(0,15).map((e,i)=><li key={i} className="text-[#dc2626]">{e.message}</li>)}</ul><button type="button" className="font-mono text-[0.65rem] uppercase text-[#666] underline w-fit" onClick={reset}>Tentar outro arquivo</button></div>
+          <div className="grid gap-2"><ul className="text-xs font-mono grid gap-1">{preview.errors.slice(0,15).map((e,i)=><li key={i} className="text-[#dc2626]">{e.message}</li>)}</ul><button type="button" className="font-mono text-[0.75rem] uppercase text-[#666] underline w-fit" onClick={reset}>Tentar outro arquivo</button></div>
         ) : null}
       </section>
     </main>

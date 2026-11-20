@@ -13,7 +13,7 @@
   gap: 0.4rem;
   padding: 1rem clamp(1rem, 4vw, 2.5rem);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--dim);
@@ -55,7 +55,7 @@
   padding-bottom: 0.85rem;
   border-bottom: 1px solid var(--line);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -67,7 +67,7 @@
   color: var(--primary);
   text-decoration: none;
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
@@ -76,7 +76,7 @@
 .filters__title {
   margin: 0 0 0.6rem;
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -97,7 +97,7 @@
 }
 .filters__item span {
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   color: #6f766f;
 }
 .filters__item:hover { color: #ffffff; background: rgb(139 207 22 / 0.06); }
@@ -110,7 +110,7 @@
 .filters__hint {
   margin: 0.6rem 0 0;
   font-family: var(--font-mono);
-  font-size: 0.66rem;
+  font-size: 0.75rem;
   color: #6f766f;
 }
 
@@ -138,7 +138,7 @@
 .catalog__count {
   margin: 0.5rem 0 0;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--dim);
@@ -146,7 +146,7 @@
 .catalog__sort { display: flex; align-items: center; gap: 0.6rem; }
 .catalog__sort label {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -208,7 +208,7 @@
 }
 .pager__info {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--dim);

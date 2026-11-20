@@ -128,11 +128,11 @@ export default function ProductsPage() {
                   <tr key={p.id} className="group">
                     <td>
                       <div className="font-display font-black text-lg text-white">{p.name}</div>
-                      <span className="font-mono text-[0.6rem] uppercase tracking-widest text-[#666] block mt-1">{p.slug}</span>
+                      <span className="font-mono text-[0.75rem] uppercase tracking-widest text-[#666] block mt-1">{p.slug}</span>
                     </td>
                     <td className="font-mono text-sm font-bold text-white">{price}</td>
                     <td>
-                      <span className={`font-mono text-[0.6rem] uppercase font-bold ${p.published ? "text-[#8bcf16]" : "text-[#666]"}`}>
+                      <span className={`font-mono text-[0.75rem] uppercase font-bold ${p.published ? "text-[#8bcf16]" : "text-[#666]"}`}>
                         {p.published ? "Publicado" : "Rascunho"}{p.featured ? " · Destaque" : ""}
                       </span>
                     </td>
@@ -142,17 +142,17 @@ export default function ProductsPage() {
                       </span>
                     </td>
                     <td className="flex flex-wrap gap-2">
-                      <Link href={`/products/${p.id}`} className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors">Editar</Link>
+                      <Link href={`/products/${p.id}`} className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors">Editar</Link>
                       <button
                         type="button"
-                        className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors"
+                        className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors"
                         onClick={() => { if (p.published && !confirm("Despublicar este produto?")) return; toggle(p.id, "published", p.published); }}
                       >
                         {p.published ? "Despublicar" : "Publicar"}
                       </button>
                       <button
                         type="button"
-                        className="font-mono text-[0.6rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors"
+                        className="font-mono text-[0.75rem] uppercase font-bold py-1 px-3 border border-[#111] text-[#666] hover:border-[#8bcf16] hover:text-[#8bcf16] transition-colors"
                         onClick={() => toggle(p.id, "featured", p.featured)}
                       >
                         {p.featured ? "Sem destaque" : "Destacar"}
@@ -163,7 +163,7 @@ export default function ProductsPage() {
               })}
             </tbody>
           </table>
-          <p className="mt-6 text-[#333] font-mono text-[0.6rem] uppercase tracking-widest">
+          <p className="mt-6 text-[#333] font-mono text-[0.75rem] uppercase tracking-widest">
             Preços via primeiras variantes. Edição completa de SKU/estoque em /products/new.
           </p>
         </div>

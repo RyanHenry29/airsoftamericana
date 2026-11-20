@@ -215,11 +215,27 @@ export async function seed(db: Db) {
 export default seed;
 
 // CLI: `npm run db:seed`
+// Guarda de alvo ANTES de abrir conexão: seed nunca toca produção e nunca
+// toca banco remoto sem opt-in explícito (SEED_ALLOW_REMOTE=1).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const { assertSeedTargetAllowed } = await import("./seed-target.js");
+  try {
+    assertSeedTargetAllowed({
+      nodeEnv: process.env.NODE_ENV ?? "development",
+      databaseUrl: process.env.DATABASE_URL ?? "",
+      allowRemote: process.env.SEED_ALLOW_REMOTE === "1",
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
   const { getDb, closeDb } = await import("./index.js");
   const { migrate } = await import("./migrate.js");
   const db = await getDb();
-  await migrate(db);
-  await seed(db);
-  await closeDb();
+  try {
+    await migrate(db);
+    await seed(db);
+  } finally {
+    await closeDb();
+  }
 }

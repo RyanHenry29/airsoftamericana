@@ -14,7 +14,10 @@ export const metadata: Metadata = {
   alternates: { canonical: "/termos" },
 };
 
-export const dynamic = "force-dynamic";
+// Página pública da vitrine: revalidação de 60 s (Data Cache). O SSR
+// não lê cookie nenhum — sessão, carrinho e conta são resolvidos no
+// cliente — então a rota serve do cache sem perder estado de ninguém.
+export const revalidate = 60;
 
 function buildSections(s: CommercialSettings) {
   const pix = s.pix_discount_percent ?? 0;
