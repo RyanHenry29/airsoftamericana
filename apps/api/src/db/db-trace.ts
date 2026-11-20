@@ -19,6 +19,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomBytes } from "node:crypto";
 
 export type DbTrace = {
   /** Tempo total gasto nas consultas desta requisição. */
@@ -121,6 +122,9 @@ export function traceHeader(trace: DbTrace): string {
     `emax=${trace.admissionErrors}`,
     `est=${trace.establishmentErrors}`,
     `bstop=${trace.budgetStops}`,
+    `pmax=${runtimeInfo.poolMax}`,
+    `ctmo=${runtimeInfo.acquireTimeoutMs}`,
+    `inst=${instanceId}`,
   ].join(";");
 }
 
@@ -128,6 +132,35 @@ export function traceHeader(trace: DbTrace): string {
 export function traceServerTiming(trace: DbTrace): string {
   const sql = Math.max(0, Math.round(trace.queryMs - trace.acquireMs));
   return `db;dur=${Math.round(trace.queryMs)};desc="acq=${Math.round(trace.acquireMs)},sql=${sql},att=${trace.attempts},retry=${trace.retries}"`;
+}
+
+/**
+ * Identidade do processo que atendeu a requisição.
+ *
+ * A Vercel não expõe "quantas instâncias atenderam esta rajada" por API. O
+ * processo, porém, sabe: um id aleatório por boot identifica a instância. Com
+ * o id e a janela de tempo de cada requisição dá para medir a concorrência
+ * REAL por instância — que é o número que decide se `max: 1` do pool é
+ * problema ou não.
+ */
+const instanceId = randomBytes(4).toString("hex");
+
+/** Configuração de pool em vigor na instância — precisa aparecer na evidência. */
+export type DbRuntimeInfo = {
+  /** `max` do pool. */
+  poolMax: number;
+  /** `connectionTimeoutMillis` do pool. */
+  acquireTimeoutMs: number;
+};
+
+let runtimeInfo: DbRuntimeInfo = { poolMax: 0, acquireTimeoutMs: 0 };
+
+export function setDbRuntimeInfo(next: DbRuntimeInfo): void {
+  runtimeInfo = { ...next };
+}
+
+export function dbInstanceId(): string {
+  return instanceId;
 }
 
 /** Forma mínima da resposta HTTP usada aqui (ServerResponse satisfaz). */

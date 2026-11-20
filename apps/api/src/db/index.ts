@@ -11,6 +11,7 @@ import { config } from "../config.js";
 import * as schema from "./schema.js";
 import { SUPABASE_ROOT_CA_PEM } from "./supabase-root-ca.js";
 import { assertSessionScopeSafe, classifyPooler, poolSizing } from "./pool-mode.js";
+import { setDbRuntimeInfo } from "./db-trace.js";
 import { createResilientPool, errorCode } from "./db-retry.js";
 import { benchLogger } from "../lib/query-bench.js";
 
@@ -174,6 +175,7 @@ export async function getDb(connectionString?: string): Promise<Db> {
     // Dimensiona por modo de pooler: transaction/session aceitam uma conexão
     // por instância (o pooler limita os clientes do projeto, não a instância).
     const sizing = poolSizing(classifyPooler(raw));
+    setDbRuntimeInfo({ poolMax: sizing.max, acquireTimeoutMs: sizing.connectionTimeoutMillis });
     poolInstance = createResilientPool(
       {
         connectionString: url,

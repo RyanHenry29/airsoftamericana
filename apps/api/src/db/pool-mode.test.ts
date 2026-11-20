@@ -42,15 +42,41 @@ describe("poolSizing", () => {
     }
   });
 
-  it("B2: falha a fila do pool em 2 s nos modos com pooler", () => {
-    // O incidente da Opção B: com `max: 1` e concorrência otimizada do Fluid
-    // compute, 10 s de espera por uma conexão do próprio pool derrubavam todas
-    // as invocações concorrentes da instância. 2 s deixa o retry trabalhar.
-    expect(poolSizing("transaction").connectionTimeoutMillis).toBe(2_000);
-    expect(poolSizing("session").connectionTimeoutMillis).toBe(2_000);
-    // Uma conexão por instância e vaga devolvida continuam valendo.
-    expect(poolSizing("transaction")).toMatchObject({ max: 1, idleTimeoutMillis: 10_000 });
-    expect(poolSizing("session")).toMatchObject({ max: 1, idleTimeoutMillis: 10_000 });
+  it("padrão: uma conexão por instância e fila de 10 s (controle medido)", () => {
+    // O regime aquecido só fecha 300/300 com a espera LONGA: a fila do pool é
+    // o que serializa as invocações concorrentes da mesma instância. Cortar a
+    // espera converte fila em erro — medido no experimento B2 (6-12/300).
+    expect(poolSizing("transaction")).toMatchObject({
+      max: 1,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 10_000,
+    });
+    expect(poolSizing("session")).toMatchObject({
+      max: 1,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 10_000,
+    });
+  });
+
+  it("dimensionamento por variável de ambiente (benchmark de concorrência)", () => {
+    const before = { ...process.env };
+    try {
+      process.env.DB_POOL_MAX = "3";
+      process.env.DB_POOL_ACQUIRE_TIMEOUT_MS = "2500";
+      process.env.DB_POOL_IDLE_TIMEOUT_MS = "20000";
+      expect(poolSizing("transaction")).toMatchObject({
+        max: 3,
+        connectionTimeoutMillis: 2_500,
+        idleTimeoutMillis: 20_000,
+      });
+      // Valor inválido ou fora da faixa não passa: o fallback é o padrão.
+      process.env.DB_POOL_MAX = "lixo";
+      expect(poolSizing("transaction").max).toBe(1);
+      process.env.DB_POOL_MAX = "999";
+      expect(poolSizing("transaction").max).toBe(20);
+    } finally {
+      process.env = before;
+    }
   });
 
   it("devolve a vaga do pooler quando a conexão fica ociosa", () => {
