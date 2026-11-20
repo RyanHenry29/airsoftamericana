@@ -712,6 +712,9 @@ address.footer__line { font-style: normal; }
 }
 
 /* Cookie / armazenamento local (LGPD) */
+/* O script inline do layout marca o <html> antes da primeira pintura quando
+   a escolha já está registrada: o aviso não chega a piscar na tela. */
+.aa-cookie-dismissed .cookie-consent { display: none; }
 .cookie-consent {
   position: fixed;
   left: 0; right: 0; bottom: 0;

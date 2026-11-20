@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { Barlow_Condensed, IBM_Plex_Mono, Inter } from "next/font/google";
 import { cache } from "react";
 import { AutoLayout } from "./components/AutoLayout";
+import { COOKIE_CONSENT_KEY, COOKIE_DISMISSED_CLASS } from "./lib/cookie-consent";
 import { CookieConsent } from "./components/CookieConsent";
 import { API_URL, formatBRL, storeGet } from "./lib/store";
 
@@ -33,9 +34,14 @@ const body = Inter({
 
 const mono = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  // 500 não é usado em nenhum componente nem em CSS: fora da lista para não
+  // pagar mais um woff2 no caminho crítico.
+  weight: ["400", "600"],
   variable: "--font-mono",
   display: "swap",
+  // A mono só aparece em rótulos pequenos (badge do carrinho, selos, kickers):
+  // não disputa banda com as fontes do LCP.
+  preload: false,
 });
 
 // cache() do React: generateMetadata e o JSON-LD do layout precisam das
@@ -148,6 +154,14 @@ export default async function RootLayout({
       <body
         className={`${display.variable} ${body.variable} ${mono.variable} bg-background font-sans antialiased`}
       >
+        {/* Primeira coisa do body: quem já registrou a escolha não vê o aviso
+            de cookies nem um frame de flash — a classe esconde o banner antes
+            da primeira pintura, sem depender da hidratação. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var v=localStorage.getItem("${COOKIE_CONSENT_KEY}");if(v==="accepted"||v==="rejected"){document.documentElement.classList.add("${COOKIE_DISMISSED_CLASS}")}}catch(e){}`,
+          }}
+        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(org) }}

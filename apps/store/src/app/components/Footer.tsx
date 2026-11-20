@@ -8,7 +8,7 @@ import { AtSign, Mail, MessageCircle } from "lucide-react";
 import type { CommercialSettings } from "../lib/store";
 import type { Company } from "../lib/store";
 import { PaymentMarks } from "./PaymentMarks";
-import { COOKIE_PREFS_EVENT } from "./CookieConsent";
+import { COOKIE_PREFS_EVENT } from "../lib/cookie-consent";
 
 const infoLinks = [
   { label: "Por que comprar aqui", href: "/por-que-comprar" },

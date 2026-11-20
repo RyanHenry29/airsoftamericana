@@ -2,35 +2,49 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  COOKIE_CONSENT_KEY,
+  COOKIE_DISMISSED_CLASS,
+  COOKIE_PREFS_EVENT,
+  type CookieChoice,
+} from "../lib/cookie-consent";
 
-const KEY = "aa_cookie_consent_v1";
-/** Rodapé → "Preferências de cookies" reabre o aviso para quem já escolheu. */
-export const COOKIE_PREFS_EVENT = "aa:cookie-prefs";
+type Choice = CookieChoice;
 
-type Choice = "accepted" | "rejected";
+function storedChoice(): Choice | null {
+  try {
+    const v = localStorage.getItem(COOKIE_CONSENT_KEY);
+    return v === "accepted" || v === "rejected" ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 export function CookieConsent() {
-  const [visible, setVisible] = useState(false);
+  // O aviso nasce no HTML do servidor. Antes ele só existia depois da
+  // hidratação (useState(false) -> useEffect), e no catálogo esse parágrafo
+  // pintava aos 4,4 s e virava o LCP da página. O script inline do layout
+  // esconde, antes da primeira pintura, quem já registrou a escolha.
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    try {
-      const v = localStorage.getItem(KEY);
-      if (v !== "accepted" && v !== "rejected") setVisible(true);
-    } catch {
+    if (storedChoice()) setVisible(false);
+    const reopen = () => {
+      document.documentElement.classList.remove(COOKIE_DISMISSED_CLASS);
       setVisible(true);
-    }
-    const reopen = () => setVisible(true);
+    };
     window.addEventListener(COOKIE_PREFS_EVENT, reopen);
     return () => window.removeEventListener(COOKIE_PREFS_EVENT, reopen);
   }, []);
 
   function choose(choice: Choice) {
     try {
-      localStorage.setItem(KEY, choice);
-      document.cookie = `${KEY}=${choice}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+      localStorage.setItem(COOKIE_CONSENT_KEY, choice);
+      document.cookie = `${COOKIE_CONSENT_KEY}=${choice}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
     } catch {
       /* storage indisponível */
     }
+    document.documentElement.classList.add(COOKIE_DISMISSED_CLASS);
     setVisible(false);
   }
 
