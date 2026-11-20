@@ -41,6 +41,13 @@ describe("poolSizing", () => {
       expect(poolSizing(mode).connectionTimeoutMillis).toBeGreaterThan(0);
     }
   });
+
+  it("devolve a vaga do pooler quando a conexão fica ociosa", () => {
+    for (const mode of ["transaction", "session", "direct"] as const) {
+      expect(poolSizing(mode).idleTimeoutMillis).toBeGreaterThan(0);
+      expect(poolSizing(mode).idleTimeoutMillis).toBeLessThanOrEqual(30_000);
+    }
+  });
 });
 
 describe("assertSessionScopeSafe", () => {

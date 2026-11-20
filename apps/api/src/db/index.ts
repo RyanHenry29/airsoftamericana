@@ -1,7 +1,7 @@
 import { drizzle as drizzlePglite, type PgliteDatabase } from "drizzle-orm/pglite";
 import { drizzle as drizzlePg, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { PGlite } from "@electric-sql/pglite";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import tls from "node:tls";
 import path from "node:path";
 import fs from "node:fs";
@@ -11,6 +11,7 @@ import { config } from "../config.js";
 import * as schema from "./schema.js";
 import { SUPABASE_ROOT_CA_PEM } from "./supabase-root-ca.js";
 import { assertSessionScopeSafe, classifyPooler, poolSizing } from "./pool-mode.js";
+import { createResilientPool, errorCode } from "./db-retry.js";
 import { benchLogger } from "../lib/query-bench.js";
 
 /**
@@ -173,12 +174,24 @@ export async function getDb(connectionString?: string): Promise<Db> {
     // Dimensiona por modo de pooler: transaction/session aceitam uma conexão
     // por instância (o pooler limita os clientes do projeto, não a instância).
     const sizing = poolSizing(classifyPooler(raw));
-    poolInstance = new Pool({
-      connectionString: url,
-      max: sizing.max,
-      ssl,
-      connectionTimeoutMillis: sizing.connectionTimeoutMillis,
-    });
+    poolInstance = createResilientPool(
+      {
+        connectionString: url,
+        max: sizing.max,
+        ssl,
+        connectionTimeoutMillis: sizing.connectionTimeoutMillis,
+        // Conexão ociosa devolve a vaga ao pooler: instância aquecida não
+        // segura vaga do teto global (200 clientes por projeto).
+        idleTimeoutMillis: sizing.idleTimeoutMillis,
+      },
+      {
+        onRetry: ({ attempt, delayMs, error, phase }) => {
+          console.warn(
+            `[db] retry ${attempt} em ${delayMs}ms (${phase}) — ${errorCode(error) ?? "erro transitório"}`,
+          );
+        },
+      },
+    );
     db = drizzlePg(poolInstance, { schema, ...bench });
   } else {
     const configured = process.env.PGLITE_DIR;

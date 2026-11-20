@@ -3,6 +3,7 @@
  * Segredos nunca são logados.
  */
 import { z } from "zod";
+import { classifyPooler } from "./db/pool-mode.js";
 
 const envSchema = z.object({
   API_PORT: z.coerce.number().default(4000),
@@ -94,31 +95,24 @@ function isLocal(url: string): boolean {
 
 /**
  * URL que o runtime serverless deve usar para abrir o pool.
- * `DATABASE_URL_RUNTIME` tem precedência; sem ela, cai em `DATABASE_URL`.
+ * `DATABASE_URL_RUNTIME` tem precedência; fora de produção, sem ela, cai em
+ * `DATABASE_URL`.
+ *
+ * Em PRODUÇÃO o fallback é PROIBIDO: a `DATABASE_URL` aponta para o pooler em
+ * session mode (15 clientes) e o runtime em rajada responderia 500 em tudo
+ * (EMAXCONNSESSION). Sem `DATABASE_URL_RUNTIME` configurada, a API não sobe —
+ * assim uma configuração esquecida não reativa o Session Mode em silêncio.
  */
 export function runtimeDatabaseUrl(env: NodeJS.ProcessEnv): string {
-  return (env.DATABASE_URL_RUNTIME ?? "").trim() || (env.DATABASE_URL ?? "").trim();
-}
-
-/**
- * Avisos (não fatais) de configuração do runtime — o log precisa dizer o que
- * ajustar sem derrubar a API.
- */
-export function runtimeWarnings(env: NodeJS.ProcessEnv): string[] {
-  const warnings: string[] = [];
-  if ((env.NODE_ENV ?? "") !== "production") return warnings;
-
   const runtime = (env.DATABASE_URL_RUNTIME ?? "").trim();
-  const database = (env.DATABASE_URL ?? "").trim();
-  if (!runtime && database.includes(".pooler.supabase.com") && !database.includes(":6543")) {
-    warnings.push(
-      "DATABASE_URL_RUNTIME ausente — o runtime serverless está no pooler em session mode " +
-        "(porta 5432), que aceita no máximo 15 clientes simultâneos. Em rajada a API responde " +
-        "500 em tudo (EMAXCONNSESSION). Configure DATABASE_URL_RUNTIME com a porta 6543 " +
-        "(transaction mode).",
+  if (runtime) return runtime;
+  if ((env.NODE_ENV ?? "") === "production") {
+    throw new Error(
+      "DATABASE_URL_RUNTIME ausente em produção — o runtime serverless exige o pooler em " +
+        "transaction mode (porta 6543).",
     );
   }
-  return warnings;
+  return (env.DATABASE_URL ?? "").trim();
 }
 
 /**
@@ -172,11 +166,26 @@ export function assertProductionEnv(env: NodeJS.ProcessEnv): EnvProblem[] {
   }
 
   const runtimeUrl = (env.DATABASE_URL_RUNTIME ?? "").trim();
-  if (runtimeUrl && !/^postgres(ql)?:\/\//i.test(runtimeUrl)) {
+  if (!runtimeUrl) {
+    problems.push({
+      variable: "DATABASE_URL_RUNTIME",
+      message:
+        "DATABASE_URL_RUNTIME ausente — em produção o runtime serverless exige o pooler em transaction mode " +
+        "(porta 6543). Sem ela a API cairia na DATABASE_URL (session mode, 5432), que aceita no máximo 15 " +
+        "clientes simultâneos e derruba a vitrine com 500 em rajada (EMAXCONNSESSION).",
+    });
+  } else if (!/^postgres(ql)?:\/\//i.test(runtimeUrl)) {
     problems.push({
       variable: "DATABASE_URL_RUNTIME",
       message:
         "DATABASE_URL_RUNTIME não é uma URL de Postgres — o runtime serverless não conseguiu montar o pool.",
+    });
+  } else if (classifyPooler(runtimeUrl) === "session") {
+    problems.push({
+      variable: "DATABASE_URL_RUNTIME",
+      message:
+        "DATABASE_URL_RUNTIME aponta para o pooler em session mode (porta 5432) — o runtime serverless exige " +
+        "transaction mode (porta 6543). A sessão de 15 clientes estoura em rajada (EMAXCONNSESSION).",
     });
   }
 
@@ -225,9 +234,6 @@ if (parsed.data.NODE_ENV === "production") {
         problems.map((p) => `  - [${p.variable}] ${p.message}`).join("\n"),
     );
     process.exit(1);
-  }
-  for (const warning of runtimeWarnings(process.env)) {
-    console.warn(`[api] aviso de configuração: ${warning}`);
   }
 }
 
