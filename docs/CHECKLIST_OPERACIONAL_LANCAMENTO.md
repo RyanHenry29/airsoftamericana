@@ -68,6 +68,90 @@ produção.
 
 ---
 
+## Registro de execução — 2026-11-20 (experimento B2: aquisição de conexão)
+
+B2 testado em Preview como experimento controlado — **sem merge, sem deploy de
+produção, sem `db:bootstrap`, sem DNS, sem gateway, sem escrita em dados de
+produção**. Código testado: `ee25c7c` (branch `fix/aud03-migration-ledger`).
+Base de comparação: `93c1490` (Opção B, rejeitada) e `68ba49a` (controle).
+
+O que B2 muda: `connectionTimeoutMillis` 10 s → **2 s** nos modos com pooler;
+timeout de fila do `pg-pool` reconhecido como recuperável **na aquisição**;
+`attempts` 3, `baseDelayMs` 800, `maxDelayMs` 2 500, `totalTimeoutMs` 6 000 com
+**1 500 ms reservados** para a última tentativa; bucket 5/s rajada 10;
+disjuntor contando **operações** que desistiram (não tentativas). `max: 1` e
+`idleTimeoutMillis: 10 000` preservados. Somado a isso, instrumentação por
+requisição (`x-db-trace` / `Server-Timing`) porque o log da Vercel é amostrado.
+
+### Rajadas de 300 GETs — três frias e três aquecidas por política
+
+| Política | Rodada | Fria 200/500 | p50 | p95 | máx | > 6 s | > 9 s | Aquecida 200/500 | p50 | p95 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **B2** `ee25c7c` | r1 | **252/48** | 3 279 | 10 622 | 12 494 | 48 | 19 | **12/288** | 5 721 | 6 875 |
+| **B2** | r2 | **172/128** | 3 284 | 7 834 | 11 430 | 128 | 9 | **7/293** | 5 651 | 6 744 |
+| **B2** | r3 | **211/89** | 3 321 | 7 483 | 8 601 | 89 | 0 | **6/294** | 5 635 | 6 824 |
+| Opção B `93c1490` | r1–r4 | 240 · 153 · 100 · 70 | 3,3–11,1 s | 12,3–12,6 s | 13,4 s | — | 56 · 107 · 187 · 230 | 300/300 | 1,4–1,5 s | 2,0–5,7 s |
+| Controle `68ba49a` | 1 | 104/196 | 5 101 | 6 147 | 8 169 | 31 | 0 | **300/300** | 1 541 | 1 728 |
+
+O controle foi remedido hoje, com o mesmo protocolo (pooler limpo → `vercel
+redeploy` → rajada; aquecida após 20 GETs sequenciais).
+
+### O que a trilha por requisição mostrou
+
+| Grandeza (300 requisições) | B2 fria r1 · r2 · r3 | B2 aquecida r1 · r2 · r3 |
+|---|---|---|
+| Requisições com timeout de **fila do pool** | 6 · 0 · 0 | **275 · 271 · 280** |
+| Requisições com `EMAXCONN` (pooler) | 45 · 128 · 89 | 96 · 96 · 92 |
+| `sql` p95 | 37 · 37 · 37 ms | 1 · 0 · 0 ms |
+| `acq` p95 | 4 159 · 4 022 · 3 837 ms | 5 908 · 5 366 · 5 869 ms |
+| Tempo de banco máximo (total do orçamento) | 5 831 ms | 6 492 ms |
+| Backends no Postgres (pico amostrado) | 4–5 | — |
+| Timeout de plataforma (504) | 0 | 0 |
+
+Leitura: **fria e aquecida falham por motivos opostos**. A fria é o pooler (teto
+de 200) — os retries de B2 converteram parte das recusas (252 contra 104 do
+controle) e o orçamento de 6 s foi respeitado (máximo de 5 831 ms de trabalho de
+banco). A aquecida é a **fila interna do pool**: 271–280 das 300 requisições
+esperaram mais de 2 s por uma conexão que estava sendo usada por uma invocação
+irmã — com consultas de 35 ms. O timeout de 2 s transformou essa fila saudável
+em 500.
+
+### Critérios de aprovação
+
+| Critério | Medido | Situação |
+|---|---|---|
+| p95 fria ≤ 6 s | 10 622 · 7 834 · 7 483 | **FALHOU** |
+| Zero requisição > 9 s | 19 · 9 · 0 | **FALHOU** |
+| Fria igual ou melhor que o controle, de forma consistente | 252 · 172 · 211 contra 104 | PASSOU |
+| 300/300 nas aquecidas | 12 · 7 · 6 | **FALHOU** |
+| Nenhuma repetição de operação com resultado incerto | `ECONNRESET` na consulta não repetido; aquisição esgotada marcada em `WeakSet` (sem 3×3); `sql = 0` nas falhas | PASSOU |
+| Sem crescimento descontrolado de conexões | 4–5 backends | PASSOU |
+| Sem timeout da plataforma | 0 | PASSOU |
+| `npm run verify` / `pg-integration` | 399/399 + 76/76 + tsc limpo · 113/113 em PostgreSQL real 17.11 | PASSOU |
+
+**Veredito: REJEITAR B2.** Não se estende o orçamento nem se mexe no timeout
+para forçar aprovação — a falha da rodada aquecida não é de tempo, é de
+mecanismo.
+
+### Correção de rota que o experimento entrega
+
+1. `connectionTimeoutMillis: 2 000` com `max: 1` está errado: a fila do pool é
+   a única coisa que serializa invocações concorrentes da mesma instância. O
+   caminho é limitar a concorrência por instância na Vercel (ou aceitar a fila
+   longa) — não cortar a espera.
+2. A classificação nova do timeout de fila continua correta e é ortogonal: ela
+   só evita que o erro fique invisível ao retry. Foi exercitada 271–280 vezes
+   por rodada aquecida e nunca disparou em erro de statement (`57014` e
+   `ETIMEDOUT` continuam fora).
+3. O ganho real de B2 está na rodada **fria**: retry com atraso maior converte
+   `EMAXCONN` em 200 (252 contra 104). É a parte aproveitável.
+4. Bucket e disjuntor são **por processo**: multiplicados por instância, não
+   são proteção global. O teto de 200 do pooler segue dependendo de compute do
+   Supabase ou de limite de concorrência na Vercel — retry não substitui
+   capacidade.
+
+---
+
 ## 0. Princípios
 
 | # | Regra | Evidência |
@@ -168,6 +252,29 @@ maior que isso, a mitigação é do lado do provedor — subir o add-on de compu
 Supabase (lojista) ou limitar a concorrência da função na Vercel. Monitorar
 `EMAXCONN` no log da API: ele é o sinal early-warning de que o teto foi
 atingido.
+
+#### 1.3.1.1 Os dois gargalos são diferentes — medido em 2026-11-20 (B2)
+
+Uma rajada de 300 GETs produz **duas** falhas distintas, e tratá-las como uma
+só foi o erro da Opção B:
+
+| Regime | Erro dominante | Origem | O que resolve |
+|---|---|---|---|
+| Deployment **a frio** | `EMAXCONN` (128 · 384 · 267 ocorrências em 300 requisições) | pooler recusou o cliente — teto de 200 do projeto | esperar a vaga liberar (retry com atraso) |
+| Deployment **aquecido** | `timeout exceeded when trying to connect` (271–280 de 300 requisições) | fila do **próprio pool** da instância (`max: 1`) atrás de invocações irmãs do Fluid compute | **esperar mais**, não menos: cada consulta real leva ~35 ms |
+
+Consequência prática: encurtar `connectionTimeoutMillis` de 10 s para 2 s
+converte a fila saudável em erro. As consultas levam ~35 ms (`sql` p95 = 37 ms
+no experimento); o que estoura os 2 s é a espera atrás de invocações irmãs — a
+própria trilha mediu isso: 271–280 das 300 requisições bateram no timeout de
+fila. Com o timeout de 10 s o regime aquecido fecha 300/300 em p50 de 1,5 s;
+com 2 s, fecha **6–12/300**. O experimento B2 (commit `ee25c7c`) foi rejeitado
+por isso — ver registro de 2026-11-20 (experimento B2).
+
+Corolário: o timeout de fila do `pg-pool` **não** deve ser reduzido enquanto
+`max: 1` for a regra. O caminho para absorver concorrência é limitar a
+concorrência por instância na Vercel (ou aceitar a fila e mantê-la longa), não
+cortar a espera.
 
 ### 1.4 Teste de conexão (local, temporário/staging — nunca produção)
 
