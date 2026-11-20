@@ -40,7 +40,11 @@ async function main(): Promise<void> {
       : "PGlite local (apps/api/data)";
   console.log(`== Realinhamento do ledger — alvo: ${target} ==`);
 
-  const { getDb, closeDb } = await import("../db/index.js");
+  const { getDb, closeDb, assertSessionScopeSafe } = await import("../db/index.js");
+  // Advisory lock de sessão: exige session mode (5432) ou conexão direta.
+  if (process.env.DATABASE_URL) {
+    assertSessionScopeSafe(process.env.DATABASE_URL, "db:ledger-realign (realinhamento do ledger)");
+  }
   const db = await getDb();
 
   const steps = MIGRATION_STEPS.filter(

@@ -1,6 +1,6 @@
 // language: TS, file: apps/api/src/config.test.ts, target: vitest
 import { describe, it, expect } from "vitest";
-import { assertProductionEnv, DefaultJwtSecret } from "./config.js";
+import { assertProductionEnv, DefaultJwtSecret, runtimeDatabaseUrl, runtimeWarnings } from "./config.js";
 
 const COMPLETE: NodeJS.ProcessEnv = {
   NODE_ENV: "production",
@@ -69,5 +69,52 @@ describe("arranque em produção", () => {
   it("B.1: em produção, CSRF_ENFORCE=false recusa subir", () => {
     expect(problemas({ CSRF_ENFORCE: "false" })).toContain("CSRF_ENFORCE");
     expect(problemas({ CSRF_ENFORCE: "true" })).not.toContain("CSRF_ENFORCE");
+  });
+});
+
+describe("DATABASE_URL_RUNTIME (pooler do runtime serverless)", () => {
+  it("tem precedência sobre DATABASE_URL", () => {
+    expect(
+      runtimeDatabaseUrl({
+        DATABASE_URL: "postgres://u:p@pooler:5432/postgres",
+        DATABASE_URL_RUNTIME: "postgres://u:p@pooler:6543/postgres",
+      }),
+    ).toBe("postgres://u:p@pooler:6543/postgres");
+  });
+
+  it("cai em DATABASE_URL quando não há URL de runtime", () => {
+    expect(runtimeDatabaseUrl({ DATABASE_URL: "postgres://u:p@pooler:5432/postgres" })).toBe(
+      "postgres://u:p@pooler:5432/postgres",
+    );
+    expect(runtimeDatabaseUrl({})).toBe("");
+  });
+
+  it("recusa URL de runtime que não é Postgres", () => {
+    expect(problemas({ DATABASE_URL_RUNTIME: "https://banco.example.com" })).toContain("DATABASE_URL_RUNTIME");
+    expect(problemas({ DATABASE_URL_RUNTIME: "postgres://u:p@pooler:6543/postgres" })).not.toContain(
+      "DATABASE_URL_RUNTIME",
+    );
+  });
+
+  it("avisa quando o runtime fica no session mode do pooler", () => {
+    const avisos = runtimeWarnings({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://u:p@aws-1.pooler.supabase.com:5432/postgres",
+    });
+    expect(avisos.join(" ")).toMatch(/DATABASE_URL_RUNTIME/);
+    expect(avisos.join(" ")).toMatch(/6543/);
+  });
+
+  it("não avisa com transaction mode configurado nem fora de produção", () => {
+    expect(
+      runtimeWarnings({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://u:p@aws-1.pooler.supabase.com:5432/postgres",
+        DATABASE_URL_RUNTIME: "postgres://u:p@aws-1.pooler.supabase.com:6543/postgres",
+      }),
+    ).toEqual([]);
+    expect(
+      runtimeWarnings({ NODE_ENV: "development", DATABASE_URL: "postgres://u:p@aws-1.pooler.supabase.com:5432/postgres" }),
+    ).toEqual([]);
   });
 });

@@ -227,8 +227,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   console.log("== Bootstrap de produção ==");
-  const { getDb, closeDb } = await import("../db/index.js");
+  const { getDb, closeDb, assertSessionScopeSafe } = await import("../db/index.js");
   const { migrate } = await import("../db/migrate.js");
+  // O advisory lock do ledger é de SESSÃO: em transaction mode (6543) o
+  // backend pode trocar entre comandos e dois bootstraps rodariam juntos.
+  assertSessionScopeSafe(process.env.DATABASE_URL, "db:bootstrap (bootstrap de produção)");
   const db = await getDb();
 
   console.log("[1/3] Migrações...");

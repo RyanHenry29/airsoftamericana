@@ -1268,7 +1268,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   }
 
-  const { getDb, closeDb } = await import("./index.js");
+  const { getDb, closeDb, assertSessionScopeSafe } = await import("./index.js");
+  // Advisory lock de sessão: em transaction mode (6543) o backend pode trocar
+  // entre comandos e dois migradores rodariam ao mesmo tempo.
+  if (process.env.DATABASE_URL) {
+    assertSessionScopeSafe(process.env.DATABASE_URL, "db:migrate (migrations)");
+  }
   const db = await getDb();
   try {
     const summary = await migrate(db);

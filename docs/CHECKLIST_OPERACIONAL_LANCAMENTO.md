@@ -81,11 +81,24 @@ O bootstrap concede e confere o papel de runtime:
 recusa continuar se `airsoft_app` ainda puder `UPDATE/DELETE` em
 `audit_logs`. O papel de DDL (`airsoft_ddl`) é o dono do schema.
 
-### 1.3 Pooler
+### 1.3 Pooler — dois modos, comfinalidades diferentes
 
-Advisory lock é **por sessão**: use conexão direta ou pooler em modo
-**Session**. Transaction pooler (`:6543`) não serve
-(`apps/api/src/db/index.ts:163-171`).
+**Migrations e advisory lock (sessão):** conexão direta ou pooler em modo
+**Session** (`:5432`). Transaction pooler (`:6543`) **não serve** — lá o backend
+pode trocar entre comandos e o lock de sessão se perde
+(`apps/api/src/db/pool-mode.ts` — `assertSessionScopeSafe`, aplicado em
+`db:migrate`, `db:bootstrap` e `db:ledger-realign`).
+
+**Runtime serverless (a função da API na Vercel):** pooler em modo
+**Transaction** (`:6543`) via `DATABASE_URL_RUNTIME`. O modo Session do pooler
+do Supabase aceita **no máximo 15 clientes simultâneos** (`pool_size`) e cada
+instância da função abre o próprio pool — em rajada (página de vitrine + ISR +
+varredura de health check) o limite estoura e a API responde **500 em tudo**
+(`EMAXCONNSESSION: max clients reached in session mode`). Medido no staging:
+**38 falhas em 48 requisições** com o modo Session; **0 falhas em 40** com o
+modo Transaction. Em transaction mode o pooler multiplexa clientes sobre
+poucos backends e o pool por instância fica com `max: 1`
+(`apps/api/src/db/pool-mode.ts`, `apps/api/src/db/index.ts`).
 
 ### 1.4 Teste de conexão (local, temporário/staging — nunca produção)
 
@@ -137,6 +150,7 @@ nslookup api.airsoftamericana.com.br
 | Grupo | Variáveis | Quando |
 |---|---|---|
 | Boot (7) | `JWT_SECRET`, `GATEWAY_SECRETS_KEY` (32 bytes base64), `DATABASE_URL`, `STORE_URL`, `ADMIN_URL`, `COOKIE_SAMESITE=lax`, `CSRF_ENFORCE=true` | sempre |
+| Runtime do banco | `DATABASE_URL_RUNTIME` = mesma base em **transaction mode** (`:6543`) — o pool do runtime serverless | sempre (ver 1.3) |
 | E-mail transacional | `RESEND_API_KEY`, `MAIL_FROM` | **só quando** o e-mail transacional estiver habilitado; sem elas o recurso responde 503 "não configurado" e o boot não é impedido (`apps/api/src/config.ts:62-67`) |
 | Gateway (autorização financeira) | `MERCADOPAGO_ACCESS_TOKEN` / `PAGBANK_API_KEY` / `CIELO_CLIENT_ID` + `CIELO_CLIENT_SECRET` | **só após** autorização financeira por escrito |
 | `GATEWAY_ACTIVE` | **ausente** até a autorização financeira | ver 3.3 |
@@ -147,6 +161,8 @@ nslookup api.airsoftamericana.com.br
 - `DATABASE_URL` = **staging** (PostgreSQL isolado). PGlite é aceito só para
   teste automatizado — em serverless o filesystem é efêmero e não serve para
   validar pedidos, estoque, concorrência, webhook e persistência.
+- `DATABASE_URL_RUNTIME` = a mesma base de staging no pooler **transaction
+  mode** (`:6543`) — sem isso a API erra 500 em rajada (ver 1.3).
 - `JWT_SECRET` e `GATEWAY_SECRETS_KEY` **próprios**, diferentes de produção.
 - `GATEWAY_ACTIVE` = nome do provider sandbox usado no staging
   (`mercadopago` | `pagbank` | `cielo`), com credenciais de teste.

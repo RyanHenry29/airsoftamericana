@@ -9,6 +9,13 @@ const envSchema = z.object({
   API_HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().optional().default(""),
+  // URL do Postgres usada pelo RUNTIME SERVERLESS (a função na Vercel).
+  // Opcional: quando ausente, o runtime usa DATABASE_URL. Defina com o pooler
+  // em transaction mode (porta 6543) — o session mode (5432) do Supavisor
+  // aceita no máximo 15 clientes simultâneos e estoura em rajada, derrubando
+  // a vitrine com 500. O CLI de migrations/bootstrap continua na DATABASE_URL
+  // (session mode), porque o advisory lock do ledger é de sessão.
+  DATABASE_URL_RUNTIME: z.string().optional().default(""),
   JWT_SECRET: z.string().default("dev-insecure-secret-troque-em-producao"),
   GATEWAY_SECRETS_KEY: z.string().optional().default(""),
   STORE_URL: z.string().default("http://localhost:3000"),
@@ -86,6 +93,35 @@ function isLocal(url: string): boolean {
 }
 
 /**
+ * URL que o runtime serverless deve usar para abrir o pool.
+ * `DATABASE_URL_RUNTIME` tem precedência; sem ela, cai em `DATABASE_URL`.
+ */
+export function runtimeDatabaseUrl(env: NodeJS.ProcessEnv): string {
+  return (env.DATABASE_URL_RUNTIME ?? "").trim() || (env.DATABASE_URL ?? "").trim();
+}
+
+/**
+ * Avisos (não fatais) de configuração do runtime — o log precisa dizer o que
+ * ajustar sem derrubar a API.
+ */
+export function runtimeWarnings(env: NodeJS.ProcessEnv): string[] {
+  const warnings: string[] = [];
+  if ((env.NODE_ENV ?? "") !== "production") return warnings;
+
+  const runtime = (env.DATABASE_URL_RUNTIME ?? "").trim();
+  const database = (env.DATABASE_URL ?? "").trim();
+  if (!runtime && database.includes(".pooler.supabase.com") && !database.includes(":6543")) {
+    warnings.push(
+      "DATABASE_URL_RUNTIME ausente — o runtime serverless está no pooler em session mode " +
+        "(porta 5432), que aceita no máximo 15 clientes simultâneos. Em rajada a API responde " +
+        "500 em tudo (EMAXCONNSESSION). Configure DATABASE_URL_RUNTIME com a porta 6543 " +
+        "(transaction mode).",
+    );
+  }
+  return warnings;
+}
+
+/**
  * Checklist de arranque em produção.
  *
  * Função pura: recebe o ambiente e devolve a lista de problemas. Quem chama
@@ -135,6 +171,15 @@ export function assertProductionEnv(env: NodeJS.ProcessEnv): EnvProblem[] {
     });
   }
 
+  const runtimeUrl = (env.DATABASE_URL_RUNTIME ?? "").trim();
+  if (runtimeUrl && !/^postgres(ql)?:\/\//i.test(runtimeUrl)) {
+    problems.push({
+      variable: "DATABASE_URL_RUNTIME",
+      message:
+        "DATABASE_URL_RUNTIME não é uma URL de Postgres — o runtime serverless não conseguiu montar o pool.",
+    });
+  }
+
   for (const variable of ["STORE_URL", "ADMIN_URL"] as const) {
     const url = (env[variable] ?? "").trim();
     if (!url) {
@@ -180,6 +225,9 @@ if (parsed.data.NODE_ENV === "production") {
         problems.map((p) => `  - [${p.variable}] ${p.message}`).join("\n"),
     );
     process.exit(1);
+  }
+  for (const warning of runtimeWarnings(process.env)) {
+    console.warn(`[api] aviso de configuração: ${warning}`);
   }
 }
 
