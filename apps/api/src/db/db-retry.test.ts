@@ -8,6 +8,8 @@ import {
   installDbRetry,
   isAdmissionControlError,
   isConnectionEstablishmentError,
+  isPoolQueueTimeout,
+  isRetryableAcquire,
   retryDelayMs,
   runWithDbRetry,
   type PoolLike,
@@ -168,32 +170,41 @@ describe("runWithDbRetry", () => {
     const failing = vi.fn(async () => {
       throw ADMISSION;
     });
-    await expect(
-      runWithDbRetry(failing, {
-        policy: policy({ attempts: 2 }),
-        governor,
-        isRetryable: isAdmissionControlError,
-        sleep,
-        random: () => 1,
-      }),
-    ).rejects.toThrow(/EMAXCONN/);
+    // Duas operações desistindo; no meio delas a conexão continua subindo e
+    // caindo sem zerar a contagem — só a consulta completa zera.
+    for (let i = 0; i < 2; i++) {
+      await expect(
+        runWithDbRetry(failing, {
+          policy: policy({ attempts: 2 }),
+          governor,
+          isRetryable: isAdmissionControlError,
+          sleep,
+          random: () => 1,
+        }),
+      ).rejects.toThrow(/EMAXCONN/);
+    }
     expect(governor.isOpen()).toBe(true);
   });
 
-  it("abre o disjuntor após falhas consecutivas e falha na hora depois disso", async () => {    const governor = new RetryGovernor(policy({ breakerThreshold: 2, breakerCooldownMs: 10_000 }));
+  it("abre o disjuntor após operações consecutivas que desistiram", async () => {    const governor = new RetryGovernor(policy({ breakerThreshold: 2, breakerCooldownMs: 10_000 }));
     const sleep = vi.fn(async () => {});
     const failing = vi.fn(async () => {
       throw ESTABLISHMENT;
     });
-    await expect(
-      runWithDbRetry(failing, {
-        policy: policy({ attempts: 2 }),
-        governor,
-        isRetryable: isConnectionEstablishmentError,
-        sleep,
-        random: () => 1,
-      }),
-    ).rejects.toThrow(/ECONNREFUSED/);
+    // Duas operações esgotando o próprio orçamento — não duas tentativas da
+    // mesma operação. Uma requisição sozinha não pode abrir o disjuntor para o
+    // processo inteiro.
+    for (let i = 0; i < 2; i++) {
+      await expect(
+        runWithDbRetry(failing, {
+          policy: policy({ attempts: 2 }),
+          governor,
+          isRetryable: isConnectionEstablishmentError,
+          sleep,
+          random: () => 1,
+        }),
+      ).rejects.toThrow(/ECONNREFUSED/);
+    }
     expect(governor.isOpen()).toBe(true);
 
     const afterOpen = vi.fn(async () => {
@@ -209,7 +220,7 @@ describe("runWithDbRetry", () => {
       }),
     ).rejects.toThrow(/ECONNREFUSED/);
     expect(afterOpen).toHaveBeenCalledTimes(1); // falhou na hora: o disjuntor bloqueou o retry
-    expect(sleep).toHaveBeenCalledTimes(1); // só a espera da primeira operação
+    expect(sleep).toHaveBeenCalledTimes(2); // uma espera por operação, nenhuma na terceira
   });
 });
 
@@ -266,25 +277,27 @@ describe("installDbRetry no pool", () => {
   });
 });
 
-describe("política de saturação (Opção B)", () => {
-  it("mantém os parâmetros medidos em Preview", () => {
+describe("política B2 (aquisição)", () => {
+  it("mantém os parâmetros exigidos para a rodada de Preview", () => {
     expect(defaultRetryPolicy).toMatchObject({
-      attempts: 4,
-      baseDelayMs: 1_200,
-      maxDelayMs: 4_000,
-      totalTimeoutMs: 9_000,
+      attempts: 3,
+      baseDelayMs: 800,
+      maxDelayMs: 2_500,
+      totalTimeoutMs: 6_000,
+      lastAttemptReserveMs: 1_500,
       retriesPerSecond: 5,
       burst: 10,
     });
+    expect(defaultRetryPolicy.lastAttemptReserveMs).toBeGreaterThanOrEqual(1_500);
   });
 
   it("não abre o disjuntor antes da última tentativa da própria requisição", () => {
-    // Com threshold < attempts o disjuntor abriria na 3ª falha e a 4ª
-    // tentativa viraria código morto — a política seria truncada em silêncio.
+    // Com threshold < attempts o disjuntor abriria na falha anterior à última e
+    // a política seria truncada em silêncio.
     expect(defaultRetryPolicy.breakerThreshold).toBeGreaterThanOrEqual(defaultRetryPolicy.attempts);
   });
 
-  it("gasta as quatro tentativas antes de desistir", async () => {
+  it("gasta as três tentativas antes de desistir", async () => {
     const operation = vi.fn(async () => {
       throw ADMISSION;
     });
@@ -297,14 +310,42 @@ describe("política de saturação (Opção B)", () => {
         random: () => 1,
       }),
     ).rejects.toThrow(/EMAXCONN/);
-    expect(operation).toHaveBeenCalledTimes(4);
-    expect(sleep).toHaveBeenCalledTimes(3);
+    expect(operation).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
   });
 
-  it("cabe no orçamento: pior caso de espera abaixo do total", () => {
-    const waits = [1, 2, 3].map((a) => retryDelayMs(a, defaultRetryPolicy, () => 1));
-    expect(waits).toEqual([1_200, 2_400, 4_000]);
-    expect(waits.reduce((a, b) => a + b, 0)).toBeLessThan(defaultRetryPolicy.totalTimeoutMs);
+  it("cabe no orçamento: esperas + reserva da última tentativa abaixo do total", () => {
+    const waits = [1, 2].map((a) => retryDelayMs(a, defaultRetryPolicy, () => 1));
+    expect(waits).toEqual([800, 1_600]);
+    expect(waits.reduce((a, b) => a + b, 0) + defaultRetryPolicy.lastAttemptReserveMs).toBeLessThan(
+      defaultRetryPolicy.totalTimeoutMs,
+    );
+  });
+
+  it("recusa o retry quando a espera comeria a reserva da última tentativa", async () => {
+    // Aquisição de 2 s por tentativa, orçamento de 6 s, reserva de 1,5 s:
+    // depois da segunda falha não sobra tempo útil, e uma terceira tentativa
+    // começaria já fora do deadline. A Opção B falhou exatamente aqui — ela
+    // iniciava mesmo assim e estourava o orçamento em 4 s.
+    let clock = 0;
+    const sleep = vi.fn(async (ms: number) => {
+      clock += ms;
+    });
+    const operation = vi.fn(async () => {
+      clock += 2_000;
+      throw Object.assign(new Error("timeout exceeded when trying to connect"), {});
+    });
+    await expect(
+      runWithDbRetry(operation, {
+        policy: defaultRetryPolicy,
+        isRetryable: isPoolQueueTimeout,
+        now: () => clock,
+        sleep,
+        random: () => 1,
+      }),
+    ).rejects.toThrow(/timeout exceeded/);
+    expect(clock).toBeLessThanOrEqual(defaultRetryPolicy.totalTimeoutMs);
+    expect(operation).toHaveBeenCalledTimes(2);
   });
 
   it("não inicia tentativa que já nasceu fora do orçamento", async () => {
@@ -313,20 +354,97 @@ describe("política de saturação (Opção B)", () => {
       clock += ms;
     });
     const operation = vi.fn(async () => {
-      clock += 800; // cada consulta consome 800 ms
+      clock += 5_000;
       throw ADMISSION;
     });
     await expect(
       runWithDbRetry(operation, {
-        policy: policy({ attempts: 4, baseDelayMs: 1_200, maxDelayMs: 4_000, totalTimeoutMs: 2_000 }),
+        policy: defaultRetryPolicy,
         isRetryable: isAdmissionControlError,
         now: () => clock,
         sleep,
         random: () => 1,
       }),
     ).rejects.toThrow(/EMAXCONN/);
-    expect(clock).toBeLessThanOrEqual(2_000);
+    expect(clock).toBeLessThanOrEqual(6_000);
     expect(operation).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("classificação do timeout de fila do pg-pool", () => {
+  // O pg-pool cria este erro em `new Error(...)`, sem `code`:
+  //   this.options.connectionTimeoutMillis && setTimeout(() => response.callback(
+  //     new Error('timeout exceeded when trying to connect')), millis)
+  const queueTimeout = () => new Error("timeout exceeded when trying to connect");
+
+  it("reconhece o timeout de fila emitido sem código", () => {
+    expect(isPoolQueueTimeout(queueTimeout())).toBe(true);
+  });
+
+  it("NÃO reconhece timeout de statement (SQLSTATE 57014)", () => {
+    // `statement_timeout` do Postgres chega com código — repetir aqui é repetir
+    // uma consulta que o servidor já executou e cancelou.
+    const statementTimeout = Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    expect(isPoolQueueTimeout(statementTimeout)).toBe(false);
+    expect(isRetryableAcquire(statementTimeout)).toBe(false);
+  });
+
+  it("NÃO reconhece timeout de rede (ETIMEDOUT)", () => {
+    expect(isPoolQueueTimeout(Object.assign(new Error("timeout exceeded when trying to connect"), { code: "ETIMEDOUT" }))).toBe(
+      false,
+    );
+  });
+
+  it("NÃO reconhece mensagem parecida com outra origem", () => {
+    expect(isPoolQueueTimeout(new Error("timeout exceeded when trying to connect to 10.0.0.1"))).toBe(false);
+    expect(isPoolQueueTimeout(new Error("Connection terminated due to connection timeout"))).toBe(false);
+    expect(isPoolQueueTimeout("timeout exceeded when trying to connect")).toBe(false);
+    expect(isPoolQueueTimeout(undefined)).toBe(false);
+  });
+
+  it("trata admissão e estabelecimento como recuperáveis na aquisição", () => {
+    expect(isRetryableAcquire(ADMISSION)).toBe(true);
+    expect(isRetryableAcquire(ESTABLISHMENT)).toBe(true);
+    expect(isRetryableAcquire(STATEMENT_ERROR)).toBe(false);
+  });
+});
+
+describe("fronteira entre as duas camadas de retry", () => {
+  it("repete a aquisição quando a fila do pool estoura", async () => {
+    const { pool, connects } = fakePool([], [new Error("timeout exceeded when trying to connect"), "ok"]);
+    installDbRetry(pool, { policy: policy(), sleep: async () => {}, random: () => 1 });
+    const client = await pool.connect();
+    expect(client).toBeTruthy();
+    expect(connects).toHaveLength(2);
+  });
+
+  it("NÃO repete a consulta quando o erro de fila chega na fase de query", async () => {
+    // Sem identificação de que o erro veio da aquisição, a camada de consulta
+    // não tem como provar que o statement não rodou. Antes de repetir, não.
+    const { pool, queries } = fakePool([new Error("timeout exceeded when trying to connect"), "ok"]);
+    installDbRetry(pool, { policy: policy(), sleep: async () => {}, random: () => 1 });
+    await expect(pool.query("select 1")).rejects.toThrow(/timeout exceeded/);
+    expect(queries).toHaveLength(1);
+  });
+
+  it("não multiplica as camadas: aquisição esgotada não é repetida na consulta", async () => {
+    // pg-pool resolve `pool.query` chamando o `connect` da instância — que é o
+    // nosso patch. Sem a marca, a consulta repetiria 3 × 3 = 9 tentativas
+    // escondidas atrás de uma requisição.
+    const connects: number[] = [];
+    const pool = {
+      query: async () => {
+        const client: any = await (pool as any).connect();
+        return client.query();
+      },
+      connect: async () => {
+        connects.push(1);
+        throw ADMISSION;
+      },
+    } as any;
+    installDbRetry(pool, { policy: policy(), sleep: async () => {}, random: () => 1 });
+    await expect(pool.query("select 1")).rejects.toThrow(/EMAXCONN/);
+    expect(connects).toHaveLength(3); // só as tentativas da aquisição
   });
 });
 

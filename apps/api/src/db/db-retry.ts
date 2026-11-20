@@ -29,6 +29,14 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
+import {
+  noteAcquire,
+  noteAttempt,
+  noteBudgetStop,
+  noteClassifier,
+  noteQuery,
+  noteRetry,
+} from "./db-trace.js";
 
 export type RetryPolicy = {
   /** Total de tentativas, incluindo a primeira (1 = sem retry). */
@@ -39,6 +47,12 @@ export type RetryPolicy = {
   maxDelayMs: number;
   /** Orçamento total por operação (tentativas + esperas). */
   totalTimeoutMs: number;
+  /**
+   * Tempo mínimo que precisa sobrar para iniciar (ou esperar por) uma nova
+   * tentativa. Sem isso a última tentativa começa sem tempo de terminar e o
+   * deadline estoura — foi o que levou a Opção B a 13,3 s com orçamento de 9 s.
+   */
+  lastAttemptReserveMs: number;
   /** Token bucket: retries liberados por segundo. */
   retriesPerSecond: number;
   /** Rajada inicial do token bucket. */
@@ -50,35 +64,36 @@ export type RetryPolicy = {
 };
 
 /**
- * Política de saturação (Opção B, medida em Preview).
+ * Política B2 — ataca a AQUISIÇÃO, não o backoff.
  *
- * A política anterior (120 ms de base, 3 tentativas, 5 s) gastava as três
- * tentativas em 180–360 ms — todas dentro da janela em que o pooler ainda
- * estava cheio. Com 300 instâncias frias e 200 vagas, converter parte das
- * recusas exige que a nova tentativa caia DEPOIS que as vagas liberam:
- * a rajada medida levou 8,7 s e teve p50 de 3,4 s.
+ * O experimento da Opção B (backoff espalhado até 7,6 s com orçamento de 9 s)
+ * foi rejeitado: p95 pregado em ~12,4 s nas quatro rodadas, até 230 de 300
+ * requisições acima de 9 s. A causa não era o tamanho do backoff — era a fila
+ * interna do `pg-pool`: com `max: 1` por instância e concorrência otimizada do
+ * Fluid compute, `connectionTimeoutMillis: 10_000` deixava as invocações
+ * concorrentes esperando 10 s por uma conexão que nunca vinha.
  *
- *   tentativa 1 falha → espera 600–1.200 ms
- *   tentativa 2 falha → espera 1.200–2.400 ms
- *   tentativa 3 falha → espera 2.000–4.000 ms   (teto maxDelayMs)
- *   pior caso de espera: 7.600 ms; orçamento total 9.000 ms
+ * B2 inverte a ordem:
+ *   - aquisição falha em 2 s (poolSizing) em vez de 10 s;
+ *   - o timeout de fila do pg-pool passa a ser reconhecido e repetido;
+ *   - o backoff é curto (800 ms de base, teto 2,5 s) porque a espera longa já
+ *     não é feita por nós — é feita por quem tem a vaga;
+ *   - orçamento de 6 s com 1,5 s reservados para a última tentativa: a cauda
+ *     tem teto real, não estimado.
  *
- * `breakerThreshold` acompanha `attempts`: com threshold 3 a quarta tentativa
- * nunca seria alcançada (o disjuntor abriria na terceira falha) e a política
- * seria truncada em silêncio. Com threshold 4 a requisição gasta o próprio
- * orçamento e o disjuntor só bloqueia as requisições SEGUINTES.
- *
- * O token bucket caiu para 5/s (rajada 10): com a espera maior, cada
- * requisição precisa de menos retries para atravessar a janela.
+ * `breakerThreshold` acompanha `attempts`: com threshold menor, o disjuntor
+ * abriria antes da última tentativa da própria requisição e a política seria
+ * truncada em silêncio.
  */
 export const defaultRetryPolicy: RetryPolicy = {
-  attempts: 4,
-  baseDelayMs: 1_200,
-  maxDelayMs: 4_000,
-  totalTimeoutMs: 9_000,
+  attempts: 3,
+  baseDelayMs: 800,
+  maxDelayMs: 2_500,
+  totalTimeoutMs: 6_000,
+  lastAttemptReserveMs: 1_500,
   retriesPerSecond: 5,
   burst: 10,
-  breakerThreshold: 4,
+  breakerThreshold: 3,
   breakerCooldownMs: 5_000,
 };
 
@@ -140,6 +155,36 @@ export function isConnectionEstablishmentError(error: unknown): boolean {
   const code = errorCode(error)?.toUpperCase();
   if (!code) return false;
   return ESTABLISHMENT_CODES.has(code);
+}
+
+/**
+ * Timeout da FILA do `pg-pool`: `connectionTimeoutMillis` expirou esperando um
+ * cliente livre do pool. Medido no incidente — com `max: 1` por instância e
+ * concorrência otimizada do Fluid compute, era esta a falha dominante, e ela
+ * chegava sem `code` nenhum, então nenhum classificador a reconhecia.
+ *
+ * A identificação exige as três condições:
+ *   1. ser chamada na fase de AQUISIÇÃO (garantido pela estrutura: o
+ *      classificador só é usado dentro do wrapper de `pool.connect`), nunca
+ *      sobre erro vindo da execução de um statement;
+ *   2. `error.code` AUSENTE — erro de SQL sempre traz SQLSTATE (`57014` para
+ *      `statement_timeout`, `ETIMEDOUT` para rede); o do pg-pool não traz;
+ *   3. texto exatamente igual ao que o `pg-pool` emite.
+ *
+ * O caminho da stack não entra como condição: o bundle da Vercel pode reescrever
+ * caminhos de módulo, e uma exigência de caminho falharia em silêncio (sem
+ * retry) exatamente em produção. As três condições acima já distinguem o caso.
+ */
+export function isPoolQueueTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.message !== "timeout exceeded when trying to connect") return false;
+  const code = (error as { code?: unknown }).code;
+  return code === undefined || code === null;
+}
+
+/** Falhas de AQUISIÇÃO que provam que nenhum statement foi enviado. */
+export function isRetryableAcquire(error: unknown): boolean {
+  return isAdmissionControlError(error) || isConnectionEstablishmentError(error) || isPoolQueueTimeout(error);
 }
 
 /**
@@ -248,10 +293,14 @@ export async function runWithDbRetry<T>(operation: () => Promise<T>, options: Re
   let attempt = 1;
   let lastError: unknown;
   for (;;) {
-    // Não inicia tentativa que já nasceu fora do orçamento. O deadline é
-    // contrato com a plataforma, não sugestão: estourar aqui vira timeout da
-    // função (504 na Vercel), que é pior que o 500 honesto.
-    if (attempt > 1 && now() >= deadline) throw lastError;
+    // A primeira tentativa pode começar com qualquer orçamento; a partir da
+    // segunda é preciso sobrar a reserva, senão a tentativa nasce sem tempo de
+    // terminar e o deadline vira promessa não cumprida.
+    if (attempt > 1 && deadline - now() < policy.lastAttemptReserveMs) {
+      noteBudgetStop();
+      throw lastError;
+    }
+    noteAttempt();
     try {
       const result = await operation();
       if (options.countsAsSuccess !== false) governor.recordSuccess();
@@ -262,16 +311,27 @@ export async function runWithDbRetry<T>(operation: () => Promise<T>, options: Re
       // a garantia de idempotência — escrita que falhou por outro motivo
       // (constraint, validação, timeout do statement) NUNCA é repetida.
       if (!options.isRetryable(error)) throw error;
-      // Falha de admissão/estabelecimento conta para o disjuntor: o pooler
-      // saturado precisa parar de receber novas tentativas, não multiplicá-las.
-      governor.recordFailure();
-      if (attempt >= policy.attempts) throw error;
+      // O disjuntor conta OPERAÇÕES que desistiram, não tentativas. Contar
+      // tentativa faria uma única requisição abrir o disjuntor para o processo
+      // inteiro (3 tentativas = threshold), e as requisições seguintes — que
+      // ainda teriam orçamento para esperar a vaga — cairiam em 500 imediato.
+      // Era o caminho mais curto para "p95 baixo com 300/300 de falha".
+      const giveUp = (err: unknown) => {
+        governor.recordFailure();
+        return err;
+      };
+      if (attempt >= policy.attempts) throw giveUp(error);
       if (governor.isOpen()) throw error;
-      if (!governor.takeToken()) throw error;
-      if (now() >= deadline) throw error;
+      if (!governor.takeToken()) throw giveUp(error);
       const delayMs = retryDelayMs(attempt, policy, random);
+      // A reserva entra na conta junto com a espera: não adianta dormir 2 s
+      // para acordar com 900 ms e iniciar uma tentativa que precisa de 2 s de
+      // aquisição. Aqui é onde a cauda da Opção B passava de 9 s para 13 s.
+      if (deadline - now() - delayMs < policy.lastAttemptReserveMs) {
+        noteBudgetStop();
+        throw giveUp(error);
+      }
       options.onRetry?.({ attempt, delayMs, error, budgetLeftMs: Math.max(0, deadline - now()) });
-      if (now() + delayMs > deadline) throw error;
       await sleep(delayMs);
       attempt += 1;
     }
@@ -296,11 +356,18 @@ export type InstallOptions = {
 /**
  * Instala a política de retry no pool.
  *
- * `pool.query` — caminho do drizzle nas consultas comuns: a falha de admissão
- * do pooler chega aqui e o statement não foi executado, logo repetir é seguro.
+ * `pool.query` — caminho do drizzle nas consultas comuns. Repete SOMENTE a
+ * recusa de admissão do pooler (`EMAXCONN`), que prova que o statement não
+ * rodou. Erro de statement nunca é repetido.
  *
- * `pool.connect` — caminho das transações e do CLI de migrations: aqui a
- * falha é de estabelecimento de conexão, nada foi enviado.
+ * `pool.connect` — fase de AQUISIÇÃO, usada pelas transações e pelo próprio
+ * `pool.query` internamente. Aqui repetir é seguro por definição: sem cliente,
+ * nenhum statement saiu. Cobre fila do pg-pool, admissão do pooler e falha de
+ * estabelecimento.
+ *
+ * As duas camadas não se multiplicam: quando a aquisição esgota as tentativas,
+ * o erro sai marcado e a camada de consulta não tenta de novo (senão seriam
+ * 3 × 3 tentativas escondidas atrás de uma requisição).
  *
  * Statements executados em uma transação já aberta NÃO são repetidos: eles
  * passam pelo cliente já retirado do pool (`client.query`), fora do patch.
@@ -313,6 +380,10 @@ export function installDbRetry(
   const governor = options.governor ?? new RetryGovernor(policy, options.now);
   const originalQuery = pool.query.bind(pool);
   const originalConnect = pool.connect.bind(pool);
+  const clock = options.now ?? Date.now;
+
+  /** Erros que já gastaram o orçamento na aquisição — não podem ser repetidos de novo. */
+  const acquireExhausted = new WeakSet<object>();
 
   const base = {
     policy,
@@ -324,50 +395,99 @@ export function installDbRetry(
 
   const mutable = pool as PoolLike;
 
+  const classifyAcquire = (error: unknown): void => {
+    if (isPoolQueueTimeout(error)) noteClassifier("acquireTimeout");
+    else if (isAdmissionControlError(error)) noteClassifier("admission");
+    else if (isConnectionEstablishmentError(error)) noteClassifier("establishment");
+  };
+
+  const markExhausted = (error: unknown): void => {
+    if (error && typeof error === "object") acquireExhausted.add(error as object);
+  };
+
+  const isRetryableQuery = (error: unknown): boolean => {
+    if (error && typeof error === "object" && acquireExhausted.has(error as object)) return false;
+    if (!isAdmissionControlError(error)) return false;
+    noteClassifier("admission");
+    return true;
+  };
+
+  /** Envolve uma chamada de aquisição medindo o tempo e registrando a causa da falha. */
+  const acquire = async <T>(run: () => Promise<T>): Promise<T> => {
+    const started = clock();
+    try {
+      return await run();
+    } finally {
+      noteAcquire(clock() - started);
+    }
+  };
+
   mutable.query = function patchedQuery(text: any, values?: any, callback?: any) {
     if (typeof values === "function") {
       callback = values;
       values = undefined;
     }
-    if (typeof callback === "function") {
-      runWithDbRetry(() => originalQuery(text, values), {
+
+    const runOnce = async () => {
+      const started = clock();
+      try {
+        return await originalQuery(text, values);
+      } finally {
+        noteQuery(clock() - started);
+      }
+    };
+
+    const attempt = () =>
+      runWithDbRetry(runOnce, {
         ...base,
-        isRetryable: isAdmissionControlError,
-        onRetry: (info) => options.onRetry?.({ ...info, phase: "query" }),
-      }).then(
+        isRetryable: isRetryableQuery,
+        onRetry: (info) => {
+          noteRetry(`query:${errorCode(info.error) ?? errorMessage(info.error).slice(0, 40)}`);
+          options.onRetry?.({ ...info, phase: "query" });
+        },
+      });
+
+    if (typeof callback === "function") {
+      attempt().then(
         (result) => callback(null, result),
         (error) => callback(error),
       );
       return undefined;
     }
-    return runWithDbRetry(() => originalQuery(text, values), {
-      ...base,
-      isRetryable: isAdmissionControlError,
-      onRetry: (info) => options.onRetry?.({ ...info, phase: "query" }),
-    });
+    return attempt();
   };
 
   mutable.connect = function patchedConnect(callback?: any) {
+    const attempt = () =>
+      acquire(() =>
+        runWithDbRetry(() => originalConnect(), {
+          ...base,
+          isRetryable: (error) => {
+            const retryable = isRetryableAcquire(error);
+            if (retryable) classifyAcquire(error);
+            return retryable;
+          },
+          // Uma conexão estabelecida não zera o disjuntor: o pooler pode recusar
+          // o statement logo depois. Quem zera é a consulta completa.
+          countsAsSuccess: false,
+          onRetry: (info) => {
+            noteRetry(`acquire:${errorCode(info.error) ?? "sem-code"}`);
+            options.onRetry?.({ ...info, phase: "connect" });
+          },
+        }).catch((error) => {
+          markExhausted(error);
+          throw error;
+        }),
+      );
+
     if (typeof callback === "function") {
-      runWithDbRetry(() => originalConnect(), {
-        ...base,
-        isRetryable: isConnectionEstablishmentError,
-        countsAsSuccess: false,
-        onRetry: (info) => options.onRetry?.({ ...info, phase: "connect" }),
-      }).then(
+      attempt().then(
         (client: any) => callback(null, client, () => client.release()),
         (error: unknown) => callback(error),
       );
       return undefined;
     }
-    return runWithDbRetry(() => originalConnect(), {
-      ...base,
-      isRetryable: isConnectionEstablishmentError,
-      // Uma conexão estabelecida não zera o disjuntor: o pooler pode recusar o
-      // statement logo depois. Quem zera é a consulta completa.
-      countsAsSuccess: false,
-      onRetry: (info) => options.onRetry?.({ ...info, phase: "connect" }),
-    });
+    return attempt();
   };
 
   return { policy, governor };

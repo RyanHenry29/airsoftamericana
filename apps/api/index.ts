@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { config, runtimeDatabaseUrl } from "./src/config.js";
 import { withSystemLock } from "./src/services/payments/system-locks.js";
 import { getDb } from "./src/db/index.js";
+import { withDbTrace } from "./src/db/db-trace.js";
 import { describeErrorChain } from "./src/lib/error-chain.js";
 import { schema } from "./src/db/index.js";
 import { buildHome, getCommercialSettings, searchSuggestions } from "./src/services/homepage.js";
@@ -249,6 +250,21 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 }
 
 export default async function handler(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  // Instrumentação por requisição (experimento B2). O log da Vercel é amostrado
+  // — em janela de saturação o contador de retries voltou 0 com a curva de
+  // latência provando que houve espera. A trilha é anexada à própria resposta,
+  // então a evidência não depende da plataforma nem de log.
+  return withDbTrace(
+    res,
+    req.headers["x-db-trace"] !== undefined,
+    () => handleRequest(req, res),
+  );
+}
+
+async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {

@@ -69,8 +69,8 @@ export type PoolSizing = {
  * vaga do teto global.
  */
 export function poolSizing(mode: PoolMode): PoolSizing {
-  if (mode === "transaction") return { max: 1, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 10_000 };
-  if (mode === "session") return { max: 1, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 10_000 };
+  if (mode === "transaction") return { max: 1, connectionTimeoutMillis: 2_000, idleTimeoutMillis: 10_000 };
+  if (mode === "session") return { max: 1, connectionTimeoutMillis: 2_000, idleTimeoutMillis: 10_000 };
   return { max: 5, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 30_000 };
 }
 

@@ -42,6 +42,17 @@ describe("poolSizing", () => {
     }
   });
 
+  it("B2: falha a fila do pool em 2 s nos modos com pooler", () => {
+    // O incidente da Opção B: com `max: 1` e concorrência otimizada do Fluid
+    // compute, 10 s de espera por uma conexão do próprio pool derrubavam todas
+    // as invocações concorrentes da instância. 2 s deixa o retry trabalhar.
+    expect(poolSizing("transaction").connectionTimeoutMillis).toBe(2_000);
+    expect(poolSizing("session").connectionTimeoutMillis).toBe(2_000);
+    // Uma conexão por instância e vaga devolvida continuam valendo.
+    expect(poolSizing("transaction")).toMatchObject({ max: 1, idleTimeoutMillis: 10_000 });
+    expect(poolSizing("session")).toMatchObject({ max: 1, idleTimeoutMillis: 10_000 });
+  });
+
   it("devolve a vaga do pooler quando a conexão fica ociosa", () => {
     for (const mode of ["transaction", "session", "direct"] as const) {
       expect(poolSizing(mode).idleTimeoutMillis).toBeGreaterThan(0);
