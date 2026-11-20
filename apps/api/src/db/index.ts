@@ -185,9 +185,9 @@ export async function getDb(connectionString?: string): Promise<Db> {
         idleTimeoutMillis: sizing.idleTimeoutMillis,
       },
       {
-        onRetry: ({ attempt, delayMs, error, phase }) => {
+        onRetry: ({ attempt, delayMs, error, phase, budgetLeftMs }) => {
           console.warn(
-            `[db] retry ${attempt} em ${delayMs}ms (${phase}) — ${errorCode(error) ?? "erro transitório"}`,
+            `[db] retry ${attempt} em ${delayMs}ms (${phase}) — ${errorCode(error) ?? "erro transitório"} · resta ${budgetLeftMs}ms`,
           );
         },
       },

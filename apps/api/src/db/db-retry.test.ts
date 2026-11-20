@@ -262,5 +262,118 @@ describe("installDbRetry no pool", () => {
     await pool.query("select 1");
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onRetry.mock.calls[0]?.[0]).toMatchObject({ attempt: 1, phase: "query" });
+    expect(onRetry.mock.calls[0]?.[0]).toHaveProperty("budgetLeftMs");
+  });
+});
+
+describe("política de saturação (Opção B)", () => {
+  it("mantém os parâmetros medidos em Preview", () => {
+    expect(defaultRetryPolicy).toMatchObject({
+      attempts: 4,
+      baseDelayMs: 1_200,
+      maxDelayMs: 4_000,
+      totalTimeoutMs: 9_000,
+      retriesPerSecond: 5,
+      burst: 10,
+    });
+  });
+
+  it("não abre o disjuntor antes da última tentativa da própria requisição", () => {
+    // Com threshold < attempts o disjuntor abriria na 3ª falha e a 4ª
+    // tentativa viraria código morto — a política seria truncada em silêncio.
+    expect(defaultRetryPolicy.breakerThreshold).toBeGreaterThanOrEqual(defaultRetryPolicy.attempts);
+  });
+
+  it("gasta as quatro tentativas antes de desistir", async () => {
+    const operation = vi.fn(async () => {
+      throw ADMISSION;
+    });
+    const sleep = vi.fn(async () => {});
+    await expect(
+      runWithDbRetry(operation, {
+        policy: defaultRetryPolicy,
+        isRetryable: isAdmissionControlError,
+        sleep,
+        random: () => 1,
+      }),
+    ).rejects.toThrow(/EMAXCONN/);
+    expect(operation).toHaveBeenCalledTimes(4);
+    expect(sleep).toHaveBeenCalledTimes(3);
+  });
+
+  it("cabe no orçamento: pior caso de espera abaixo do total", () => {
+    const waits = [1, 2, 3].map((a) => retryDelayMs(a, defaultRetryPolicy, () => 1));
+    expect(waits).toEqual([1_200, 2_400, 4_000]);
+    expect(waits.reduce((a, b) => a + b, 0)).toBeLessThan(defaultRetryPolicy.totalTimeoutMs);
+  });
+
+  it("não inicia tentativa que já nasceu fora do orçamento", async () => {
+    let clock = 0;
+    const sleep = vi.fn(async (ms: number) => {
+      clock += ms;
+    });
+    const operation = vi.fn(async () => {
+      clock += 800; // cada consulta consome 800 ms
+      throw ADMISSION;
+    });
+    await expect(
+      runWithDbRetry(operation, {
+        policy: policy({ attempts: 4, baseDelayMs: 1_200, maxDelayMs: 4_000, totalTimeoutMs: 2_000 }),
+        isRetryable: isAdmissionControlError,
+        now: () => clock,
+        sleep,
+        random: () => 1,
+      }),
+    ).rejects.toThrow(/EMAXCONN/);
+    expect(clock).toBeLessThanOrEqual(2_000);
+    expect(operation).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("idempotência sob falha de rede", () => {
+  it("NÃO repete consulta quando a conexão caiu com o statement possivelmente executado", async () => {
+    // ECONNRESET na fase de query: o comando pode ter chegado ao Postgres.
+    // Repetir uma escrita aqui duplicaria pedido, cobrança ou reserva.
+    const droppedMidStatement = Object.assign(new Error("connection terminated unexpectedly"), {
+      code: "ECONNRESET",
+    });
+    const { pool, queries } = fakePool([droppedMidStatement, "ok"]);
+    installDbRetry(pool, { policy: defaultRetryPolicy, sleep: async () => {} });
+    await expect(pool.query("insert into orders ...")).rejects.toThrow(/terminated/);
+    expect(queries).toHaveLength(1);
+  });
+});
+
+describe("governor sob concorrência", () => {
+  it("limita a amplificação quando 200 requisições falham ao mesmo tempo", async () => {
+    // Cenário do incidente: 300 instâncias frias, pooler saturado. O bucket e o
+    // disjuntor são por processo — este teste prova que, dentro de UMA
+    // instância, a frota de requisições concorrentes não multiplica retries.
+    const governor = new RetryGovernor(defaultRetryPolicy);
+    const operation = vi.fn(async () => {
+      throw ADMISSION;
+    });
+    const sleep = async () => {
+      await Promise.resolve();
+    };
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 200 }, () =>
+        runWithDbRetry(operation, {
+          policy: defaultRetryPolicy,
+          governor,
+          isRetryable: isAdmissionControlError,
+          sleep,
+          random: () => 1,
+        }),
+      ),
+    );
+
+    const failures = results.filter((r) => r.status === "rejected").length;
+    expect(failures).toBe(200); // nenhuma falha virou sucesso silencioso
+    // 200 primeiras tentativas + retries limitados pelo bucket/disjuntor.
+    // Sem a trava seriam 200 x 4 = 800 tentativas.
+    expect(operation.mock.calls.length).toBeLessThan(300);
+    expect(governor.isOpen()).toBe(true);
   });
 });

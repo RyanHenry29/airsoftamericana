@@ -49,14 +49,36 @@ export type RetryPolicy = {
   breakerCooldownMs: number;
 };
 
+/**
+ * Política de saturação (Opção B, medida em Preview).
+ *
+ * A política anterior (120 ms de base, 3 tentativas, 5 s) gastava as três
+ * tentativas em 180–360 ms — todas dentro da janela em que o pooler ainda
+ * estava cheio. Com 300 instâncias frias e 200 vagas, converter parte das
+ * recusas exige que a nova tentativa caia DEPOIS que as vagas liberam:
+ * a rajada medida levou 8,7 s e teve p50 de 3,4 s.
+ *
+ *   tentativa 1 falha → espera 600–1.200 ms
+ *   tentativa 2 falha → espera 1.200–2.400 ms
+ *   tentativa 3 falha → espera 2.000–4.000 ms   (teto maxDelayMs)
+ *   pior caso de espera: 7.600 ms; orçamento total 9.000 ms
+ *
+ * `breakerThreshold` acompanha `attempts`: com threshold 3 a quarta tentativa
+ * nunca seria alcançada (o disjuntor abriria na terceira falha) e a política
+ * seria truncada em silêncio. Com threshold 4 a requisição gasta o próprio
+ * orçamento e o disjuntor só bloqueia as requisições SEGUINTES.
+ *
+ * O token bucket caiu para 5/s (rajada 10): com a espera maior, cada
+ * requisição precisa de menos retries para atravessar a janela.
+ */
 export const defaultRetryPolicy: RetryPolicy = {
-  attempts: 3,
-  baseDelayMs: 120,
-  maxDelayMs: 1_200,
-  totalTimeoutMs: 5_000,
-  retriesPerSecond: 10,
-  burst: 20,
-  breakerThreshold: 3,
+  attempts: 4,
+  baseDelayMs: 1_200,
+  maxDelayMs: 4_000,
+  totalTimeoutMs: 9_000,
+  retriesPerSecond: 5,
+  burst: 10,
+  breakerThreshold: 4,
   breakerCooldownMs: 5_000,
 };
 
@@ -206,7 +228,7 @@ export type RetryOptions = {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
-  onRetry?: (info: { attempt: number; delayMs: number; error: unknown }) => void;
+  onRetry?: (info: { attempt: number; delayMs: number; error: unknown; budgetLeftMs: number }) => void;
 };
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -224,12 +246,18 @@ export async function runWithDbRetry<T>(operation: () => Promise<T>, options: Re
   const deadline = now() + policy.totalTimeoutMs;
 
   let attempt = 1;
+  let lastError: unknown;
   for (;;) {
+    // Não inicia tentativa que já nasceu fora do orçamento. O deadline é
+    // contrato com a plataforma, não sugestão: estourar aqui vira timeout da
+    // função (504 na Vercel), que é pior que o 500 honesto.
+    if (attempt > 1 && now() >= deadline) throw lastError;
     try {
       const result = await operation();
       if (options.countsAsSuccess !== false) governor.recordSuccess();
       return result;
     } catch (error) {
+      lastError = error;
       // Erro que não é transitório de conexão: propaga sem repetir. Aqui mora
       // a garantia de idempotência — escrita que falhou por outro motivo
       // (constraint, validação, timeout do statement) NUNCA é repetida.
@@ -242,7 +270,7 @@ export async function runWithDbRetry<T>(operation: () => Promise<T>, options: Re
       if (!governor.takeToken()) throw error;
       if (now() >= deadline) throw error;
       const delayMs = retryDelayMs(attempt, policy, random);
-      options.onRetry?.({ attempt, delayMs, error });
+      options.onRetry?.({ attempt, delayMs, error, budgetLeftMs: Math.max(0, deadline - now()) });
       if (now() + delayMs > deadline) throw error;
       await sleep(delayMs);
       attempt += 1;
@@ -262,7 +290,7 @@ export type InstallOptions = {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
-  onRetry?: (info: { attempt: number; delayMs: number; error: unknown; phase: "query" | "connect" }) => void;
+  onRetry?: (info: { attempt: number; delayMs: number; error: unknown; budgetLeftMs: number; phase: "query" | "connect" }) => void;
 };
 
 /**
