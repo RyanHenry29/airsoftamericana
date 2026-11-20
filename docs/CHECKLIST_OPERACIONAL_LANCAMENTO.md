@@ -12,27 +12,29 @@ Fase de correções estruturais encerrada. Execução das 9 fases com evidência
 | Fase | Resultado | Evidência |
 |---|---|---|
 | 1 PostgreSQL | PASS | Staging `zuejjupuxegpczgyonha` (PG 17.12) e produção `psswdwsvybsqrflhpuqx` (PG 17.11); papéis `airsoft_ddl`/`airsoft_app` sem super e sem DDL no runtime — `scripts/check-role-privileges.mjs` (19/19, `CREATE TABLE` como runtime → `permission denied for schema public`) |
-| 1.4 Conexão | PASS | `closeDb()` no `finally`; produção e staging testados por pooler Session (`:5432`) |
+| 1.4 Conexão | PASS | `closeDb()` no `finally`; produção e staging testados por pooler Session (`:5432`) — sessão para o CLI; runtime serverless em Transaction (`:6543`), ver 1.3 |
 | 1.5 Backup | PASS | `pg_dump 17.12 -Fc` de staging (165.717 B, sha256 `0234b806…`) e produção (732.698 B, sha256 `555de63e…`); ambos restaurados em PG 17.12 local com exit 0 e 0 erro — contagens idênticas (staging 60 tabelas/270 linhas; produção 54/417) e GRANTs preservados (658/590) — `scripts/backup-restore-check.mjs` |
 | 2 DNS | **FAIL (bloqueio externo)** | Domínios anexados no Vercel (`api.`, `admin.`, apex, `www`), mas o registrador (Hostgator) ainda publica `airsoftamericana.com.br → 216.172.173.17`; `api.` e `admin.` → NXDOMAIN. Vercel pede `A <host> 76.76.21.21` ou nameservers `ns1/ns2.vercel-dns.com` |
-| 3 Variáveis | PASS | API Production (banco de produção, segredos próprios, `COOKIE_SAMESITE=lax`, `CSRF_ENFORCE=true`, `MAIL_FROM`, `STORE_URL`/`ADMIN_URL` `.com.br`) × Preview (banco de staging, `JWT_SECRET`/`GATEWAY_SECRETS_KEY` novos, `SameSite=lax`, `CSRF_ENFORCE=true`, Supabase do staging). `GATEWAY_ACTIVE` e credenciais reais **ausentes** |
+| 3 Variáveis | PASS | API Production (banco de produção, segredos próprios, `COOKIE_SAMESITE=lax`, `CSRF_ENFORCE=true`, `MAIL_FROM`, `STORE_URL`/`ADMIN_URL` `.com.br`) × Preview (banco de staging, `JWT_SECRET`/`GATEWAY_SECRETS_KEY` novos, `SameSite=lax`, `CSRF_ENFORCE=true`, Supabase do staging, `DATABASE_URL_RUNTIME` em transaction mode). `GATEWAY_ACTIVE` e credenciais reais **ausentes** |
 | 4 Resend | **FAIL (chave ausente)** | Preview responde `503 not_configured` rotulado (degradação correta). A chave de produção é `sensitive` na Vercel — ilegível pela API/CLI; falta chave de Preview e domínio verificado |
 | 5 Schema/seeds | PASS | Staging: 31 passos aplicados via `db:bootstrap` (ledger 31/31 `aplicada`, passo `031_fraud_rules_action_default` incluído). Produção **não** foi migrada (instrução) — o bootstrap de produção criará 6 tabelas: `customer_avatars`, `migration_ledger`, `password_resets`, `support_messages`, `system_locks`, `webhooks` |
 | 5.1 Fingerprint de revisão | PASS | Revisão do passo de código = sha256 **canônico** do módulo (CRLF/CR → LF): `apps/api/src/db/module-revision.ts`. Antes, bytes crus davam revisões diferentes no checkout Windows (CRLF) e Linux (LF) — o CI quebrava e um banco migrado no Windows seria recusado no Linux (`MigrationChecksumError`). Ledgers realinhados sob controle (`npm run db:ledger-realign`, 1 linha cada: `030_migrate_legacy_roles` — staging e PGlite de teste); bootstrap reexecutado sem divergência: staging 31/31 `aplicada`, 0 erro |
 | 6 Pagamentos | PASS | Sem gateway real: checkout → `503 no_payment_gateway_enabled` e **nada** gravado (`orders=0`, `payments=0`, `order_items=0`, `inventory.reserved=0` conferido no banco). Sandbox do app validado no staging (processo local): o checkout passa pelo gateway e só falha na variante inexistente. Suíte `payments-integrity` em PostgreSQL real: 112/112 (cartão, PIX, boleto, webhook duplicado, expiração, concorrência, chargeback) |
 | 7 Cookies/URLs | PASS | `SameSite=lax` + `CSRF_ENFORCE=true` + token por HMAC da sessão; `audit_logs` append-only para o runtime |
-| 8 Previews | **PARTIAL** | 3 previews publicados (Store/Admin/API) no commit `66bdca1` + smoke **25/25 PASS**. CI `api-gates` verde no push e no PR #3. Lighthouse: home 85/92/93/100, catálogo 77/93/93/100 — **performance abaixo do alvo 90**. pa11y-ci WCAG2AA: 40 erros em 5 páginas (contraste, `role="presentation"`, `autocomplete` inválido no checkout) |
-| 9 Produção | **NÃO EXECUTADO** | Aguardando autorização explícita: `db:bootstrap` em produção + `workflow_dispatch environment=production` |
+| 8 Previews | **PASS** | 3 previews no commit `5c98b55` (run `44654174786`; Store `dpl_71xydFq3iwoXFTGwK3hWwU4FysVq`, Admin `dpl_6FbchLWrLsxQkojoH1Giwnu2fqZ3`, API `dpl_FjJkETnp9tewx9X15hTFbcBuJ8K8` — os três com `githubCommitSha` `5c98b55c97159efdce1a5e49722be0043a21e9f8`, produção **skipped**). Lighthouse 12 no preview: home **perf 92 / a11y 100 / bp 100 / seo 100** (LCP 2,8 s, FCP 1,3 s, CLS 0), catálogo **perf 94 / a11y 100 / bp 100 / seo 100** (LCP 2,5 s, FCP 1,2 s, CLS 0). pa11y-ci WCAG2AA: **13/13 URLs, 0 violações**. Smoke dos 3 previews: **26/26 PASS**. Detalhe da rodada abaixo |
+| 9 Produção | **NÃO EXECUTADO** | Aguardando autorização explícita: `db:bootstrap` em produção + `workflow_dispatch environment=production`. Pendente de configuração: `DATABASE_URL_RUNTIME` no Environment Production (ver 1.3) |
 
 Bloqueios que dependem de ação do lojista: (1) registros DNS no registrador;
 (2) chave Resend + domínio verificado; (3) catálogo real (importação CSV — não
 se inventa produto); (4) credenciais de gateway de terceiro para homologar
-pagamento real; (5) correções de performance/acessibilidade da vitrine.
+pagamento real.
 
-Estado do código no encerramento: branch `fix/aud03-migration-ledger` @ `66bdca1`
-(push + PR #3). Gates locais: `npm run verify` (tsc ×4, shared 16/16, api
-337/337, store+admin 76/76 + no type errors) e `node scripts/pg-integration.mjs`
-(PostgreSQL real 17.11, 112/112). CI `api-gates`: success (push + PR).
+Estado do código no encerramento: branch `fix/aud03-migration-ledger` @ `5c98b55`
+(push + PR #3, OPEN/MERGEABLE/CLEAN). Gates locais: `npm run verify` (tsc ×4,
+shared 16/16, api **355/355** — 41 arquivos, com os 18 testes novos do modo de
+pooler e da cadeia de erro —, store+admin 76/76 + no type errors) e
+`node scripts/pg-integration.mjs` (PostgreSQL real 17.11, 112/112). CI
+`api-gates`: success (push + PR).
 Staging após o smoke: `orders=0`, `payments=0`, `order_items=0`,
 `inventory.reserved=0`, ledger 31/31 `aplicada`. Deploys de produção
 intactos (`/healthz` 200, loja 200, login do painel 200) e **não** tocados.
@@ -331,6 +333,29 @@ gh workflow run "Deploy Vercel (CLI)" -f environment=preview
 Métricas: Lighthouse ≥ 90 (Performance, Acessibilidade, Boas Práticas, SEO) e
 `pa11y-ci` WCAG 2.1 AA. URLs: as geradas pelo Vercel — nunca inventadas.
 
+### 8.1 Evidência da rodada de qualidade (commit `5c98b55`, run `44654174786`)
+
+| Medida | Resultado | Como medir |
+|---|---|---|
+| Lighthouse 12 — home | perf **92** · a11y **100** · bp **100** · seo **100** (LCP 2,8 s · FCP 1,3 s · CLS 0 · 359 kB) | `lighthouse@12 <url> --only-categories=performance,accessibility,best-practices,seo` |
+| Lighthouse 12 — catálogo | perf **94** · a11y **100** · bp **100** · seo **100** (LCP 2,5 s · FCP 1,2 s · CLS 0 · 353 kB) | idem |
+| pa11y-ci WCAG2AA | **13/13 URLs, 0 violações** (13 passes, 0 errors) | `pa11y-ci --config pa11y-ci.json --json` |
+| Smoke dos 3 previews | **26/26 PASS** (API 19 · painel 10 · loja 7, incluindo o 404 de `/carrinho`) | `smoke-previews.mjs --api … --store … --admin …` |
+| Matriz de rotas | 12 rotas 200 com canonical e robots corretos; `/carrinho` e rota inexistente **404**; banner de cookies no HTML em todas as 200 | `route-matrix.mjs` |
+| Rajada na API | **48/48 requisições 200** (antes: 10/48) | 48 GETs concorrentes contra a API do preview |
+| Logs da API preview | **0 entradas de erro** desde o deploy | `vercel logs <deployment> --level error` |
+
+O `bp` estava em 96 porque o Lighthouse marcava `errors-in-console`: a API
+respondia 500 em `/api/cart`, `/api/store/categories` e `/api/store/settings`
+durante a medição. Causa raiz: pooler em session mode com teto de 15 clientes
+(1.3). Corrigido no commit `5c98b55` — com transaction mode a rajada passa
+limpa e o console do navegador fica sem erro.
+
+Peso da página (favicon 363 kB → 11 kB, apple-icon 1,9 MB → 19 kB, aviso de
+cookies no HTML do servidor, IBM Plex Mono sem preload) caiu de 716/713 kB para
+**359/353 kB** — foi o que destravou o LCP do catálogo, que antes era o
+parágrafo do banner pintado depois da hidratação.
+
 ---
 
 ## Fase 9 — Deploy de produção (só com autorização explícita)
@@ -342,6 +367,8 @@ Pré-requisitos (todos verificados antes do pedido de deploy):
 - [ ] Schema aplicado por `db:bootstrap` autorizado
 - [ ] DNS propagado (comparado com o painel do Vercel)
 - [ ] 7 variáveis de boot + Store/Admin configuradas por Environment
+- [ ] `DATABASE_URL_RUNTIME` configurada no Environment Production (pooler em
+      transaction mode, `:6543`) — sem ela a vitrine erra 500 em rajada (1.3)
 - [ ] Resend verificado (ou recurso de e-mail desabilitado de propósito)
 - [ ] Gateway sandbox validado nos Previews
 - [ ] `GATEWAY_ACTIVE` **ausente** e credenciais reais **ausentes** até a
