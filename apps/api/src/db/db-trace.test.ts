@@ -59,7 +59,9 @@ describe("formato do cabeçalho", () => {
     trace.attempts = 2;
     trace.acquireMs = 1_400;
     trace.queryMs = 1_900;
-    expect(traceHeader(trace)).toBe("total=1900;acq=1400;sql=500;att=2;retry=0;acqto=0;emax=0;est=0;bstop=0");
+    expect(traceHeader(trace)).toMatch(
+      /^total=1900;acq=1400;sql=500;att=2;retry=0;acqto=0;emax=0;est=0;bstop=0;pmax=0;ctmo=0;inst=[0-9a-f]{8}$/,
+    );
     expect(traceServerTiming(trace)).toBe('db;dur=1900;desc="acq=1400,sql=500,att=2,retry=0"');
   });
 
@@ -75,7 +77,8 @@ describe("withDbTrace", () => {
   it("emite a trilha quando a requisição pede", async () => {
     const res = await fetch(`${base}/ok`, { headers: { "x-db-trace": "1" } });
     expect(res.status).toBe(200);
-    expect(res.headers.get("x-db-trace")).toBe("total=180;acq=30;sql=150;att=1;retry=0;acqto=0;emax=0;est=0;bstop=0");
+    const trace = res.headers.get("x-db-trace") ?? "";
+    expect(trace).toMatch(/^total=180;acq=30;sql=150;att=1;retry=0;acqto=0;emax=0;est=0;bstop=0;pmax=\d+;ctmo=\d+;inst=[0-9a-f]{8}$/);
     expect(res.headers.get("server-timing")).toContain("db;dur=180");
   });
 
