@@ -95,8 +95,28 @@ Existe hoje em produção: **não**. Sem ela o `poolSizing` usa o default `1`
 `DB_POOL_MAX` é lido por `poolSizing` em ambos os modos; vale para a linha de
 runtime. **Não** aplicar `max=2` em session mode (ver §7).
 
-### 2.4 Estado do ambiente de validação (preview) — não confundir com o baseline
+### 2.4 Conjunto de variáveis da promoção — são TRÊS, não duas
 
+| Variável | Valor em produção | Obrigatória? | Por quê |
+|---|---|---|---|
+| `DATABASE_URL_RUNTIME` | ausente | **sim** | o runtime serverless exige transaction mode; sem ela o `config.ts` falha fechada e a API não sobe |
+| `DB_POOL_MAX` | ausente (default `1`) | **sim** | é a configuração promovida; sem ela o deploy roda no baseline `max=1` |
+| `DB_TRACE_TOKEN` | ausente | **sim** | **sem ela os sinais de abort não existem**: o trace falha fechado e o header `x-db-trace` nunca é emitido |
+
+O terceiro item é o que costuma passar batido. A autorização da telemetria é
+independe do header de ativação: sem `DB_TRACE_TOKEN` configurado, o
+`apps/api/index.ts` responde `trace_disabled` no healthz e **não emite**
+`x-db-trace` em nenhuma resposta. Ou seja, com apenas as duas primeiras
+variáveis, a janela de produção mediria latência e status HTTP — e ficaria
+**cega** para `emax` (recusa de admissão do pooler), `acqto` (fila estourada),
+`pmax`/`ctmo` (config efetiva) e `retry`, que são três dos cinco critérios de
+abort de §4.3.
+
+O valor do token em produção deve ser **novo** (não o do preview): gerado na
+máquina, gravado direto no target `production`, nunca em repo, PR, log ou
+transcript.
+
+### 2.5 Estado do ambiente de validação (preview) — não confundir com o baseline
 O target `preview` do projeto **não** está no baseline `max=1`: ele carrega a
 configuração promovida.
 
@@ -144,6 +164,9 @@ migração — a separação é garantida por código, não por convenção.
      papel `airsoft_app` + o mesmo `project-ref` de produção.
 
    Sem isso, o merge derruba a API (falha fechada por design).
+
+   O procedimento executável está em §11, com o harness já validado no
+   ambiente de staging.
 3. **Merge** — PR próprio da branch `exp/arch-capacity-promotion`. O PR #3
    (`fix/aud03-migration-ledger`) segue **aberto e separado**, como combinado.
 4. **Deploy** — pelo `workflow_dispatch` do contrato de deploy (PR #2): push em
@@ -301,3 +324,138 @@ fala com o GitHub pelo helper do `gh`.
 | `DB_TRACE_TOKEN` (preview) | arquivo temporário fora do repo | fora do repo, histórico e artefatos (varredura: 0 ocorrências) |
 | Senha do banco de produção | `apps/api/.env.prod` (gitignored, local) | idem — 0 ocorrências em arquivos rastreados, histórico e temp |
 | Envelope da Vercel | transcript | era material **criptografado** (ciphertext + chave embrulhada), não credencial em claro; rotação recomendada junto com a credencial do projeto |
+
+## 11. Verificação do caminho de runtime (harness)
+
+### 11.1 O que precisa ser provado
+
+1. a conexão abre na **porta do transaction pooler** (6543) do projeto certo;
+2. o **papel de runtime** (`airsoft_app`) autentica nesse caminho — e não a
+   credencial administrativa;
+3. `SELECT 1` e transação explícita funcionam;
+4. o modo é **transaction** e não session — comportamento, não nome de porta.
+
+### 11.2 O harness
+
+`%LOCALAPPDATA%\Temp\opencode\arch-tooling\arch-runtime-select1.mjs` (fora do
+repo, como o resto do ferramental da iniciativa). A URL **nunca** entra em
+argv: vem de arquivo. O script espelha o TLS do app
+(`apps/api/src/db/index.ts`, função `poolSsl`) — sem isso o `pg` aplica a
+semântica própria de `sslmode=require` e a conexão falha com "self-signed
+certificate in certificate chain" (foi o que aconteceu na primeira execução).
+
+### 11.3 Procedimento em produção (exige autorização)
+
+```powershell
+cd apps/api
+$envFile = "$env:LOCALAPPDATA\Temp\opencode\aa-prod-env.tmp"
+$emit    = "$env:LOCALAPPDATA\Temp\opencode\aa-runtime-url.txt"
+
+# 1. source unica: a DATABASE_URL de producao (session mode), em claro
+vercel env pull $envFile --environment production --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13
+
+# 2. deriva :6543 e grava no arquivo-fonte (nao imprime a URL)
+node "$env:LOCALAPPDATA\Temp\opencode\arch-tooling\arch-runtime-select1.mjs" `
+  --env-file $envFile --var DATABASE_URL --derive --ports 6543 `
+  --expect-ref psswdwsvybsqrflhpuqx --emit $emit
+
+# 3. grava a variavel na Vercel lendo o valor por stdin (nunca em argv)
+cmd /c "type %LOCALAPPDATA%\Temp\opencode\aa-runtime-url.txt | vercel env add DATABASE_URL_RUNTIME production --sensitive --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13"
+
+# 4. teste do caminho com CONTROLE (6543 contra 5432, mesma credencial)
+vercel env pull $envFile --environment production --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13
+node "$env:LOCALAPPDATA\Temp\opencode\arch-tooling\arch-runtime-select1.mjs" `
+  --env-file $envFile --var DATABASE_URL --derive --ports 6543,5432 `
+  --expect-ref psswdwsvybsqrflhpuqx
+
+# 5. limpar os arquivos temporarios
+Remove-Item -Force $envFile, $emit
+```
+
+O `--emit` garante **fonte única**: o valor gravado na Vercel e o valor testado
+são o mesmo por construção (mesma derivação, mesmo arquivo). Como
+`DATABASE_URL_RUNTIME` será marcada como sensível, ela não sai do `env pull` —
+por isso o teste roda sobre a URL derivada, que é byte a byte a que será
+gravada.
+
+### 11.4 Como o modo é separado (teste diferencial, com controle)
+
+Recursos de escopo de sessão (GUC, `LISTEN`, temp table) **não** discriminam
+aqui: o pooler não reseta estado de sessão entre transações, e as duas portas
+se comportaram igual. O que separa é o **pinning de backend**:
+
+| Passo | Cliente A | Cliente B |
+|---|---|---|
+| 1 | abre transação → backend `X` | — |
+| 2 | — | abre transação → backend `Y` |
+| 3 | commit (libera `X`) | — |
+| 4 | — | commit (libera `Y` por último) |
+| 5 | abre transação de novo → **`X` se estiver preso**, `Y` se o pool realocar | |
+
+Medido no ambiente de validação (mesma credencial, duas portas):
+
+| Porta | `A_1` | `B` | `A_2` | Cliente preso ao mesmo backend? | Modo |
+|---|---|---|---|---|---|
+| 6543 | 761700 | 761702 | 761702 | **NÃO** — o pool realocou | **transaction** |
+| 5432 (controle) | 761703 | 761705 | 761703 | **SIM** — o cliente ficou preso | session |
+
+### 11.5 Resultado no ambiente de validação (staging, 2026-11-24)
+
+| Verificação | Resultado |
+|---|---|
+| Conexão em `:6543` | ok (1,2 s) · `current_user = airsoft_app` · db `postgres` |
+| `BEGIN` / `SELECT 1` / `COMMIT` | ok (retorno 1) |
+| Pinning de backend | cliente **não** preso → transaction mode |
+| Controle `:5432` | cliente preso → session mode (confirma que o discriminador separa) |
+| TLS | `rejectUnauthorized=false`, espelhando `poolSsl` do app |
+| Derivação para arquivo-fonte | 131 chars, porta 6543, valor não impresso |
+
+### 11.6 O que o harness prova — e o que não prova
+
+**Prova**: a conexão do caminho de runtime abre, autentica com o papel
+`airsoft_app`, executa consulta e transação, e o comportamento da porta 6543
+é de transaction mode (com o controle 5432 da mesma credencial como prova
+diferencial).
+
+**Não prova**: que o papel tem permissão de escrita (outro teste, fora de
+escopo); que o modo está habilitado no **projeto de produção** (fato de
+painel); que a carga da promoção vai se comportar como a da validação (o
+pooler de produção é outro projeto).
+
+## 12. Pendência de higiene — `DATABASE_URL` de produção como Sensitive
+
+| Item | Estado |
+|---|---|
+| `DATABASE_URL` (production) | id `lqEuygQwMEcdNtvV`, type `encrypted` (valor legível por `env pull`) |
+| `DATABASE_URL` (preview) | id `Bgl0gpXh1rMdnvy5`, type `encrypted` |
+| Correção | trocar type para `sensitive` + `visibility: secret` — **não** aplicado, exige autorização |
+
+Mecanismo **validado** em var de teste descartável do target preview (criada,
+promovida, verificada e removida; 0 ocorrências residuais):
+
+```powershell
+vercel api -X PATCH /v9/projects/prj_MLk5KPuaIh5shK0cNZum69oXpl13/env/<ENV_ID> `
+  -f type=sensitive -f visibility=secret --raw
+```
+
+Resultado do teste: `type` → `sensitive`, `visibility` → `secret`, e o
+**valor foi preservado** (antes do PATCH o `env pull` mostrava o valor; depois
+mostra `[SENSITIVE]`, que é a ocultação de um valor intacto).
+
+Notas operacionais:
+
+- `-d/--debug` do `vercel api` **não** é o body — o body vai em
+  `-f/--raw-field/--field` ou `--input <arquivo>`; o valor válido é
+  `sensitive` (não `secret`), e a API exige `visibility: secret` junto;
+- por segurança, antes do PATCH em produção: `env pull` para um arquivo
+  temporário (backup do valor em claro), PATCH, checagem funcional do caminho
+  administrativo, e só então apagar o backup;
+- rollback: `PATCH ... -f type=encrypted` (mesmo endpoint), ou `rm` + `add`
+  a partir do backup.
+
+> O `DATABASE_URL` é usado pelo runtime **apenas** quando
+> `DATABASE_URL_RUNTIME` não existe (ver §2.1): depois da promoção, o runtime
+> passa a ler a variável sensível por completo, e a `DATABASE_URL` continua
+> disponível para `db:migrate` / `db:bootstrap` / CLIs — inclusive pelo
+> `env pull` local, que com `sensitive` passa a exigir o arquivo em vez de
+> expor o valor no terminal.
