@@ -11,7 +11,7 @@ import { config } from "../config.js";
 import * as schema from "./schema.js";
 import { SUPABASE_ROOT_CA_PEM } from "./supabase-root-ca.js";
 import { assertSessionScopeSafe, classifyPooler, poolSizing } from "./pool-mode.js";
-import { setDbRuntimeInfo } from "./db-trace.js";
+import { setDbRuntimeInfo, dbInstanceId } from "./db-trace.js";
 import { createResilientPool, errorCode } from "./db-retry.js";
 import { benchLogger } from "../lib/query-bench.js";
 
@@ -175,7 +175,11 @@ export async function getDb(connectionString?: string): Promise<Db> {
     // Dimensiona por modo de pooler: transaction/session aceitam uma conexão
     // por instância (o pooler limita os clientes do projeto, não a instância).
     const sizing = poolSizing(classifyPooler(raw));
-    setDbRuntimeInfo({ poolMax: sizing.max, acquireTimeoutMs: sizing.connectionTimeoutMillis });
+    setDbRuntimeInfo({
+      poolMax: sizing.max,
+      acquireTimeoutMs: sizing.connectionTimeoutMillis,
+      instanceId: dbInstanceId(),
+    });
     poolInstance = createResilientPool(
       {
         connectionString: url,
@@ -205,6 +209,14 @@ export async function getDb(connectionString?: string): Promise<Db> {
     fs.mkdirSync(dir, { recursive: true });
     releaseLock = acquirePgliteLock(dir);
     pgliteInstance = new PGlite(path.join(dir, "airsoft.db"));
+    // PGlite é single-session: não há pool de conexões. Mas a telemetria tem
+    // que refletir o runtime REAL — sem isto o healthz reportaria `pmax=0` e
+    // `ctmo=0` em dev/local, que é informação falsa.
+    setDbRuntimeInfo({
+      poolMax: 1,
+      acquireTimeoutMs: 0,
+      instanceId: dbInstanceId(),
+    });
     db = drizzlePglite(pgliteInstance, { schema, ...bench });
   }
   return db;

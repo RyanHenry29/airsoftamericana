@@ -44,6 +44,18 @@ export type DbTrace = {
   budgetStops: number;
   /** Motivo textual de cada retry, na ordem. */
   reasons: string[];
+  /** Tempo de execução do statement (SQL), após subtrair a aquisição. */
+  sqlMs?: number;
+  /** Identidade do processo que atendeu a requisição. */
+  inst?: string;
+  /** Número máximo de conexões do pool configurado. */
+  poolMax?: number;
+  /** `connectionTimeoutMillis` em vigor na instância. */
+  acquireTimeoutMs?: number;
+  /** Requisições em voo no instante em que o cabeçalho foi escrito. */
+  inFlightCurrent?: number;
+  /** Pico de requisições em voo visto por este processo desde o boot. */
+  inFlightPeak?: number;
 };
 
 const storage = new AsyncLocalStorage<DbTrace>();
@@ -64,21 +76,48 @@ const storage = new AsyncLocalStorage<DbTrace>();
 let inFlight = 0;
 let inFlightPeak = 0;
 
-/** Abre uma requisição em voo e devolve a contagem resultante. */
-export function enterRequest(): number {
+/**
+ * Token de requisição em voo.
+ *
+ * O decremento é idempotente por token: `exitRequest` só libera uma vez. Isso
+ * fecha o bug clássico de double decrement — quando `finish` E `close` disparam
+ * (resposta normal fecha o socket logo depois), ou quando o `finally` do
+ * handler e o evento de socket correm juntos. Sem o token, um decremento
+ * duplicado derrubaria `inFlight` abaixo de zero e a métrica `inl` mentiria.
+ */
+export type InFlightToken = { readonly id: number };
+
+let tokenSeq = 0;
+const openTokens = new Set<number>();
+
+/** Abre uma requisição em voo e devolve o token de fechamento. */
+export function enterRequest(): InFlightToken {
+  tokenSeq += 1;
+  const token: InFlightToken = { id: tokenSeq };
+  openTokens.add(token.id);
   inFlight += 1;
   if (inFlight > inFlightPeak) inFlightPeak = inFlight;
-  return inFlight;
+  return token;
 }
 
-/** Fecha uma requisição em voo. */
-export function exitRequest(): void {
+/**
+ * Fecha uma requisição em voo. Idempotente: chamadas repetidas com o mesmo
+ * token são no-ops. Retorna `true` se este chamada fez o decremento.
+ */
+export function exitRequest(token: InFlightToken): boolean {
+  if (!openTokens.delete(token.id)) return false;
   if (inFlight > 0) inFlight -= 1;
+  return true;
 }
 
-/** Estado de concorrência do processo. */
+/** Estado de concorrência do processo — leitura ao vivo, nunca snapshot. */
 export function inFlightState(): { current: number; peak: number } {
   return { current: inFlight, peak: inFlightPeak };
+}
+
+/** Quantas requisições estão abertas agora (checagem de integridade). */
+export function openRequestCount(): number {
+  return openTokens.size;
 }
 
 export function newTrace(): DbTrace {
@@ -92,6 +131,12 @@ export function newTrace(): DbTrace {
     establishmentErrors: 0,
     budgetStops: 0,
     reasons: [],
+    poolMax: undefined,
+    acquireTimeoutMs: undefined,
+    inst: undefined,
+    inFlightCurrent: undefined,
+    inFlightPeak: undefined,
+    sqlMs: undefined,
   };
 }
 
@@ -145,7 +190,20 @@ export function noteBudgetStop(): void {
  */
 export function traceHeader(trace: DbTrace): string {
   const sql = Math.max(0, Math.round(trace.queryMs - trace.acquireMs));
-  return [
+  // Métricas do pooler — sempre presentes (contexto de runtime), consistentes
+  // com o que o healthz e o cliente leem. Quando o trace tem valores override,
+  // eles têm prioridade; caso contrário, os valores de runtime são usados.
+  //
+  // `inl`/`inpk` SEMPRE vêm do estado ao vivo do processo (`inFlightState`),
+  // nunca de um snapshot guardado no `runtimeInfo` — o snapshot envelhecia e
+  // reportava 0 enquanto o processo atendia requisições concorrentes.
+  const live = inFlightState();
+  const poolMax = trace.poolMax ?? runtimeInfo.poolMax ?? 1;
+  const ctmo = trace.acquireTimeoutMs ?? runtimeInfo.acquireTimeoutMs ?? 10_000;
+  const inst = trace.inst ?? runtimeInfo.instanceId ?? "0";
+  const inl = trace.inFlightCurrent ?? live.current;
+  const inpk = trace.inFlightPeak ?? live.peak;
+  const parts: string[] = [
     `total=${Math.round(trace.queryMs)}`,
     `acq=${Math.round(trace.acquireMs)}`,
     `sql=${sql}`,
@@ -155,12 +213,14 @@ export function traceHeader(trace: DbTrace): string {
     `emax=${trace.admissionErrors}`,
     `est=${trace.establishmentErrors}`,
     `bstop=${trace.budgetStops}`,
-    `pmax=${runtimeInfo.poolMax}`,
-    `ctmo=${runtimeInfo.acquireTimeoutMs}`,
-    `inst=${instanceId}`,
-    `inl=${inFlightState().current}`,
-    `inpk=${inFlightState().peak}`,
-  ].join(";");
+    `pmax=${poolMax}`,
+    `ctmo=${ctmo}`,
+    `inst=${inst}`,
+    `inl=${inl}`,
+    `inpk=${inpk}`,
+  ];
+  if (trace.sqlMs !== undefined) parts.push(`sqlMs=${trace.sqlMs}`);
+  return parts.join(";");
 }
 
 /** Versão Server-Timing (padrão do navegador) do mesmo dado. */
@@ -186,9 +246,15 @@ export type DbRuntimeInfo = {
   poolMax: number;
   /** `connectionTimeoutMillis` do pool. */
   acquireTimeoutMs: number;
+  /** Identificador da instância do processo. */
+  instanceId: string;
 };
 
-let runtimeInfo: DbRuntimeInfo = { poolMax: 0, acquireTimeoutMs: 0 };
+let runtimeInfo: DbRuntimeInfo = {
+  poolMax: 0,
+  acquireTimeoutMs: 0,
+  instanceId: "",
+};
 
 export function setDbRuntimeInfo(next: DbRuntimeInfo): void {
   runtimeInfo = { ...next };
@@ -198,11 +264,23 @@ export function dbInstanceId(): string {
   return instanceId;
 }
 
+/**
+ * Configuração de pool em vigor na instância — usada pelo healthz para expor
+ * `pmax`/`ctmo`/`inst` a quem apresenta o token correto.
+ */
+export function runtimePoolInfo(): DbRuntimeInfo {
+  return runtimeInfo;
+}
+
 /** Forma mínima da resposta HTTP usada aqui (ServerResponse satisfaz). */
 type TraceResponse = {
   headersSent: boolean;
+  /** `true` depois que `end()` foi chamado (corpo em.flush ou encerrado). */
+  writableEnded?: boolean;
   setHeader(name: string, value: string): unknown;
   writeHead: (...args: any[]) => any;
+  once?: (event: string, listener: () => void) => unknown;
+  on?: (event: string, listener: () => void) => unknown;
 };
 
 /**
@@ -215,24 +293,66 @@ type TraceResponse = {
  * exatamente a rota medida nas rajadas. O patch do `writeHead` cobre os dois, e
  * cobre também a resposta de erro: o 500 passa pelo mesmo caminho de escrita.
  *
- * Opt-in pelo cabeçalho `x-db-trace`: quem mede pede, o cliente comum não
- * recebe header extra. A trilha é coletada mesmo sem o pedido — custo de um
- * punhado de contadores — para não depender de o cliente lembrar do cabeçalho.
+ * Ciclo de vida da requisição em voo:
+ *   - `enterRequest()` abre o token no início do handler;
+ *   - `finish` (resposta gravada) e `close` (socket fechado, inclusive
+ *     desconexão do cliente) fecham o token — o primeiro que chegar vence;
+ *   - o `finally` do handler é a rede de segurança para o caso em que o
+ *     handler falha ANTES de escrever qualquer resposta (`headersSent` falso),
+ *     onde nenhum evento de socket vai chegar;
+ *   - quando o corpo já foi encerrado (`writableEnded`), um `setImmediate`
+ *     garante a liberação mesmo que o evento `finish` não dispare.
+ *
+ * O fechamento é idempotente por token (`exitRequest`), então `finish` + `close`
+ * + `finally` juntos nunca decrementam duas vezes.
  */
 export function withDbTrace<T>(res: TraceResponse, wantsTrace: boolean, fn: () => Promise<T>): Promise<T> {
   const trace = newTrace();
+  const token = enterRequest();
+
+  let released = false;
+  const release = (): void => {
+    if (released) return;
+    released = true;
+    exitRequest(token);
+  };
+
+  if (typeof res.once === "function") {
+    res.once("finish", release);
+    res.once("close", release);
+  } else if (typeof res.on === "function") {
+    res.on("finish", release);
+    res.on("close", release);
+  }
+
   if (wantsTrace) {
     const originalWriteHead = res.writeHead;
     res.writeHead = function patchedWriteHead(this: unknown, ...args: any[]) {
       if (!res.headersSent) {
+        // Popula os campos de concorrência do rastreio a partir do estado AO
+        // VIVO do processo (nunca de um snapshot) no instante em que os
+        // cabeçalhos são escritos.
+        const live = inFlightState();
+        trace.inFlightCurrent = live.current;
+        trace.inFlightPeak = live.peak;
         res.setHeader("x-db-trace", traceHeader(trace));
         res.setHeader("Server-Timing", traceServerTiming(trace));
       }
       return originalWriteHead.apply(res, args as [any]);
     };
   }
-  enterRequest();
+
   return runWithTrace(trace, fn).finally(() => {
-    exitRequest();
+    if (!res.headersSent) {
+      // Handler falhou antes de escrever qualquer resposta: nenhum evento de
+      // socket vai chegar, a liberação é nossa.
+      release();
+      return;
+    }
+    if (res.writableEnded) {
+      // Corpo já encerrado: `finish` é iminente, mas não é garantido em
+      // runtimes que cortam o event loop. Libera no próximo tick.
+      setImmediate(release);
+    }
   });
 }
