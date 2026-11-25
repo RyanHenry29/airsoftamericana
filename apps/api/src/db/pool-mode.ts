@@ -67,11 +67,38 @@ export type PoolSizing = {
  *
  * O `idleTimeoutMillis` devolve a vaga ao pooler: conexão ociosa não segura
  * vaga do teto global.
+ *
+ * ── Benchmark de concorrência (branch experimental) ──────────────────────────
+ * O gargalo da arquitetura é o par (concorrência da instância × conexões por
+ * instância). Para medir cada alternativa separadamente, o dimensionamento
+ * precisa ser parâmetro de DEPLOY, não constante compilada. As variáveis
+ * abaixo existem para esse benchmark; o padrão é o do controle medido
+ * (max 1, espera de aquisição de 10 s), que é o único que fecha 300/300 no
+ * regime aquecido.
+ *
+ *   DB_POOL_MAX                  conexões simultâneas por instância (1–20)
+ *   DB_POOL_ACQUIRE_TIMEOUT_MS   espera máxima por conexão do pool (100–120000)
+ *   DB_POOL_IDLE_TIMEOUT_MS      ociosidade antes de devolver a vaga (1000–300000)
  */
 export function poolSizing(mode: PoolMode): PoolSizing {
-  if (mode === "transaction") return { max: 1, connectionTimeoutMillis: 2_000, idleTimeoutMillis: 10_000 };
-  if (mode === "session") return { max: 1, connectionTimeoutMillis: 2_000, idleTimeoutMillis: 10_000 };
-  return { max: 5, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 30_000 };
+  const base =
+    mode === "direct"
+      ? { max: 5, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 30_000 }
+      : { max: 1, connectionTimeoutMillis: 10_000, idleTimeoutMillis: 10_000 };
+  return {
+    max: envInt("DB_POOL_MAX", base.max, 1, 20),
+    connectionTimeoutMillis: envInt("DB_POOL_ACQUIRE_TIMEOUT_MS", base.connectionTimeoutMillis, 100, 120_000),
+    idleTimeoutMillis: envInt("DB_POOL_IDLE_TIMEOUT_MS", base.idleTimeoutMillis, 1_000, 300_000),
+  };
+}
+
+/** Lê inteiro do ambiente, ignorando valor inválido e restringindo ao intervalo. */
+function envInt(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }
 
 /**

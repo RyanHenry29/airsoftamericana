@@ -1,0 +1,58 @@
+{
+  "ferramenta": "arch-schema-diff",
+  "quando": "2026-11-25T16:33:15.429Z",
+  "porta": "6543",
+  "papel": "airsoft_app",
+  "metodo": "parse de schema.ts (esperado) vs information_schema.columns (real)",
+  "esperado": {
+    "tabelas": 57,
+    "colunas": 497
+  },
+  "real": {
+    "tabelas": 55,
+    "colunas": 479
+  },
+  "tabelasAusentes": [
+    "customer_avatars",
+    "password_resets",
+    "system_locks"
+  ],
+  "colunasAusentes": [
+    {
+      "tabela": "order_status_history",
+      "colunas": [
+        "actor_type"
+      ]
+    },
+    {
+      "tabela": "payments",
+      "colunas": [
+        "not_found_first_seen_at"
+      ]
+    },
+    {
+      "tabela": "payment_events",
+      "colunas": [
+        "attempts",
+        "dead_letter",
+        "last_attempt_at",
+        "last_error",
+        "lease_expires_at",
+        "lease_token"
+      ]
+    }
+  ],
+  "semPrivilegio": [],
+  "tabelasExtras": [
+    {
+      "tabela": "gateway_audit_status",
+      "colunas": 7
+    }
+  ],
+  "colunasExtras": [],
+  "compativel": false,
+  "catalogo": {
+    "tabelas": 55,
+    "colunas": 479
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "ferramenta": "arch-db-fingerprint",
+  "quando": "2026-11-25T16:37:54.756Z",
+  "marcaDagua": "2026-11-25T16:32:09.619Z",
+  "porta": "6543",
+  "papel": "airsoft_app",
+  "tabelas": [
+    {
+      "tabela": "banners",
+      "classe": "config",
+      "estrategia": "fallback (count)",
+      "total": 0,
+      "changedSince": null
+    },
+    {
+      "tabela": "homepage_sections",
+      "classe": "config",
+      "estrategia": "fallback (count)",
+      "total": 6,
+      "changedSince": null
+    },
+    {
+      "tabela": "categories",
+      "classe": "config",
+      "estrategia": "fallback (count)",
+      "total": 165,
+      "changedSince": null
+    },
+    {
+      "tabela": "brands",
+      "classe": "config",
+      "estrategia": "fallback (count)",
+      "total": 52,
+      "changedSince": null
+    },
+    {
+      "tabela": "products",
+      "classe": "config",
+      "estrategia": "marca-dagua (updated_at)",
+      "total": 0,
+      "changedSince": 0
+    },
+    {
+      "tabela": "product_variants",
+      "classe": "config",
+      "estrategia": "fallback (count)",
+      "total": 0,
+      "changedSince": null
+    },
+    {
+      "tabela": "orders",
+      "classe": "transacional",
+      "estrategia": "marca-dagua (updated_at)",
+      "total": 0,
+      "changedSince": 0
+    },
+    {
+      "tabela": "order_items",
+      "classe": "transacional",
+      "estrategia": "fallback (count)",
+      "total": 0,
+      "changedSince": null
+    }
+  ]
+}

@@ -12,6 +12,8 @@ import { config, runtimeDatabaseUrl } from "./src/config.js";
 import { withSystemLock } from "./src/services/payments/system-locks.js";
 import { getDb } from "./src/db/index.js";
 import { withDbTrace } from "./src/db/db-trace.js";
+import { currentTrace, inFlightState, runtimePoolInfo } from "./src/db/db-trace.js";
+import { checkTraceAuth, traceAuthAllowed } from "./src/lib/trace-auth.js";
 import { describeErrorChain } from "./src/lib/error-chain.js";
 import { schema } from "./src/db/index.js";
 import { buildHome, getCommercialSettings, searchSuggestions } from "./src/services/homepage.js";
@@ -257,11 +259,13 @@ export default async function handler(
   // — em janela de saturação o contador de retries voltou 0 com a curva de
   // latência provando que houve espera. A trilha é anexada à própria resposta,
   // então a evidência não depende da plataforma nem de log.
-  return withDbTrace(
-    res,
-    req.headers["x-db-trace"] !== undefined,
-    () => handleRequest(req, res),
-  );
+  //
+  // SEGURANÇA: `x-db-trace` ATIVA o pedido de telemetria, mas NÃO autoriza.
+  // A autorização exige o token (`DB_TRACE_TOKEN`) apresentado em
+  // `x-db-trace-token` ou `Authorization: Bearer`. Sem token configurado, o
+  // header de telemetria nunca é emitido — falha fechada.
+  const wantsTrace = req.headers["x-db-trace"] !== undefined && traceAuthAllowed(req.headers);
+  return withDbTrace(res, wantsTrace, () => handleRequest(req, res));
 }
 
 async function handleRequest(
@@ -271,7 +275,75 @@ async function handleRequest(
   const method = req.method ?? "GET";
   const { path, query } = parseUrl(req.url ?? "/");
 
-  if (path === "/healthz") return json(res, 200, { status: "ok", timestamp: new Date().toISOString() });
+  if (path === "/healthz") {
+    // O healthcheck é PÚBLICO e sempre 200 — independente do banco, do header
+    // de telemetria e do token. O monitoramento da Vercel não depende de nada
+    // disto.
+    //
+    // As métricas detalhadas do pool exigem AUTORIZAÇÃO independente do header
+    // `x-db-trace`: o caller precisa apresentar o token (`DB_TRACE_TOKEN`) em
+    // `x-db-trace-token` ou `Authorization: Bearer`. Sem token configurado, o
+    // endpoint nunca revela `pmax`/`ctmo`/`inst`/`inl`/`inpk`.
+    type HealthDb = {
+      status: string;
+      pmax?: number;
+      ctmo?: number;
+      inst?: string;
+      inl?: number;
+      inpk?: number;
+    };
+    const body: { ok: boolean; timestamp: string; db?: HealthDb } = {
+      ok: true,
+      timestamp: new Date().toISOString(),
+    };
+
+    const wantsTrace = req.headers["x-db-trace"] !== undefined;
+    if (!wantsTrace) {
+      body.db = { status: "trace_not_requested" };
+      return json(res, 200, body);
+    }
+
+    const auth = checkTraceAuth(req.headers);
+    if (!auth.allowed) {
+      // 200 com status genérico: o healthcheck não vira canal de erro, e o
+      // cliente não recebe nenhuma métrica de infraestrutura.
+      body.db = { status: auth.reason === "not_configured" ? "trace_disabled" : "trace_unauthorized" };
+      return json(res, 200, body);
+    }
+
+    try {
+      const t = currentTrace();
+      const live = inFlightState();
+      const runtime = runtimePoolInfo();
+      if (runtime.instanceId === "") {
+        // O banco ainda NÃO foi inicializado neste processo (inicialização
+        // preguiçosa no primeiro acesso). Reportar "connected" com `pmax=0`
+        // seria mentira: não existe pool para descrever. O healthcheck
+        // continua 200 — só a telemetria de pool fica indisponível.
+        body.db = {
+          status: "db_uninitialized",
+          inl: live.current,
+          inpk: live.peak,
+        };
+      } else if (t) {
+        // O trace carrega pmax/ctmo/inst/inl/inpk; `inl`/`inpk` são o estado AO
+        // VIVO do processo (nunca snapshot).
+        body.db = {
+          status: "connected",
+          pmax: t.poolMax ?? runtime.poolMax,
+          ctmo: t.acquireTimeoutMs ?? runtime.acquireTimeoutMs,
+          inst: t.inst ?? runtime.instanceId,
+          inl: t.inFlightCurrent ?? live.current,
+          inpk: t.inFlightPeak ?? live.peak,
+        };
+      } else {
+        body.db = { status: "trace_unavailable" };
+      }
+    } catch {
+      body.db = { status: "trace_error" };
+    }
+    return json(res, 200, body);
+  }
   if (path === "/") return json(res, 200, { name: "Airsoft Americana API", version: "0.1.0" });
 
   const origin = (req.headers.origin as string) || "";

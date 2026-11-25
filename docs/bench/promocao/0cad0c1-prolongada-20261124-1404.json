@@ -1,0 +1,80 @@
+{
+  "iniciativa": "ARCH CAPACITY PROMOTION",
+  "rodada": {
+    "rotulo": "janela prolongada",
+    "regime": "aquecida",
+    "aquecimento": {
+      "requisicoes": 20,
+      "ok": 20,
+      "falhas": 0,
+      "duracaoMs": 14732
+    },
+    "carga": {
+      "requisicoes": 1200,
+      "concorrencia": 10,
+      "rota": "/api/store/home"
+    }
+  },
+  "codigo": {
+    "deployedCommit": "0cad0c14d53b2e9963b0660175dbe2611be80608",
+    "branch": "exp/arch-capacity-promotion",
+    "clientCommit": "be7d9f7e88c91bf85aea3ce131cabf2654d9310c",
+    "deploymentUrl": "https://airsoftamericana-ayvf0x23h-ryanhenry29s-projects.vercel.app"
+  },
+  "configEfetiva": {
+    "pmax": 2,
+    "ctmo": 10000,
+    "inst": "44e847f3",
+    "origem": "healthz com x-db-trace + x-db-trace-token"
+  },
+  "janela": {
+    "startedAt": "2026-11-24T17:04:53.903Z",
+    "finishedAt": "2026-11-24T17:08:35.590Z",
+    "durationMs": 221686,
+    "requisoesPorSegundo": 5.413
+  },
+  "latencias": {
+    "p50": 1846,
+    "p90": 1898,
+    "p95": 1924,
+    "p99": 2012,
+    "min": 868,
+    "max": 2231,
+    "count": 1200
+  },
+  "statuses": {
+    "2xx": 1200,
+    "4xx": 0,
+    "5xx": 0,
+    "other": 0
+  },
+  "errorCount": 0,
+  "errors": [],
+  "trace": {
+    "token": "sim (nao registrado)",
+    "responsesWithTrace": 1200,
+    "inlMax": 10,
+    "inpkMax": 10,
+    "requestsWithOverlap": 1198,
+    "instances": 1,
+    "instanceIds": [
+      "44e847f3"
+    ],
+    "pmaxValues": [
+      2
+    ],
+    "ctmoValues": [
+      10000
+    ],
+    "emaxRespostas": 0,
+    "emaxMax": 0,
+    "acqtoRespostas": 0,
+    "acqtoMax": 0,
+    "retryRespostas": 0
+  },
+  "cliente": {
+    "transporte": "https (TLS) + keep-alive (maxSockets=512)",
+    "clienteSha256_16": "120be0f207d42557",
+    "runnerSha256_16": "8d96231adf61dcaa"
+  }
+}

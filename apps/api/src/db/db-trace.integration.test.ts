@@ -35,7 +35,11 @@ describe.skipIf(!hasPg)("trilha com Postgres real", () => {
     // orçamento.
     expect(trace.acquireMs).toBeGreaterThanOrEqual(0);
     expect(trace.queryMs).toBeGreaterThanOrEqual(trace.acquireMs);
-    expect(traceHeader(trace)).toMatch(/^total=\d+;acq=\d+;sql=\d+;att=2;retry=0;acqto=0;emax=0;est=0;bstop=0$/);
+    // O header carrega também as métricas de pooler (pmax/ctmo/inst/inl/inpk),
+    // acrescentadas pela instrumentação de capacidade. `sqlMs` é opcional.
+    expect(traceHeader(trace)).toMatch(
+      /^total=\d+;acq=\d+;sql=\d+;att=2;retry=0;acqto=0;emax=0;est=0;bstop=0;pmax=\d+;ctmo=\d+;inst=[0-9a-f]*;inl=\d+;inpk=\d+(;sqlMs=\d+)?$/,
+    );
 
     await pool.end();
   });
