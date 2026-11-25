@@ -526,3 +526,92 @@ que a §13.1 autoriza, e nada além.
 | Força bruta do token | BAIXO | entropia de ~256 bits (32 bytes aleatórios → 43 chars base64url). Não há rate limiting no caminho — a entropia é a defesa |
 | Quem tem o token lê o mapa da infraestrutura | MÉDIO | é uma credencial de diagnóstico: não compartilhar, rotacionar em caso de suspeita |
 | `trace_disabled` vs `trace_unauthorized` revela se o token está configurado | BAIXO | informação de configuração, não de credencial; aceito por design — o healthcheck público precisa responder 200 |
+
+## 14. Ciclo de vida do `DB_TRACE_TOKEN` de produção — token temporário
+
+O token de produção é uma **credencial de diagnóstico com janela**, não
+configuração permanente.
+
+| Fase | Ação | Quando |
+|---|---|---|
+| 1. Preparo | gerar token novo na máquina (`crypto.randomBytes(32).toString("base64url")` — 43 chars, ~256 bits); nunca em argv, nunca impresso | antes do item A |
+| 2. Promoção | gravar no target `production` como **Sensitive**; usá-lo só no baseline, na janela de promoção e na observação | item A |
+| 3. Observação | manter durante a janela definida (24 h de observação, §4.1) | item C |
+| 4. Encerramento | **remover** `DB_TRACE_TOKEN` do target `production` (`vercel env rm DB_TRACE_TOKEN production --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13`) | ao fim da observação |
+| 5. Evidência | os artefatos das janelas já carregam `pmax`/`ctmo`/`emax`/`acqto`/`retry` extraídos — remover o token não apaga a evidência | — |
+
+**Por que remover em vez de manter**:
+
+- com o token removido, o trace **falha fechada**: nenhum header `x-db-trace` é
+  emitido e o healthz volta a `trace_disabled` — o mapa da infraestrutura deixa
+  de ser legível por qualquer requisição;
+- manter em produção, para sempre, uma credencial que expõe `inst`, `pmax`,
+  `ctmo`, `inl` e `inpk` não se justifica por uma promoção;
+- o custo é real e precisa ser planejado: **depois da remoção, `emax` e
+  `acqto` deixam de ser observáveis**. Por isso a janela de observação tem de
+  terminar **antes** da remoção, e os artefatos têm de registrar os
+  contadores — o que o runner já faz.
+
+Rotação em caso de suspeita (token vazado por transcript, log ou terminal):
+remover imediatamente, recriar, refazer o baseline.
+
+**Nota de modelo de ameaça**: a ACL do arquivo-fonte protege contra outros
+usuários locais, **não** contra processo executado pela própria conta
+autorizada, malware ou ferramenta com privilégio equivalente. A proteção é de
+janela curta (o arquivo é destruído ao fim do procedimento, o valor nunca é
+impresso), não de isolamento.
+
+## 15. Prova de ausência de alteração no banco + template do relatório
+
+### 15.1 Por construção e por dado
+
+Por **construção**: a rota `/api/store/home` é somente leitura — em
+`apps/api/src/services/homepage.ts` há apenas `select()` do drizzle e um
+`SELECT` de mais-vendidos; nenhuma escrita.
+
+Por **dado**: marca d'água por tabela, com o script
+`arch-db-fingerprint.mjs`:
+
+| Classe | Tabelas | Estratégia | Afirmação |
+|---|---|---|---|
+| config | `banners`, `homepage_sections`, `categories`, `brands`, `products`, `product_variants` | `count(*)` + `count(*) FILTER (WHERE updated_at > T0)` | **zero linhas alteradas** desde o início da janela |
+| transacional | `orders`, `order_items` | idem, mas com `created_at`/fallback | **medida, não afirmada**: em produção é uma loja viva e um pedido real muda essas tabelas por motivos alheios à carga |
+
+Tabelas sem `updated_at` caem no fallback `count(*)` antes/depois — detecta
+inserção/remoção, **não** `UPDATE` in-place. O script introspecta
+`information_schema` por tabela, sem suposição sobre o schema.
+
+Procedimento (uma leitura antes e uma depois de cada janela):
+
+```powershell
+$t0 = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+node arch-db-fingerprint.mjs --env-file $envFile --var DATABASE_URL --derive --since $t0 --out $fpA
+# ... roda a janela ...
+node arch-db-fingerprint.mjs --env-file $envFile --var DATABASE_URL --derive --since $t0 --out $fpB
+# o runner cruza A e B e grava o veredito no artefato
+node arch-promotion-battery.mjs ... --fingerprint-before $fpA --fingerprint-after $fpB
+```
+
+**Prova de método em staging (2026-11-25)**: janela de 60 GETs / conc 5 com a
+mesma marca d'água nos dois fingerprints → **0 tabelas de config alteradas**,
+60/60 em 200, `emax`/`acqto`/`retry` = 0.
+
+### 15.2 Campos obrigatórios do relatório de cada janela
+
+Todos presentes no artefato JSON do runner:
+
+| Campo | Origem | No artefato |
+|---|---|---|
+| Horário de início e fim | relógio do cliente | `janela.startedAt` / `janela.finishedAt` (+ `durationMs`) |
+| Identificador da implantação | `--deployment-id` | `codigo.deploymentId` |
+| SHA do código executado | `--deployed-commit` | `codigo.deployedCommit` |
+| 2xx e 5xx | contagem por status | `statuses."2xx"` / `statuses."5xx"` (+ `errorCount`) |
+| p50, p95, p99 | percentis da janela | `latencias.p50` / `.p95` / `.p99` (+ `p90`, `min`, `max`) |
+| `emax`, `acqto`, retry | header `x-db-trace` | `trace.emaxRespostas` / `.acqtoRespostas` / `.retryRespostas` (+ máximos) |
+| `db.status`, `pmax`, `ctmo` | healthz autorizado | `configEfetiva.status` / `.pmax` / `.ctmo` |
+| Ausência de alterações no banco | fingerprints antes/depois | `banco.semAlteracaoNoBanco` + `banco.tabelasAlteradas` |
+| Contexto | concorrência, rota, instances, `inl`/`inpk` | `rodada.carga`, `trace.instances`, `trace.inlMax` / `.inpkMax` |
+
+Cruzamento do SHA: `codigo.deployedCommit` (informado pelo operador) e
+`codigo.deploymentId` precisam concordar com o deployment real — conferível em
+`vercel api /v13/deployments/<deploymentId>` → `meta.githubCommitSha`.
