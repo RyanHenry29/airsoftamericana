@@ -148,9 +148,15 @@ migração — a separação é garantida por código, não por convenção.
 
 ## 3. Procedimento de promoção (exige autorização específica)
 
+> O escopo fechado a ser autorizado — três itens, com o que toca, o que não
+> toca, o que aborta e a evidência a produzir — está formalizado em
+> **`docs/AUTORIZACAO_OPERACIONAL.md`**. Este checklist é a referência
+> técnica; o pedido de autorização é o documento operacional.
+
 1. **Variáveis** — no target `production` do projeto `airsoftamericana-api`:
-   gravar `DATABASE_URL_RUNTIME` (transaction mode, valor de §2.1) e
-   `DB_POOL_MAX=2`. Confirmar com `vercel env ls` (nomes/targets, nunca valores).
+   gravar `DATABASE_URL_RUNTIME` (transaction mode, valor de §2.1),
+   `DB_POOL_MAX=2` e `DB_TRACE_TOKEN` (§2.4). Confirmar com `vercel env ls`
+   (nomes/targets, nunca valores).
 2. **Conexão** — teste de conexão **antes** do merge, e **com o papel de
    runtime**, não com credencial administrativa:
    - abrir a pool com a `DATABASE_URL_RUNTIME` (`:6543`, usuário
@@ -344,6 +350,16 @@ argv: vem de arquivo. O script espelha o TLS do app
 semântica própria de `sslmode=require` e a conexão falha com "self-signed
 certificate in certificate chain" (foi o que aconteceu na primeira execução).
 
+**O arquivo-fonte é segredo operacional** e o harness o trata como tal:
+
+| Controle | Implementação | Verificado |
+|---|---|---|
+| ACL restrita | `icacls <arquivo> /inheritance:r /grant:r "<usuário>:(F)"` — herança removida, só o dono do arquivo | ACL efetiva: apenas `Henryxin7:(F)` |
+| Criação exclusiva | `writeFileSync(..., { flag: "wx" })` — não sobrescreve arquivo existente | segunda emissão no mesmo caminho aborta; o arquivo original fica intacto |
+| Fora do repositório | o harness recusa qualquer caminho dentro da árvore do repo (risco de entrar no Git) | tentativa aborta, arquivo não criado |
+| Purge explícito | `--purge <arquivo>` apaga e reporta; o `env pull` temporário é apagado ao fim de toda execução | resíduo zero após o procedimento |
+| Conteúdo nunca impresso | só metadados (comprimento, porta, papel) | nenhum trecho de senha/URL em saída |
+
 ### 11.3 Procedimento em produção (exige autorização)
 
 ```powershell
@@ -459,3 +475,54 @@ Notas operacionais:
 > disponível para `db:migrate` / `db:bootstrap` / CLIs — inclusive pelo
 > `env pull` local, que com `sensitive` passa a exigir o arquivo em vez de
 > expor o valor no terminal.
+
+## 13. Auditoria de exposição do mecanismo de trace
+
+Pergunta: *o mecanismo de trace expõe informações internas a quem consiga
+obter o token?*
+
+### 13.1 O que o token libera
+
+| Interface | Sem token | Com token válido |
+|---|---|---|
+| header `x-db-trace` | **nunca emitido** (falha fechada) | `total`, `acq`, `sql`, `att`, `retry`, `acqto`, `emax`, `est`, `bstop`, `pmax`, `ctmo`, `inst`, `inl`, `inpk` (+ `sqlMs` opcional) |
+| `GET /healthz` | 200 com `{ok, timestamp, db.status: "trace_disabled"}` | 200 com `db.status`, `pmax`, `ctmo`, `inst`, `inl`, `inpk` |
+
+O header `x-db-trace` **ativa** o pedido; não **autoriza**. A autorização
+exige o token em `x-db-trace-token` ou `Authorization: Bearer`.
+
+### 13.2 O que o trace não carrega
+
+- **nenhum texto de SQL**: o tipo `DbTrace` guarda `sqlMs` (tempo) e `reasons`
+  (motivos de retry), mas o header emite **apenas** `sqlMs` — e é um número;
+  `reasons` fica dentro do processo;
+- **nenhuma credencial**: nem host, nem nome do banco, nem usuário, nem senha,
+  nem string de conexão;
+- `inst` é um identificador de processo (`randomBytes` → hex), não um
+  identificador de host nem de deployment.
+
+O que sobra é um **mapa da infraestrutura** (quantas instâncias, o
+dimensionamento do pool, a tolerância a filas e a saturação) — é exatamente o
+que a §13.1 autoriza, e nada além.
+
+### 13.3 Mecânica de autorização (`apps/api/src/lib/trace-auth.ts`)
+
+- o token esperado vem de `DB_TRACE_TOKEN`; sem ela, **nenhuma** métrica
+  detalhada é liberada — nem no healthz, nem no header;
+- comparação por `timingSafeEqual` sobre digests **SHA-256 de tamanho fixo**:
+  o caminho de execução não depende do comprimento do token apresentado;
+- cache por par (token esperado, token apresentado): se o `env` muda, o cache
+  é invalidado — um resultado antigo não sobrevive a uma troca de token;
+- o motivo (`ok` / `not_configured` / `missing_token` / `invalid_token`) é
+  interno; o healthz só distingue `trace_disabled` (não configurada) de
+  `trace_unauthorized` (token errado) — revela **estado de configuração**, não
+  segredo.
+
+### 13.4 Riscos residuais
+
+| Risco | Nível | Mitigação |
+|---|---|---|
+| Token vazado por transcript, log de CI ou saída de terminal | ALTO | valor novo e exclusivo de produção; nunca em repo, argv ou log; `env pull` não o expõe (Sensitive) |
+| Força bruta do token | BAIXO | entropia de ~256 bits (32 bytes aleatórios → 43 chars base64url). Não há rate limiting no caminho — a entropia é a defesa |
+| Quem tem o token lê o mapa da infraestrutura | MÉDIO | é uma credencial de diagnóstico: não compartilhar, rotacionar em caso de suspeita |
+| `trace_disabled` vs `trace_unauthorized` revela se o token está configurado | BAIXO | informação de configuração, não de credencial; aceito por design — o healthcheck público precisa responder 200 |
