@@ -30,7 +30,7 @@ produção).
 | 2 | Transaction mode habilitado no projeto de produção `psswdwsvybsqrflhpuqx` para o papel `airsoft_app` | print do painel do Supabase (Database → Connection Pooler) | titular (painel) |
 | 3 | Backup do valor da `DATABASE_URL` de produção | `env pull` para arquivo temporário com ACL restrita | execução |
 | 4 | `DB_TRACE_TOKEN` de produção gerado na máquina | `crypto.randomBytes(32).toString("base64url")` — nunca em argv, nunca impresso | execução |
-| 5 | Janela de observação definida e registrada | **24 h** a partir do fim do baseline (item C) → instante exato da remoção do token (item D) anotado antes de começar | execução |
+| 5 | Janela de observação definida e registrada | **24 h contadas do encerramento bem-sucedido da janela 3** (`T_fim_C` = `janela.finishedAt` do artefato) — falhas, aborts e atrasos anteriores **não** consomem a janela; instante da remoção (`T_fim_C + 24 h`) anotado antes de começar | execução |
 | 6 | Papel `airsoft_app` capaz de ler `information_schema` e `count(*)` nas tabelas do caminho da home | já provado em staging (2026-11-25): 8 tabelas lidas sem erro; em produção a leitura é repetida no primeiro fingerprint, e falha ali aborta a janela | execução |
 
 Sem 1 e 2, os itens A–C não são executados. A pré-condição 5 é a que define
@@ -101,8 +101,17 @@ pinagem do pooler e não um artefato do harness. Regras:
 **Fingerprint (item B):** 2 leituras do banco (`information_schema` +
 `count(*)`/marca d'água) em 8 tabelas — `banners`, `homepage_sections`,
 `categories`, `brands`, `products`, `product_variants`, `orders`,
-`order_items`. É leitura pura; nenhuma tabela de config deve aparecer como
-alterada.
+`order_items`. É leitura pura; nenhuma tabela de config deve aparecer com
+alteração detectada.
+
+**O fingerprint é detector de alterações, não prova criptográfica de
+imutabilidade.** O que ele sustenta é "nenhuma alteração **detectada** no
+estado final". O que ele **não** cobre: `UPDATE` que não toca `updated_at`;
+substituição de conteúdo que preserva a cardinalidade; escrita seguida de
+reversão (o detector compara estado final); e o caminho coberto por log de
+auditoria/evento de escrita. Hash determinístico de conteúdo e leitura de
+auditoria são **melhorias futuras, fora deste escopo** — não são executadas
+nesta promoção.
 
 ### Item C — baseline
 
@@ -142,7 +151,7 @@ auditar a decisão depois:
 | p50, p95, p99 | `latencias.p50` / `.p95` / `.p99` (+ `p90`, `min`, `max`) |
 | `emax`, `acqto`, retry | `trace.emaxRespostas` / `.acqtoRespostas` / `.retryRespostas` (+ máximos) |
 | `db.status`, `pmax`, `ctmo` | `configEfetiva.status` / `.pmax` / `.ctmo` |
-| Ausência de alterações no banco | `banco.semAlteracaoNoBanco` + `banco.tabelasAlteradas` |
+| Ausência de alterações no banco | `banco.semAlteracaoNoBanco` + `banco.tabelasAlteradas` — leitura correta do campo: **nenhuma alteração detectada no estado final**, não "prova de que nada foi escrito" (§15.1 do checklist) |
 | Contexto | `rodada.carga`, `trace.instances`, `trace.inlMax` / `.inpkMax` |
 
 Cruzamento obrigatório do SHA: `codigo.deployedCommit` e
@@ -179,6 +188,19 @@ das três janelas já carregam os contadores. Rotação em caso de suspeita
 (token vazado por transcript, log ou terminal): remover imediatamente,
 recriar, refazer o baseline.
 
+**Registro de ciclo de vida** (vai para a evidência):
+
+| Evento | Instante (UTC, ISO-8601) | Registrado por |
+|---|---|---|
+| Criação do token (na máquina, nunca impresso) | `T_criacao` | execução |
+| Ativação em `production` (gravado como Sensitive) | `T_ativacao` | execução |
+| Fim bem-sucedido da janela 3 | `T_fim_C` (`janela.finishedAt` do artefato) | runner |
+| Remoção do token + trace de volta a `trace_disabled` | `T_fim_C + 24 h` | execução |
+
+Se o baseline não completar (abort, falha, atraso), a janela de 24 h **não
+começa**: o token é removido e a execução recomeça do item A com um token
+novo.
+
 ## 4. O que será tocado
 
 | Recurso | Natureza | Reversibilidade |
@@ -186,7 +208,7 @@ recriar, refazer o baseline.
 | 3 env vars no target `production` | criação | reversível (`vercel env rm`) |
 | Conexões TCP ao pooler de produção (papel `airsoft_app`, `:6543` e `:5432`) | leitura | sem efeito de dados |
 | 900 requisições `GET` à API de produção (3 × 300) | leitura | sem efeito de dados |
-| Fingerprint do banco (2 leituras por janela: `information_schema` + `count(*)`/marca d'água em 8 tabelas) | leitura | sem efeito de dados |
+| Fingerprint do banco (2 leituras por janela: `information_schema` + `count(*)`/marca d'água em 8 tabelas) | leitura — detector de alterações, não prova de imutabilidade | sem efeito de dados |
 | Remoção do `DB_TRACE_TOKEN` ao fim da observação (item D) | remoção | fecha o acesso de diagnóstico; o trace volta a falhar fechada |
 | Arquivos temporários com a URL derivada | segredo operacional | apagados ao fim, ACL restrita, nunca dentro do repo |
 
@@ -199,13 +221,12 @@ permanecem — removê-los é rollback, que exige decisão própria).
 
 | Sinal | Ação |
 |---|---|
+| **qualquer 5xx na janela** | **abortar imediatamente**; parar a janela; investigar |
+| **`emax > 0` ou `acqto > 0`** | **abortar imediatamente**; avaliar capacidade do pooler / fila do pool |
+| **alteração detectada em tabela de config** | **abortar a janela**; auditar antes de seguir |
 | conexão recusada / erro de autenticação no harness | parar; não repetir; reportar |
-| `emax > 0` | parar; avaliar capacidade do pooler |
-| `acqto > 0` | parar; avaliar fila do pool |
-| qualquer 5xx na janela | parar a janela; investigar |
 | `db.status` ≠ `connected` | parar imediatamente |
 | `pmax` ≠ 2 ou `ctmo` ≠ 10000 no healthz autorizado | parar; config divergiu |
-| fingerprint com tabela de config marcada como alterada | parar a janela; auditar antes de seguir |
 
 Nenhum retry é introduzido para mascarar falha — o próprio runtime é medido
 com o retry que ele tem.
@@ -216,7 +237,9 @@ com o retry que ele tem.
    bateria, com **todos** os campos da tabela do item C: início/fim,
    `deploymentId`, SHA implantado, 2xx/5xx, `p50/p95/p99`,
    `emax`/`acqto`/`retry`, `db.status`/`pmax`/`ctmo` e o veredito
-   `banco.semAlteracaoNoBanco` com `banco.tabelasAlteradas`.
+   `banco.semAlteracaoNoBanco` com `banco.tabelasAlteradas` — lido como
+   **nenhuma alteração detectada no estado final**, não como prova de que
+   nada foi escrito.
 2. **Saída do harness** (§11.4/§11.5) — metadados do teste e do controle
    `:5432`, sem segredo, sem URL, sem senha, com o registro de conexão
    encerrada.
@@ -225,6 +248,9 @@ com o retry que ele tem.
 4. **Registro da pré-condição 2** — print do painel do Supabase.
 5. **Registro do item D** — instante da remoção do `DB_TRACE_TOKEN` e a
    confirmação de que o trace voltou a falhar fechada.
+6. **Registro de ciclo de vida do token** — `T_criacao`, `T_ativacao`,
+   `T_fim_C` e `T_remocao` (UTC, ISO-8601) com o responsável por cada
+   evento.
 
 Nenhum artefato pode conter o token, a URL derivada ou a senha.
 

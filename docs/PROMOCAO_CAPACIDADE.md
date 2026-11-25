@@ -536,7 +536,7 @@ configuração permanente.
 |---|---|---|
 | 1. Preparo | gerar token novo na máquina (`crypto.randomBytes(32).toString("base64url")` — 43 chars, ~256 bits); nunca em argv, nunca impresso | antes do item A |
 | 2. Promoção | gravar no target `production` como **Sensitive**; usá-lo só no baseline, na janela de promoção e na observação | item A |
-| 3. Observação | manter durante a janela definida (24 h de observação, §4.1) | item C |
+| 3. Observação | manter durante a janela definida — **24 h contadas do encerramento bem-sucedido da janela 3** (`T_fim_C`), **não** da criação do token | item C |
 | 4. Encerramento | **remover** `DB_TRACE_TOKEN` do target `production` (`vercel env rm DB_TRACE_TOKEN production --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13`) | ao fim da observação |
 | 5. Evidência | os artefatos das janelas já carregam `pmax`/`ctmo`/`emax`/`acqto`/`retry` extraídos — remover o token não apaga a evidência | — |
 
@@ -552,6 +552,23 @@ configuração permanente.
   terminar **antes** da remoção, e os artefatos têm de registrar os
   contadores — o que o runner já faz.
 
+**A janela de 24 h começa em `T_fim_C`** — o instante de encerramento
+**bem-sucedido** da janela 3, registrado no artefato (`janela.finishedAt`).
+Falhas, aborts e atrasos anteriores não consomem a janela: se o baseline não
+completa, o token é removido e a execução recomeça do item A com um token
+novo. O instante exato da remoção é `T_fim_C + 24 h`, anotado antes de
+começar.
+
+**Registro de ciclo de vida** (vai para a evidência do item D, §6 do pedido de
+autorização):
+
+| Evento | Instante (UTC, ISO-8601) | Registrado por |
+|---|---|---|
+| Criação do token (na máquina, nunca impresso) | `T_criacao` | execução |
+| Ativação em `production` (gravado como Sensitive) | `T_ativacao` | execução |
+| Fim bem-sucedido da janela 3 | `T_fim_C` | runner (artefato) |
+| Remoção do token + trace de volta a `trace_disabled` | `T_fim_C + 24 h` | execução |
+
 Rotação em caso de suspeita (token vazado por transcript, log ou terminal):
 remover imediatamente, recriar, refazer o baseline.
 
@@ -561,7 +578,7 @@ autorizada, malware ou ferramenta com privilégio equivalente. A proteção é d
 janela curta (o arquivo é destruído ao fim do procedimento, o valor nunca é
 impresso), não de isolamento.
 
-## 15. Prova de ausência de alteração no banco + template do relatório
+## 15. Verificação de ausência de alteração no banco + template do relatório
 
 ### 15.1 Por construção e por dado
 
@@ -570,16 +587,36 @@ Por **construção**: a rota `/api/store/home` é somente leitura — em
 `SELECT` de mais-vendidos; nenhuma escrita.
 
 Por **dado**: marca d'água por tabela, com o script
-`arch-db-fingerprint.mjs`:
+`arch-db-fingerprint.mjs`. **Classificação: é um detector de alterações, não
+prova criptográfica de imutabilidade.**
 
-| Classe | Tabelas | Estratégia | Afirmação |
+| Classe | Tabelas | Estratégia | O que o resultado sustenta |
 |---|---|---|---|
-| config | `banners`, `homepage_sections`, `categories`, `brands`, `products`, `product_variants` | `count(*)` + `count(*) FILTER (WHERE updated_at > T0)` | **zero linhas alteradas** desde o início da janela |
+| config | `banners`, `homepage_sections`, `categories`, `brands`, `products`, `product_variants` | `count(*)` + `count(*) FILTER (WHERE updated_at > T0)` | **nenhuma alteração detectada** no estado final — detector, não prova |
 | transacional | `orders`, `order_items` | idem, mas com `created_at`/fallback | **medida, não afirmada**: em produção é uma loja viva e um pedido real muda essas tabelas por motivos alheios à carga |
+
+**Limites do método (conhecidos, declarados):**
+
+| Limite | Consequência |
+|---|---|
+| `updated_at` só é alterado se a aplicação mantiver o campo | um `UPDATE` que não toca `updated_at` passa despercebido nas tabelas com o campo |
+| `count(*)` compara cardinalidade | substituição de conteúdo que preserva a contagem não aparece (tabelas sem `updated_at`) |
+| o detector compara **estado final** | uma escrita seguida de reversão pode não aparecer no resultado |
+| nada é lido de log de auditoria ou evento de escrita | o detector não cobre o caminho "escreveu e desfez" |
+| a prova de método foi feita em staging | não comprova ausência de alterações em produção — em produção ele roda como verificação |
 
 Tabelas sem `updated_at` caem no fallback `count(*)` antes/depois — detecta
 inserção/remoção, **não** `UPDATE` in-place. O script introspecta
 `information_schema` por tabela, sem suposição sobre o schema.
+
+Melhorias futuras **fora do escopo desta promoção** (só se houver necessidade
+concreta, e cada uma com autorização própria):
+
+- **hash determinístico de conteúdo** para as tabelas de config: ordenação
+  pela chave primária, serialização canônica e SHA-256 — detecta troca de
+  conteúdo que preserva a cardinalidade;
+- **leitura de logs de auditoria / eventos de escrita** na janela — é o que
+  cobriria o caminho "escreveu e desfez", que o estado final não vê.
 
 Procedimento (uma leitura antes e uma depois de cada janela):
 
@@ -593,8 +630,10 @@ node arch-promotion-battery.mjs ... --fingerprint-before $fpA --fingerprint-afte
 ```
 
 **Prova de método em staging (2026-11-25)**: janela de 60 GETs / conc 5 com a
-mesma marca d'água nos dois fingerprints → **0 tabelas de config alteradas**,
-60/60 em 200, `emax`/`acqto`/`retry` = 0.
+mesma marca d'água nos dois fingerprints → **0 tabelas de config com alteração
+detectada**, 60/60 em 200, `emax`/`acqto`/`retry` = 0. Isso valida o
+**método** naquele cenário; não é evidência sobre produção — em produção o
+mesmo procedimento roda como verificação dentro da janela autorizada.
 
 ### 15.2 Campos obrigatórios do relatório de cada janela
 
@@ -609,7 +648,7 @@ Todos presentes no artefato JSON do runner:
 | p50, p95, p99 | percentis da janela | `latencias.p50` / `.p95` / `.p99` (+ `p90`, `min`, `max`) |
 | `emax`, `acqto`, retry | header `x-db-trace` | `trace.emaxRespostas` / `.acqtoRespostas` / `.retryRespostas` (+ máximos) |
 | `db.status`, `pmax`, `ctmo` | healthz autorizado | `configEfetiva.status` / `.pmax` / `.ctmo` |
-| Ausência de alterações no banco | fingerprints antes/depois | `banco.semAlteracaoNoBanco` + `banco.tabelasAlteradas` |
+| Ausência de alterações no banco | fingerprints antes/depois | `banco.semAlteracaoNoBanco` + `banco.tabelasAlteradas` — leitura correta do campo: **nenhuma alteração detectada no estado final**, não "prova de que nada foi escrito" (§15.1) |
 | Contexto | concorrência, rota, instances, `inl`/`inpk` | `rodada.carga`, `trace.instances`, `trace.inlMax` / `.inpkMax` |
 
 Cruzamento do SHA: `codigo.deployedCommit` (informado pelo operador) e
