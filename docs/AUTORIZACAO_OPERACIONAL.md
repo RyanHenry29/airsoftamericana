@@ -16,35 +16,45 @@
 | **A** | Variáveis de produção | Gravar **três** env vars no target `production` do projeto `prj_MLk5KPuaIh5shK0cNZum69oXpl13`: `DATABASE_URL_RUNTIME` (`:6543`, derivada da `DATABASE_URL` de produção), `DB_POOL_MAX=2` e `DB_TRACE_TOKEN` (valor novo, exclusivo) | Qualquer outra env var; `DATABASE_URL` permanece como está (a promoção para `sensitive` é autorização separada, §12 do checklist); nada em Preview; nada no Supabase |
 | **B** | Teste de conexão | Rodar o harness (§11 do checklist) contra produção. O `:5432` entra **apenas como comparação de comportamento** (mesma credencial, outro modo de pinagem): a conexão de controle é **encerrada ao final** e o resultado é registrado **sem URL, sem senha e sem string de conexão**. Inclui a impressão digital do banco (fingerprint antes/depois) | Qualquer escrita no banco; qualquer SQL de escrita; teste de permissão de escrita; conexão com o papel DDL; reutilizar a conexão de controle para qualquer outra operação; deixar a conexão de controle aberta |
 | **C** | Baseline | **3 janelas** de 300 requisições / concorrência 10 contra a API de produção, intervalo ≥ 15 min entre elas, lendo `x-db-trace` com o token **na variante C-traced** (§"Dependência de deploy"); cada janela com fingerprint do banco antes e depois | Mais de 3 janelas; concorrência acima de 10; qualquer alteração de código; qualquer carga de outro tipo |
-| **D** | Encerramento do trace | Ao fim da janela de observação (24 h), **remover** `DB_TRACE_TOKEN` do target `production`, gerar o novo deploy que faz a remoção valer e registrar as duas confirmações (Vercel + runtime); os artefatos das janelas preservam os contadores já coletados | Manter o token além da janela; remover `DATABASE_URL_RUNTIME` ou `DB_POOL_MAX` (isso é rollback, §5 do checklist, exige decisão própria); qualquer outra env var |
+| **D** | Encerramento do trace | Ao fim da janela de observação (24 h), **remover** `DB_TRACE_TOKEN` do target `production`, gerar o novo deploy que faz a remoção valer (**R2**) e registrar as duas confirmações (Vercel + runtime); os artefatos das janelas preservam os contadores já coletados | Manter o token além da janela; remover `DATABASE_URL_RUNTIME` ou `DB_POOL_MAX` (isso é rollback, §5 do checklist, exige decisão própria); qualquer outra env var |
+| **R1** | Primeiro redeploy | Um redeploy que aplica o snapshot novo das env vars. **Com o código de produção atual, ele é inócuo** (§"Dependência de deploy"): por isso o R1 só produz telemetria se o deployment carregar o **código** da linha de promoção — o que é deploy de código, fora deste escopo | Merge do PR #3 ou do PR #4; qualquer alteração de código; qualquer carga |
+| **R2** | Segundo redeploy | O redeploy que faz a remoção do token valer, depois da observação. Mesmo SHA do deployment em serviço no momento da remoção | Merge, alteração de código, bootstrap |
 
 Ordem de execução: **A → B → C → D**. Se B falhar, C não roda. D só roda
 depois da observação — e é o que fecha o item de risco ALTO (token vivo em
 produção).
 
-### Dependência de deploy — decisão pendente do titular
+### Dependência de deploy — e de código — decisão pendente do titular
 
 A Vercel só aplica mudança de env var em **deploy novo** ("Any change you
 make to environment variables are not applied to previous deployments, they
-only apply to new deployments"). Duas consequências, ambas com o mesmo
-antídoto — um **redeploy do mesmo SHA**, sem merge e sem mudança de código
-(`vercel redeploy <url> --target production`):
+only apply to new deployments"). E há um segundo fato, verificado no código:
+**o runtime em produção (`master` `5d6a978`) não lê as três variáveis** — ele
+não tem `x-db-trace`, ignora `DB_POOL_MAX` (pool dimensionado por constante
+`max: isTransactionPooler ? 1 : 5`), ignora `DATABASE_URL_RUNTIME` e o
+`/healthz` responde só `{status, timestamp}`.
 
-| Efeito | Sem redeploy |
+Duas consequências, com o mesmo antídoto — um **redeploy do mesmo SHA**, sem
+merge e sem mudança de código (`vercel redeploy <url> --target production`):
+
+| Efeito | Sem o deploy novo |
 |---|---|
-| **Item C** — baseline de produção | a API em serviço responde `trace_disabled` e não emite `x-db-trace`: a baseline mede latência e status e fica **cega** para `emax`, `acqto`, `retry`, `pmax` e `ctmo` (3 dos 5 critérios de abort) |
+| **Item C** — baseline de produção | a API em serviço não emite `x-db-trace`: a baseline mede latência e status e fica **cega** para `emax`, `acqto`, `retry`, `pmax` e `ctmo` (3 dos 5 critérios de abort) |
 | **Item D** — remoção do token | a variável sai do target, mas o deployment em serviço **continua com o token** e o trace continua ativo |
 
-Executar esse redeploy é um **deploy de produção** — hoje está fora do escopo
- (§7). A decisão é do titular e define duas variantes do item C:
+E o limite do antídoto: **redeploy do SHA atual não resolve o item C**, porque
+o código antigo ignora as três variáveis — o redeploy seria inócuo. Para a
+baseline traced, o deployment precisa carregar o **código** da linha de
+promoção (§2.7/§2.8 do checklist). Isso é **deploy de código**, hoje fora do
+escopo (§7), e ele traz a obrigação de `DATABASE_URL_RUNTIME` (fail-closed
+em produção).
 
-- **C-traced** (redeploy autorizado antes da baseline): baseline com
-  `x-db-trace`, `emax`/`acqto`/`retry`/`pmax`/`ctmo` observáveis desde o
-  início — e o item D fecha com confirmação de runtime;
-- **C-untraced** (sem redeploy): baseline só com latência, status e 2xx/5xx;
-  os sinais do pooler passam a ser observáveis **só** no pós-promoção, e
-  isso é registrado como limitação da evidência — não como ausência de
-  problema.
+Duas ordens possíveis, e a escolha é do titular:
+
+| Ordem | Baseline | Deploys | Autorização que exige |
+|---|---|---|---|
+| **1 — code-first** | **traced** em max=1/transaction (mesmo código, mesmo modo, muda só o pool 1→2) | 1 deploy de código + 2 redeploys | **código** (merge PR #3 → PR #4 + deploy) |
+| **2 — config-first** | **untraced** (latência, status, 2xx/5xx) — os sinais internos do pooler só ficam observáveis no pós-promoção, e isso entra na evidência como limitação | 1 redeploy inócuo + 1 deploy de código + 1 redeploy | **código** + um redeploy que não muda comportamento |
 
 Até a decisão, os itens A/B/C/D **não** são executados.
 
@@ -59,6 +69,7 @@ Até a decisão, os itens A/B/C/D **não** são executados.
 | 5 | Janela de observação definida e registrada | **24 h contadas do encerramento bem-sucedido da janela 3** (`T_fim_C` = `janela.finishedAt` do artefato) — falhas, aborts e atrasos anteriores **não** consomem a janela; instante da remoção (`T_fim_C + 24 h`) anotado antes de começar | execução |
 | 6 | Papel `airsoft_app` capaz de ler `information_schema` e `count(*)` nas tabelas do caminho da home | já provado em staging (2026-11-25): 8 tabelas lidas sem erro; em produção a leitura é repetida no primeiro fingerprint, e falha ali aborta a janela | execução |
 | 7 | Variante do item C decidida — **C-traced** (redeploy de configuração autorizado) ou **C-untraced** (baseline sem trace) | decisão do titular, registrada antes do item A | titular |
+| 8 | Ordem de deploy decidida — **1 (code-first)** ou **2 (config-first)** | decisão do titular, registrada antes do item A; a ordem 1 exige autorização de **código** em separado | titular |
 
 Sem 1 e 2, os itens A–C não são executados. A pré-condição 5 é a que define
 quando o item D acontece — sem ela, o token fica vivo sem prazo.
@@ -294,6 +305,12 @@ com o retry que ele tem.
 6. **Registro de ciclo de vida do token** — `T_criacao`, `T_ativacao`,
    `T_fim_C` e `T_remocao` (UTC, ISO-8601) com o responsável por cada
    evento.
+7. **Registro dos redeploys (R1/R2)** — id do novo deployment, SHA
+   (tem de ser o mesmo do deployment em serviço no momento do redeploy),
+   confirmação de que o novo deployment é o que atende o domínio de
+   produção e o estado do trace depois dele (`x-db-trace` presente e
+   `pmax`/`ctmo` legíveis, em R1; `trace_disabled` e nenhum `x-db-trace`, em
+   R2).
 
 Nenhum artefato pode conter o token, a URL derivada ou a senha.
 
@@ -302,9 +319,11 @@ Nenhum artefato pode conter o token, a URL derivada ou a senha.
 - `DATABASE_URL` → `sensitive` em produção (autorização separada);
 - bootstrap / `db:bootstrap` / credencial `airsoft_ddl`;
 - merge do PR #3 ou do PR #4;
-- deploy de produção — **inclusive** o redeploy de configuração que a traced
-  baseline e a efetividade da remoção do token exigem (§"Dependência de
-  deploy"): é a decisão pendente que define a variante do item C;
+- deploy de produção — **inclusive** os dois redeploys (R1 e R2) e o redeploy
+  de configuração que a traced baseline e a efetividade da remoção do token
+  exigem (§"Dependência de deploy"): e, no caso da ordem 1, o **deploy de
+  código** (merge PR #3 → PR #4) que é o que produz a telemetria — são
+  decisões separadas, nenhuma delas autorizada aqui;
 - `DB_POOL_MAX` em Session Mode (nunca);
 - rollback (remoção de `DATABASE_URL_RUNTIME` / `DB_POOL_MAX`) — decisão
   própria;

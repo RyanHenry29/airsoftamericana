@@ -172,6 +172,73 @@ explicitamente que `emax`/`acqto`/`retry`/`pmax`/`ctmo` só passam a ser
 observáveis no pós-promoção — o que deixa os critérios de abort sem sinal
 prévio.
 
+### 2.7 O código de produção não tem telemetria — o redeploy de configuração é inócuo
+
+A §2.6 diz que env var só vale para deploy novo. A verdade seguinte é mais
+fria: **o código que está em produção não lê as três variáveis**.
+
+| | `master` `5d6a978` (produção hoje) | código da linha de promoção (PR #4) |
+|---|---|---|
+| header `x-db-trace` | **não existe** (`db-trace.ts` e `trace-auth.ts` nunca chegaram ao master) | existe, gated por `DB_TRACE_TOKEN` |
+| `DB_POOL_MAX` | **ignorada** — o pool é dimensionado por constante compilada: `max: isTransactionPooler ? 1 : 5` | lida por `poolSizing` (default 1) |
+| `DATABASE_URL_RUNTIME` | **ignorada** — o runtime usa `DATABASE_URL` em session mode | **obrigatória** em produção: `config.ts` falha fechada sem ela e recusa porta 5432 |
+| `GET /healthz` | `{status, timestamp}` — sem `db.status`, `pmax`, `ctmo` | `db.status`, `pmax`, `ctmo`, `inst`, `inl`, `inpk` |
+
+Consequência direta: **redeploy do SHA de produção com as três variáveis
+escritas muda nada** — as três ficam inertes, nenhum `x-db-trace` é emitido e
+o healthz continua sem campos de pool. Esse caminho **não produz baseline
+traced**; produz baseline untraced e um deploy inútil.
+
+O primeiro deployment que produz telemetria tem de carregar o **código** da
+linha de promoção. Dois dados que reduzem o risco desse deploy de código:
+
+- `apps/api/src/db/schema.ts` é **byte-idêntico** entre `master` e o código
+  medido → o deploy não carrega schema novo (o bloqueio de bootstrap, §8, é
+  sobre o ledger de migrations, não sobre colunas);
+- o contrato de deploy (`workflow_dispatch production`) faz `vercel pull` →
+  `vercel build --prod` → `vercel deploy --prebuilt --prod` — **não roda
+  migration**; o bootstrap continua sendo um passo separado e bloqueado.
+
+O delta de runtime entre `master` e o código medido é de 39 arquivos
+(`trace-auth`, `db-trace`, `pool-mode`, `ai-assistant`, `checkout`, …) —
+ou seja, **deploy de código**, não mudança de configuração.
+
+### 2.8 As duas ordens possíveis para a baseline
+
+**Ordem 1 — code-first (é a que produz baseline traced)**
+
+| # | Passo | O que exige autorização |
+|---|---|---|
+| 1 | merge PR #3 → PR #4 + **deploy de código** em produção | **autorização de código** (decisão separada, explícita) |
+| 2 | gravar `DATABASE_URL_RUNTIME` + `DB_TRACE_TOKEN` — **sem** `DB_POOL_MAX` (default max=1) | item A |
+| 3 | o deploy do passo 1 aplica o snapshot → runtime em transaction mode, max=1, com trace | — |
+| 4 | harness (item B) | item B |
+| 5 | 3 janelas traced em max=1 → `p99_baseline` **com** `emax`/`acqto`/`retry`/`pmax`/`ctmo` | item C |
+| 6 | gravar `DB_POOL_MAX=2` + **redeploy** → janelas promovidas (mesmos sinais) | item A' + redeploy |
+| 7 | observação 24 h → remover o token + **redeploy** → `trace_disabled` | item D |
+
+Total: **1 deploy de código + 2 redeploys**. A comparação fica limpa: muda só
+o tamanho do pool (1 → 2), com o mesmo código, o mesmo modo e a mesma
+telemetria dos dois lados. O risco do pool maior não entra antes da decisão —
+o código entra com max=1.
+
+**Ordem 2 — config-first (o redeploy de configuração puro)**
+
+| # | Passo | O que acontece |
+|---|---|---|
+| 1 | gravar as três vars + redeploy do SHA atual | **inócuo** (§2.7): sem trace, sem `pmax`/`ctmo` no healthz |
+| 2 | 3 janelas **untraced** (latência, status, 2xx/5xx) | `p99_baseline` parcial — cega para `emax`/`acqto`/`retry`/`pmax`/`ctmo` |
+| 3 | merge PR #3 → PR #4 + deploy de código (as vars já estão presentes) | runtime já nasce em max=2 + transaction + trace |
+| 4 | janelas promovidas traced | sim |
+| 5 | observação 24 h → remover o token + redeploy | item D |
+
+Total: 1 redeploy inócuo + 1 deploy de código + 1 redeploy. É a C-untraced de
+Kai, acrescida de um deploy que não muda comportamento.
+
+> A escolha entre as duas ordens é do titular e é uma autorização de **código**,
+> não de configuração: só a ordem 1 produz o baseline traced com os sinais
+> internos do pooler.
+
 ### 2.3 `DATABASE_URL` (preservada)
 
 Continua em session mode, apontando para o papel DDL, e é consumida por
@@ -210,7 +277,10 @@ migração — a separação é garantida por código, não por convenção.
 3. **Merge** — PR próprio da branch `exp/arch-capacity-promotion`. O PR #3
    (`fix/aud03-migration-ledger`) segue **aberto e separado**, como combinado.
 4. **Deploy** — pelo `workflow_dispatch` do contrato de deploy (PR #2): push em
-   `master` só produz Preview; produção é manual e gatilhada.
+   `master` só produz Preview; produção é manual e gatilhada. É este deploy
+   que faz as variáveis do passo 1 valerem — e o código que ele carrega é
+   que traz o trace e a leitura de `DB_POOL_MAX` (§2.7): um redeploy do SHA
+   atual não produz telemetria nenhuma.
 5. **Validação pós-deploy** — smoke das rotas principais + 1 janela de 300
    requisições / concorrência 10 contra a produção, lendo `pmax`/`ctmo` pelo
    healthz autorizado e `emax`/`acqto` no log.
@@ -228,7 +298,7 @@ migração — a separação é garantida por código, não por convenção.
 | Rota | `/api/store/home` (mesma da bateria de validação) |
 | Intervalo entre janelas | ≥ 15 min |
 | Janelas por ciclo | 3 (ciclo de observação de 24 h ≈ 4 ciclos) |
-| Baseline | 3 janelas com o **mesmo** protocolo, medidas em produção **antes** de gravar `DB_POOL_MAX=2` (estado atual, `max=1`) — com `x-db-trace` **somente** se houver um deployment de produção carregando `DB_TRACE_TOKEN` (§2.6); sem redeploy, a baseline é cega para `emax`/`acqto`/`retry`/`pmax`/`ctmo` |
+| Baseline | 3 janelas com o **mesmo** protocolo, medidas em produção **antes** de gravar `DB_POOL_MAX=2` (estado atual, `max=1`) — com `x-db-trace` **somente** se o deployment de produção carregar o código com trace (§2.7): na ordem 1 (§2.8), baseline traced em max=1/transaction; na ordem 2, baseline untraced, cega para `emax`/`acqto`/`retry`/`pmax`/`ctmo` |
 | Definição de `p99_baseline` | **mediana** dos p99 das 3 janelas de baseline |
 
 A baseline de produção exige autorização própria (carga contra o banco de
