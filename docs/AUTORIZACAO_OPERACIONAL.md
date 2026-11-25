@@ -1,13 +1,28 @@
 # Pedido de autorização operacional — promoção de `DB_POOL_MAX=2`
 
-> **Nada neste documento está autorizado.** É a formalização do escopo que
-> precisa ser aprovado item a item, para que a execução em produção não dependa
-> de interpretação. Cada item tem escopo fechado, o que toca, o que não toca,
-> o que aborta e a evidência que produz.
+> **AUTORIZADO em 2026-11-25** (titular) para o escopo **A, B, D1, C, D2,
+> observação de 24 h, D e R2**, com as condições obrigatórias: pré-condições
+> 1–10 validadas antes de iniciar; sem presunção de credenciais pendentes;
+> sem bootstrap/migrations sem a credencial DDL e autorização própria; sem
+> gateway real nem processamento de pagamentos; sem ignorar falhas de
+> segurança, schema, conectividade ou integridade; interrupção imediata em
+> qualquer gate falho; sem retries, ajustes improvisados ou continuidade
+> parcial após falha; registro de SHA, deployment IDs, resultados e evidências
+> de cada etapa; sem ampliação de escopo; rastreabilidade e auditoria
+> preservadas.
+>
+> **D1 e D2 são inegociavelmente distintas.** D1 (código novo + comprovação de
+> tráfego no novo runtime) tem autorização própria, já concedida. D2
+> (promoção para `pmax=2`) é **condicionado ao resultado favorável do item C**
+> e não acontece por autorização prévia.
+>
+> A autorização **não substitui** a revogação manual do PAT (pré-condição 1)
+> nem a obtenção de credenciais externas. Bootstrap continua bloqueado;
+> `DATABASE_URL` → `sensitive` continua como autorização independente.
 >
 > Referência técnica: `docs/PROMOCAO_CAPACIDADE.md` (checklist completo).
-> Decisão vigente: **produção congelada**; PR #3 e PR #4 abertos; bootstrap
-> bloqueado.
+> *Histórico: este documento foi redigido como pedido; a autorização acima foi
+> concedida depois, sem ampliar o escopo dos itens.*
 
 ## 1. Escopo pedido
 
@@ -19,8 +34,10 @@
 | **D** | Encerramento do trace | Ao fim da janela de observação (24 h contadas do fim do **ciclo promovido**), **remover** `DB_TRACE_TOKEN` do target `production`, gerar o novo deploy que faz a remoção valer (**R2**) e registrar as duas confirmações (Vercel + runtime); os artefatos das janelas preservam os contadores já coletados | Manter o token além da janela; remover `DATABASE_URL_RUNTIME` ou `DB_POOL_MAX` (isso é rollback, §5 do checklist, exige decisão própria); qualquer outra env var |
 | **R2** | Redeploy de encerramento | O redeploy que faz a remoção do token valer. Mesmo SHA do deployment em serviço no momento da remoção | Merge, alteração de código, bootstrap |
 
-Ordem de execução: **A → B → C → D**. Se B falhar, C não roda. D só roda
-depois da observação — e é o que fecha o item de risco ALTO (token vivo em
+Ordem de execução: **A → B → D1 → verificação do D1 → C → decisão → D2 →
+ciclo promovido → observação de 24 h → D → R2**. Se B falhar, o D1 não
+acontece; se a verificação do D1 falhar, o item C não roda. D só roda depois
+da observação — e é o que fecha o item de risco ALTO (token vivo em
 produção).
 
 ### Ordem code-first — e a autorização de código que ela exige
@@ -122,12 +139,22 @@ node "$env:LOCALAPPDATA\Temp\opencode\arch-tooling\arch-runtime-select1.mjs" `
 
 # grava na Vercel lendo o valor por stdin (nunca em argv)
 cmd /c "type %LOCALAPPDATA%\Temp\opencode\aa-runtime-url.txt | vercel env add DATABASE_URL_RUNTIME production --sensitive --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13"
-cmd /c "echo 2| vercel env add DB_POOL_MAX production --sensitive --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13"
-cmd /c "echo %DB_TRACE_TOKEN_PROD%| vercel env add DB_TRACE_TOKEN production --sensitive --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13"
+
+# token novo: gerado na maquina e gravado DIRETO em arquivo (nunca impresso,
+# nunca em argv, nunca em variavel de ambiente de shell)
+$tokenFile = "$env:LOCALAPPDATA\Temp\opencode\aa-trace-token-prod.txt"
+node -e "const fs=require('fs'),crypto=require('crypto');fs.writeFileSync(process.argv[1],crypto.randomBytes(32).toString('base64url'),{encoding:'utf8',mode:0o600});" $tokenFile
+cmd /c "type %LOCALAPPDATA%\Temp\opencode\aa-trace-token-prod.txt | vercel env add DB_TRACE_TOKEN production --sensitive --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13"
+
+# DB_POOL_MAX NAO entra aqui: o baseline mede o default 1. A promocao (D2)
+# grava DB_POOL_MAX=2 depois da decisao, com autorizacao propria.
 
 # confirmação (nomes/targets/tipos; nunca valores)
 vercel env ls --project prj_MLk5KPuaIh5shK0cNZum69oXpl13
 ```
+
+O token segue no arquivo de ACL restrita (`aa-trace-token-prod.txt`) porque o
+runner do item C o lê por `--token-file`; ele é apagado ao fim do ciclo.
 
 ### Item B — teste de conexão
 
@@ -297,17 +324,19 @@ novo.
 
 | Recurso | Natureza | Reversibilidade |
 |---|---|---|
-| 3 env vars no target `production` | criação | reversível (`vercel env rm`) |
+| **2** env vars criadas no target `production` (`DATABASE_URL_RUNTIME`, `DB_TRACE_TOKEN`) + `DB_POOL_MAX` na promoção (D2) | criação | reversível (`vercel env rm`) |
 | Conexões TCP ao pooler de produção (papel `airsoft_app`, `:6543` e `:5432`) | leitura | sem efeito de dados |
-| 900 requisições `GET` à API de produção (3 × 300) | leitura | sem efeito de dados |
+| Requisições `GET` à API de produção: 3 × 300 (baseline, item C) + 3 × 300 (ciclo promovido) + requisições de verificação do D1/D2/R2 | leitura | sem efeito de dados |
 | Fingerprint do banco (2 leituras por janela: `information_schema` + `count(*)`/marca d'água em 8 tabelas) | leitura — detector de alterações, não prova de imutabilidade | sem efeito de dados |
 | Remoção do `DB_TRACE_TOKEN` ao fim da observação (item D) | remoção | fecha o acesso de diagnóstico; o trace volta a falhar fechada |
-| Arquivos temporários com a URL derivada | segredo operacional | apagados ao fim, ACL restrita, nunca dentro do repo |
+| Artefatos de evidência em `docs/bench/promocao/` | escrita no repositório, **fora do runtime** | versionados para auditoria; sem segredo |
+| Arquivos temporários com a URL derivada e o token | segredo operacional | apagados ao fim, ACL restrita, nunca dentro do repo |
 
 **Não** toca: banco de produção (zero escrita), schema, DDL, `airsoft_ddl`,
-código, repositório, `master`, PR #3, PR #4, deploy, Preview, painel do
-Supabase, `DATABASE_URL`, `DATABASE_URL_RUNTIME` e `DB_POOL_MAX` (esses dois
-permanecem — removê-los é rollback, que exige decisão própria).
+código de runtime, Preview, painel do Supabase, `DATABASE_URL`, gateway e
+pagamentos, DNS, qualquer outro projeto. O `master` recebe **apenas** o merge
+autorizado (PR #3 → PR #4). `DATABASE_URL_RUNTIME` e `DB_POOL_MAX` permanecem
+— removê-los é rollback, que exige decisão própria.
 
 ## 5. Abort — parar na hora, sem retry, sem ajuste de config
 
@@ -318,7 +347,7 @@ permanecem — removê-los é rollback, que exige decisão própria).
 | **alteração detectada em tabela de config** | **abortar a janela**; auditar antes de seguir |
 | conexão recusada / erro de autenticação no harness | parar; não repetir; reportar |
 | `db.status` ≠ `connected` | parar imediatamente |
-| `pmax` ≠ 2 ou `ctmo` ≠ 10000 no healthz autorizado | parar; config divergiu |
+| `pmax` ≠ 1 na fase D1, ou ≠ 2 na fase D2, ou `ctmo` ≠ 10000 no healthz autorizado | parar; config divergiu |
 
 Nenhum retry é introduzido para mascarar falha — o próprio runtime é medido
 com o retry que ele tem.
@@ -362,16 +391,18 @@ Nenhum artefato pode conter o token, a URL derivada ou a senha.
 
 - `DATABASE_URL` → `sensitive` em produção (autorização separada);
 - bootstrap / `db:bootstrap` / credencial `airsoft_ddl`;
-- merge do PR #3 ou do PR #4;
-- deploy de produção — **inclusive** o D1 (deploy de código), o D2 (promoção) e
-  o R2 (encerramento do trace). O D1 é uma autorização de **código** (§"Ordem
-  code-first") e está fora deste escopo; o R2 está dentro, como item D; o D2
-  pertence à promoção, que só ocorre após a decisão de capacidade e com
-  autorização própria;
-- `DB_POOL_MAX` em Session Mode (nunca);
+- gateway real, processamento de pagamentos e qualquer alteração de
+  configuração de gateway;
+- `DB_POOL_MAX` em Session Mode (nunca) e `DB_POOL_MAX` **antes** da decisão
+  do item C;
 - rollback (remoção de `DATABASE_URL_RUNTIME` / `DB_POOL_MAX`) — decisão
   própria;
-- qualquer alteração do baseline `max=1` fora do target `production`.
+- qualquer alteração do baseline `max=1` fora do target `production`;
+- DNS, painel do Supabase e qualquer outro projeto.
+
+> **Desbloqueado pela autorização de 2026-11-25** (fora da lista acima):
+> merge do PR #3 → PR #4, o deploy de código D1, a promoção D2 — condicionada
+> ao resultado favorável do item C —, a observação de 24 h, o item D e o R2.
 
 ## 8. Decisão após a execução
 
@@ -381,7 +412,7 @@ uma de três:
 
 | Resultado | Decisão |
 |---|---|
-| harness valida `:6543` como transaction **e** baseline sem erro/ `emax` / `acqto` | seguir para o portão de merge (PR #3 → PR #4), ainda com autorização própria; item D encerra o trace ao fim da observação |
+| harness valida `:6543` como transaction **e** baseline sem erro/ `emax` / `acqto` | **D1 autorizado**: merge PR #3 → PR #4 + deploy de código; depois a decisão do titular sobre o D2; item D encerra o trace ao fim da observação |
 | harness valida, mas baseline mostra `emax`/`acqto`/5xx | **não** promover; investigar capacidade do pooler antes de qualquer merge |
 | harness falha (autenticação, modo, porta) | **não** promover; corrigir credencial ou derivação e reexecutar só o item B |
 

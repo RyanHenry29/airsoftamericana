@@ -337,9 +337,10 @@ migração — a separação é garantida por código, não por convenção.
 > técnica; o pedido de autorização é o documento operacional.
 
 1. **Variáveis** — no target `production` do projeto `airsoftamericana-api`:
-   gravar `DATABASE_URL_RUNTIME` (transaction mode, valor de §2.1),
-   `DB_POOL_MAX=2` e `DB_TRACE_TOKEN` (§2.4). Confirmar com `vercel env ls`
-   (nomes/targets, nunca valores).
+   gravar `DATABASE_URL_RUNTIME` (transaction mode, valor de §2.1) e
+   `DB_TRACE_TOKEN` (§2.4). **`DB_POOL_MAX` fica de fora** — o default `1` é
+   o que o baseline mede; `DB_POOL_MAX=2` entra só na promoção (D2), depois da
+   decisão. Confirmar com `vercel env ls` (nomes/targets, nunca valores).
 2. **Conexão** — teste de conexão **antes** do merge, e **com o papel de
    runtime**, não com credencial administrativa:
    - abrir a pool com a `DATABASE_URL_RUNTIME` (`:6543`, usuário
@@ -356,8 +357,12 @@ migração — a separação é garantida por código, não por convenção.
 
    O procedimento executável está em §11, com o harness já validado no
    ambiente de staging.
-3. **Merge** — PR próprio da branch `exp/arch-capacity-promotion`. O PR #3
-   (`fix/aud03-migration-ledger`) segue **aberto e separado**, como combinado.
+3. **Merge** — na ordem, com a dependência respeitada: PR #3
+   (`fix/aud03-migration-ledger` → `master`) e depois PR #4
+   (`exp/arch-capacity-promotion` → `master`, base re-apontada para `master`
+   depois do merge do #3). Ambos foram autorizados em 2026-11-25; o PR #4
+   contém o PR #3 como ancestral, então a ordem preserva a árvore de runtime
+   medida.
 4. **Deploy** — pelo `workflow_dispatch` do contrato de deploy (PR #2): push em
    `master` só produz Preview; produção é manual e gatilhada. É este deploy
    que faz as variáveis do passo 1 valerem — e o código que ele carrega é
@@ -366,8 +371,9 @@ migração — a separação é garantida por código, não por convenção.
 5. **Validação pós-deploy** — smoke das rotas principais + 1 janela de 300
    requisições / concorrência 10 contra a produção, lendo `pmax`/`ctmo` pelo
    healthz autorizado e `emax`/`acqto` no log.
-6. **Observação** — manter a bateria por 24 h antes de considerar a promoção
-   concluída (ver §6).
+6. **Observação** — manter o token durante **24 h contadas do fim bem-sucedido
+   do ciclo promovido** (`T_fim_C`), antes de considerar a promoção concluída
+   (ver §6 e §14).
 
 ## 4. Critérios de aceite e de abort
 
