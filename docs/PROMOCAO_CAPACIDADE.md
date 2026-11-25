@@ -138,6 +138,40 @@ Consequências práticas:
   `vercel env rm DB_POOL_MAX preview --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13`
   (e o mesmo para `DATABASE_URL_RUNTIME`, se for o caso).
 
+### 2.6 Regra de vigência — env var só vale para deploy novo
+
+Fato da plataforma (documentação da Vercel, "Environment variables"):
+
+> "Any change you make to environment variables are not applied to previous
+> deployments, they only apply to new deployments."
+
+E no troubleshooting da mesma página: *"Environment variable changes apply
+only to new deployments. The running deployment keeps the values it was built
+with."* — a correção indicada é **redeploy**.
+
+Isso não é detalhe de arquivo: é o que decide o que a A/B/C/D consegue medir.
+
+| Momento | O que acontece | Consequência |
+|---|---|---|
+| **Item A** — grava as três vars em `production` | o deployment de produção **em serviço** (11 d, `5d6a978`) continua com o snapshot antigo: sem `DATABASE_URL_RUNTIME`, sem `DB_POOL_MAX`, sem `DB_TRACE_TOKEN` | as vars só entram no **próximo** deploy. O harness (item B) não é afetado — ele lê a URL do `env pull`, não do runtime |
+| **Item C** — baseline de produção | sem um deploy que carregue `DB_TRACE_TOKEN`, a API responde `trace_disabled` e **não emite** `x-db-trace` | a baseline sem trace mede latência e status HTTP e fica **cega** para `emax`, `acqto`, `retry`, `pmax` e `ctmo` — 3 dos 5 critérios de abort de §4.3 |
+| **Item D** — remoção do token | remover a var do target não a tira do deployment em serviço | o trace **continua ativo** até um novo deploy; sem redeploy, a remoção só vale para o deployment seguinte |
+
+Consequência prática para a traced baseline (`pmax=2` só entra com o
+deployment promovido): ela exige um **deploy de configuração** — redeploy do
+**mesmo SHA**, sem merge e sem mudança de código:
+
+```powershell
+vercel redeploy <url-do-deployment-de-producao> --target production
+```
+
+Isso é um **deploy de produção**: está fora do escopo autorizado hoje (§7 do
+pedido de autorização) e exige autorização própria. Sem ele, a alternativa é
+medir a baseline **sem trace** (latência + status + 2xx/5xx) e registrar
+explicitamente que `emax`/`acqto`/`retry`/`pmax`/`ctmo` só passam a ser
+observáveis no pós-promoção — o que deixa os critérios de abort sem sinal
+prévio.
+
 ### 2.3 `DATABASE_URL` (preservada)
 
 Continua em session mode, apontando para o papel DDL, e é consumida por
@@ -194,7 +228,7 @@ migração — a separação é garantida por código, não por convenção.
 | Rota | `/api/store/home` (mesma da bateria de validação) |
 | Intervalo entre janelas | ≥ 15 min |
 | Janelas por ciclo | 3 (ciclo de observação de 24 h ≈ 4 ciclos) |
-| Baseline | 3 janelas com o **mesmo** protocolo, medidas em produção **antes** de gravar `DB_POOL_MAX=2` (estado atual, `max=1`) |
+| Baseline | 3 janelas com o **mesmo** protocolo, medidas em produção **antes** de gravar `DB_POOL_MAX=2` (estado atual, `max=1`) — com `x-db-trace` **somente** se houver um deployment de produção carregando `DB_TRACE_TOKEN` (§2.6); sem redeploy, a baseline é cega para `emax`/`acqto`/`retry`/`pmax`/`ctmo` |
 | Definição de `p99_baseline` | **mediana** dos p99 das 3 janelas de baseline |
 
 A baseline de produção exige autorização própria (carga contra o banco de
@@ -537,7 +571,7 @@ configuração permanente.
 | 1. Preparo | gerar token novo na máquina (`crypto.randomBytes(32).toString("base64url")` — 43 chars, ~256 bits); nunca em argv, nunca impresso | antes do item A |
 | 2. Promoção | gravar no target `production` como **Sensitive**; usá-lo só no baseline, na janela de promoção e na observação | item A |
 | 3. Observação | manter durante a janela definida — **24 h contadas do encerramento bem-sucedido da janela 3** (`T_fim_C`), **não** da criação do token | item C |
-| 4. Encerramento | **remover** `DB_TRACE_TOKEN` do target `production` (`vercel env rm DB_TRACE_TOKEN production --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13`) | ao fim da observação |
+| 4. Encerramento | **remover** `DB_TRACE_TOKEN` do target `production` (`vercel env rm DB_TRACE_TOKEN production --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13`) **e** confirmar em dois níveis: (a) Vercel — `vercel env ls` não lista mais a variável em `production`; (b) runtime — só depois de um **novo deploy**, `GET /healthz` responde `db.status = "trace_disabled"` **mesmo com o token antigo apresentado**, e nenhuma resposta emite `x-db-trace` | `T_fim_C + 24 h` + o novo deploy |
 | 5. Evidência | os artefatos das janelas já carregam `pmax`/`ctmo`/`emax`/`acqto`/`retry` extraídos — remover o token não apaga a evidência | — |
 
 **Por que remover em vez de manter**:
@@ -558,6 +592,13 @@ Falhas, aborts e atrasos anteriores não consomem a janela: se o baseline não
 completa, o token é removido e a execução recomeça do item A com um token
 novo. O instante exato da remoção é `T_fim_C + 24 h`, anotado antes de
 começar.
+
+**A remoção só é efetiva no próximo deploy** (§2.6): até lá, o deployment em
+serviço continua com o token e o trace continua ativo. Por isso o item D tem
+dois níveis de confirmação — **Vercel** (a variável saiu do target) e
+**runtime** (`trace_disabled` no healthz e nenhum `x-db-trace` emitido, mesmo
+com o token antigo apresentado). O comando de remoção, sozinho, não prova
+que o ambiente deixou de disponibilizar o token.
 
 **Registro de ciclo de vida** (vai para a evidência do item D, §6 do pedido de
 autorização):
