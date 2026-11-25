@@ -23,6 +23,10 @@
 > **Execução de 2026-11-25: ABORT no gate de schema** (item B), antes do item A
 > — produção intocada. Ver §8.
 >
+> **Decisão do titular (2026-11-25): ABORT MANTIDO.** O caminho B (desvio do
+> gate) não foi autorizado; nenhuma autorização adicional foi concedida.
+> Reconciliação de schema (caminho C) e PAT novo: ver §10.
+>
 > Referência técnica: `docs/PROMOCAO_CAPACIDADE.md` (checklist completo).
 > *Histórico: este documento foi redigido como pedido; a autorização acima foi
 > concedida depois, sem ampliar o escopo dos itens.*
@@ -401,11 +405,16 @@ Nenhum artefato pode conter o token, a URL derivada ou a senha.
 - rollback (remoção de `DATABASE_URL_RUNTIME` / `DB_POOL_MAX`) — decisão
   própria;
 - qualquer alteração do baseline `max=1` fora do target `production`;
-- DNS, painel do Supabase e qualquer outro projeto.
+- DNS, painel do Supabase e qualquer outro projeto;
+- reconciliação de schema em produção (caminho C) — bloqueada até haver
+  credencial `airsoft_ddl` **e** autorização específica para DDL (§10).
 
-> **Desbloqueado pela autorização de 2026-11-25** (fora da lista acima):
-> merge do PR #3 → PR #4, o deploy de código D1, a promoção D2 — condicionada
-> ao resultado favorável do item C —, a observação de 24 h, o item D e o R2.
+> **Suspenso pela decisão do titular (2026-11-25, ABORT mantido)**: merge do
+> PR #3 → PR #4, o deploy de código D1, a promoção D2, a observação de 24 h, o
+> item D e o R2. A autorização de 2026-11-25 existiu, mas **não foi exercida**:
+> o gate de schema reprovou antes do item A e a sequência foi interrompida.
+> Nada da promoção pode ser retomado sem um novo veredito `compativel` do gate
+> de schema (§10, PEND-01).
 
 ## 8. Registro de execução — 2026-11-25 (ABORT no gate de schema)
 
@@ -503,6 +512,41 @@ então não há resíduo de configuração para reverter.
 
 
 
+### Decisão do titular — ABORT mantido (2026-11-25)
+
+O Gate 2 de schema **permanece REPROVADO**. O caminho B (prosseguir com o
+desvio declarado) **não** foi autorizado, e nenhuma autorização adicional foi
+concedida. Diretrizes registradas:
+
+1. não executar D1 nem D2;
+2. não fazer merge dos PRs #3 e PR #4;
+3. não executar deploy, bootstrap, migrations ou DDL em produção;
+4. não alterar variáveis de ambiente de produção;
+5. não realizar escrita no Supabase;
+6. preservar as evidências do abort (fingerprint, diff de schema, hashes,
+   relatórios);
+7. manter a incompatibilidade de schema registrada como pendência de produção;
+8. preparar a reconciliação pelo caminho C **somente** quando houver
+   credencial `airsoft_ddl` e autorização específica para DDL;
+9. não alterar o baseline nem iniciar novos experimentos de capacidade;
+10. tratar o PAT novo informado no transcript como exposto e solicitar a
+    revogação manual.
+
+**Evidência preservada** (commit `3e3188d`, `docs/bench/promocao/`):
+
+| Arquivo | SHA-256 |
+|---|---|
+| `abort-20261125-gate-schema-prod.json` | `c4676175e627d48a833543b53723234d8b298c0c3914a50737fd83e9e2d5f93d` |
+| `abort-20261125-fingerprint-antes.json` | `be433ff18de50815c73e1710c68f2b5e6686990fe6ca7aa7533b2c6af0db31ae` |
+| `abort-20261125-fingerprint-depois.json` | `c3a89696d21e093b0e092b943d01bcb2bc7d3993a0608eeb8e195ecfa9443965` |
+
+**Estado verificado no fechamento**: `production` com `DATABASE_URL` (16 d)
+como estava e as três variáveis **só no Preview**; banco sem escrita
+(fingerprint antes/depois com 0 tabelas de config alteradas); `master`
+intocado (`5d6a978`); PR #3 e PR #4 abertos; **nenhum deployment criado** e
+nenhum `workflow_dispatch` de produção disparado (os runs existentes são só
+`api-gates` de push/PR); working tree limpa em `3e3188d`.
+
 ## 9. Decisão após a execução
 
 A promoção **não** é automática ao fim de A–C. Com a evidência em mãos
@@ -518,3 +562,60 @@ uma de três:
 > Merge verde **não** é critério de promoção. O critério é a compatibilidade
 > comprovada entre o runtime e a configuração real de produção, com os
 > bloqueios de schema e ambiente resolvidos.
+
+## 10. Pendências de produção (abertas após o abort)
+
+### PEND-01 — Incompatibilidade de schema em produção (bloqueia D1)
+
+**Estado**: gate de schema **REPROVADO** em 2026-11-25 (§8). Registrada como
+pendência de produção. A incompatibilidade é **pré-existente** no runtime já
+publicado — `schema.ts` byte-idêntico entre `master` `5d6a978` e a branch de
+promoção, conjuntos de arquivos que referenciam os objetos idênticos entre
+master e PR #3, rota medida sem referência a eles — e **não** é introduzida
+pelo D1.
+
+**11 objetos ausentes** no catálogo de produção (confirmado por probe direto
+em `pg_catalog`, independente do parser): tabelas `customer_avatars`,
+`password_resets`, `system_locks`; colunas `order_status_history.actor_type`,
+`payments.not_found_first_seen_at` e `payment_events.{attempts, dead_letter,
+last_attempt_at, last_error, lease_expires_at, lease_token}`.
+
+**Efeito atual**: as rotas que consultam esses objetos (payments, antifraude,
+admin) operam degradadas — o boot captura a falha de `system_locks` e registra
+`"payment event recovery skipped"`, e a API sobe. Comportamento **idêntico** ao
+do master em produção hoje. Não afeta a rota medida `/api/store/home`, o
+trace, o dimensionamento do pool nem o contrato de deploy (sem migration no
+build).
+
+**Caminho de correção — C (atividade independente, fora do escopo da promoção
+de capacidade)**:
+
+1. credencial `airsoft_ddl` disponível (hoje **ausente**);
+2. autorização **específica** para DDL em produção;
+3. revisão do ledger de migrations (PR #3): checksum, advisory lock, recuperação;
+4. validação das migrations contra o schema real de produção (55 tabelas /
+   479 colunas);
+5. execução com o ledger ativo, com evidência por objeto criado;
+6. **reexecução do gate de schema** (`arch-schema-diff.mjs`) contra produção.
+
+**Condição de reabertura**: somente com veredito `compativel` no passo 6 a
+sequência de promoção de capacidade pode ser **reconsiderada**. Nada dela foi
+executado — o item A nem chegou a começar.
+
+### PEND-02 — PAT novo do GitHub (exposto no transcript)
+
+**Estado**: tratado como **exposto**. A credencial informada no transcript da
+sessão de 2026-11-25 foi gravada no keyring do Windows (Git Credential
+Manager) sem passar por argv, arquivo ou log, e a cópia local foi removida no
+mesmo dia — **0 cópias do PAT na máquina**. A validação da credencial (via
+`GET /user`) não expôs o valor em nenhuma saída.
+
+**Ação pendente (titular)**: revogação manual em GitHub → Settings →
+Developer settings → Personal access tokens. Enquanto o PAT não for revogado,
+`gh` e o git continuam autenticando pelo token OAuth (`gho_`) do keyring — a
+operação da campanha não depende do PAT.
+
+### PEND-03 — `DATABASE_URL` → `sensitive` em produção
+
+Continua como **autorização independente** (não concedida). Sem relação com o
+abort: a variável de produção segue Non-sensitive desde a sua criação.
