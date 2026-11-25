@@ -209,18 +209,42 @@ ou seja, **deploy de código**, não mudança de configuração.
 
 | # | Passo | O que exige autorização |
 |---|---|---|
-| 1 | merge PR #3 → PR #4 + **deploy de código** em produção | **autorização de código** (decisão separada, explícita) |
-| 2 | gravar `DATABASE_URL_RUNTIME` + `DB_TRACE_TOKEN` — **sem** `DB_POOL_MAX` (default max=1) | item A |
-| 3 | o deploy do passo 1 aplica o snapshot → runtime em transaction mode, max=1, com trace | — |
-| 4 | harness (item B) | item B |
-| 5 | 3 janelas traced em max=1 → `p99_baseline` **com** `emax`/`acqto`/`retry`/`pmax`/`ctmo` | item C |
-| 6 | gravar `DB_POOL_MAX=2` + **redeploy** → janelas promovidas (mesmos sinais) | item A' + redeploy |
-| 7 | observação 24 h → remover o token + **redeploy** → `trace_disabled` | item D |
+| 1 | gravar `DATABASE_URL_RUNTIME` + `DB_TRACE_TOKEN` — **sem** `DB_POOL_MAX` (default max=1) | item A |
+| 2 | merge PR #3 → PR #4, na ordem | **autorização de código** (decisão separada) |
+| 3 | **D1** — deploy de código (1 deployment): recebe o snapshot novo → runtime em transaction mode, **pmax=1**, com trace | o mesmo deploy de código |
+| 4 | harness (item B) + gate de schema (§2.9) — antes do deploy, para não derrubar a API | item B |
+| 5 | verificação do D1: SHA, deployment id, alias de produção, `db.status = connected`, `pmax = 1`, `ctmo = 10000`, trace autorizado | — |
+| 6 | 3 janelas traced em pmax=1 → `p99_baseline` | item C |
+| 7 | **decisão de capacidade** | titular |
+| 8 | **D2** — `DB_POOL_MAX=2` + redeploy → pmax=2; 3 janelas traced do config promovido | promoção (autorização própria) |
+| 9 | observação 24 h contadas do fim do ciclo promovido | — |
+| 10 | **R2** — remover o token + redeploy → `trace_disabled` confirmado | item D |
 
-Total: **1 deploy de código + 2 redeploys**. A comparação fica limpa: muda só
-o tamanho do pool (1 → 2), com o mesmo código, o mesmo modo e a mesma
-telemetria dos dois lados. O risco do pool maior não entra antes da decisão —
-o código entra com max=1.
+**Inventário de deployments (determinístico, sem operação redundante):**
+
+| Fase | Deployments | Natureza |
+|---|---|---|
+| Validação (até a decisão) | **1** — D1 | deploy de código, com `DATABASE_URL_RUNTIME` + `DB_TRACE_TOKEN`, **sem** `DB_POOL_MAX` (pmax=1) |
+| Promoção (se houver decisão de promover) | **+1** — D2 | redeploy de configuração, com `DB_POOL_MAX=2` (pmax=2) |
+| Encerramento do trace | **+1** — R2 | redeploy de configuração, sem `DB_TRACE_TOKEN` |
+
+Total do ciclo completo: **1 deploy de código + 2 redeploys de configuração**.
+Até a decisão de capacidade: **1 deploy de código, zero redeploys**.
+
+**Por que não existe um R1**: um redeploy do SHA atual não carrega o código
+com trace, não lê `DB_POOL_MAX` e não expõe `pmax`/`ctmo` no healthz (§2.7) —
+seria uma operação de produção sem efeito funcional. O primeiro deployment
+que produz telemetria **é** o D1, que já carrega o snapshot novo.
+
+**Razão de cada redeploy**: D2 existe porque é o que aplica `DB_POOL_MAX=2`
+(é a própria promoção); R2 existe porque a remoção do token só vale em
+deploy novo (§2.6) — sem ele, o trace continua ativo.
+
+**Por que o D1 não pode ser o deploy da promoção**: o `DB_POOL_MAX=2` fica
+**fora** de produção até a decisão baseada nos resultados. Com o D1 em pmax=1,
+a comparação muda uma variável só (tamanho do pool 1 → 2), com o mesmo
+código, o mesmo modo e a mesma telemetria dos dois lados — e o risco do pool
+maior não entra antes da decisão.
 
 **Ordem 2 — config-first (o redeploy de configuração puro)**
 
@@ -238,6 +262,38 @@ Kai, acrescida de um deploy que não muda comportamento.
 > A escolha entre as duas ordens é do titular e é uma autorização de **código**,
 > não de configuração: só a ordem 1 produz o baseline traced com os sinais
 > internos do pooler.
+
+### 2.9 Gate de compatibilidade de schema antes do D1
+
+`schema.ts` byte-idêntico entre `master` e a branch de promoção **não** prova
+que o banco de produção tem as colunas que o código novo consulta. O gate é
+uma verificação de leitura, antes do deploy de código:
+
+```powershell
+node arch-schema-diff.mjs --env-file $envFile --var DATABASE_URL --out $schemaDiff
+```
+
+| | O que faz |
+|---|---|
+| **esperado** | parse de `apps/api/src/db/schema.ts` (`pgTable` + builders de coluna) — 57 tabelas / 497 colunas |
+| **real (existência)** | `pg_catalog.pg_attribute` + `pg_class` — fonte de verdade, visível a qualquer papel |
+| **real (visibilidade)** | `information_schema.columns` — filtrado por privilégio do papel de runtime |
+| **veredito** | `compativel` = nenhuma tabela/coluna esperada ausente no catálogo |
+
+A distinção importa: `information_schema` só mostra o que o papel de runtime
+tem privilégio de ver, então "ausente" no `information_schema` pode ser
+"sem privilégio". O script separa os dois casos (`semPrivilegio`) para que
+um falso positivo de permissão não vire falso diagnóstico de schema.
+
+**Método validado em staging (2026-11-25)**: 57 tabelas / 497 colunas
+esperadas, 60 tabelas / 580 colunas reais → **0 tabelas ausentes, 0 colunas
+ausentes, 0 objetos sem privilégio**; 3 tabelas extras no banco
+(`migration_ledger`, `support_messages`, `webhooks`), informativas.
+
+**Pendência**: a execução contra **produção** é uma leitura (papel
+`airsoft_app`) e depende da autorização do item B. Sem esse veredito, o D1
+não deve acontecer — é o gate que impede o deploy de código derrubar a API
+por coluna faltando.
 
 ### 2.3 `DATABASE_URL` (preservada)
 
@@ -639,10 +695,13 @@ configuração permanente.
 | Fase | Ação | Quando |
 |---|---|---|
 | 1. Preparo | gerar token novo na máquina (`crypto.randomBytes(32).toString("base64url")` — 43 chars, ~256 bits); nunca em argv, nunca impresso | antes do item A |
-| 2. Promoção | gravar no target `production` como **Sensitive**; usá-lo só no baseline, na janela de promoção e na observação | item A |
-| 3. Observação | manter durante a janela definida — **24 h contadas do encerramento bem-sucedido da janela 3** (`T_fim_C`), **não** da criação do token | item C |
-| 4. Encerramento | **remover** `DB_TRACE_TOKEN` do target `production` (`vercel env rm DB_TRACE_TOKEN production --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13`) **e** confirmar em dois níveis: (a) Vercel — `vercel env ls` não lista mais a variável em `production`; (b) runtime — só depois de um **novo deploy**, `GET /healthz` responde `db.status = "trace_disabled"` **mesmo com o token antigo apresentado**, e nenhuma resposta emite `x-db-trace` | `T_fim_C + 24 h` + o novo deploy |
-| 5. Evidência | os artefatos das janelas já carregam `pmax`/`ctmo`/`emax`/`acqto`/`retry` extraídos — remover o token não apaga a evidência | — |
+| 2. Ativação | gravar `DB_TRACE_TOKEN` no target `production` como **Sensitive** (junto de `DATABASE_URL_RUNTIME`, **sem** `DB_POOL_MAX`) | item A |
+| 3. Code deploy (D1) | o deployment que carrega o código com trace; nasce em transaction mode com **pmax=1** (default, `DB_POOL_MAX` ausente) | autorização de código, separada |
+| 4. Validação | harness (B) + 3 janelas traced em pmax=1 → `p99_baseline` | item B, item C |
+| 5. Promoção (D2) | `DB_POOL_MAX=2` + redeploy → pmax=2; 3 janelas traced do config promovido | pós-decisão, autorização própria |
+| 6. Observação | manter o token durante **24 h contadas do encerramento bem-sucedido do ciclo promovido** (`T_fim_C`), **não** da criação do token e **não** do fim da baseline | item C (ciclo promovido) |
+| 7. Encerramento (R2) | **remover** `DB_TRACE_TOKEN` do target `production` (`vercel env rm DB_TRACE_TOKEN production --yes --project prj_MLk5KPuaIh5shK0cNZum69oXpl13`) **e** confirmar em dois níveis: (a) Vercel — `vercel env ls` não lista mais a variável em `production`; (b) runtime — só depois de um **novo deploy**, `GET /healthz` responde `db.status = "trace_disabled"` **mesmo com o token antigo apresentado**, e nenhuma resposta emite `x-db-trace` | `T_fim_C + 24 h` + o novo deploy |
+| 8. Evidência | os artefatos das janelas já carregam `pmax`/`ctmo`/`emax`/`acqto`/`retry` extraídos — remover o token não apaga a evidência | — |
 
 **Por que remover em vez de manter**:
 
@@ -657,11 +716,13 @@ configuração permanente.
   contadores — o que o runner já faz.
 
 **A janela de 24 h começa em `T_fim_C`** — o instante de encerramento
-**bem-sucedido** da janela 3, registrado no artefato (`janela.finishedAt`).
-Falhas, aborts e atrasos anteriores não consomem a janela: se o baseline não
-completa, o token é removido e a execução recomeça do item A com um token
-novo. O instante exato da remoção é `T_fim_C + 24 h`, anotado antes de
-começar.
+**bem-sucedido do ciclo promovido** (as janelas em pmax=2), registrado no
+artefato (`janela.finishedAt`). A baseline de validação (pmax=1) **não**
+consome essa janela: ela é a referência de comparação, não o ciclo
+observado. Falhas, aborts e atrasos anteriores não consomem a janela
+tampouco — se o ciclo promovido não completa, o token é removido e a execução
+recomeça do item A com um token novo. O instante exato da remoção é
+`T_fim_C + 24 h`, anotado antes de começar.
 
 **A remoção só é efetiva no próximo deploy** (§2.6): até lá, o deployment em
 serviço continua com o token e o trace continua ativo. Por isso o item D tem
