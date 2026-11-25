@@ -246,6 +246,15 @@ a comparação muda uma variável só (tamanho do pool 1 → 2), com o mesmo
 código, o mesmo modo e a mesma telemetria dos dois lados — e o risco do pool
 maior não entra antes da decisão.
 
+**Invariantes da comparação** — para que `pmax=1` vs `pmax=2` signifique
+alguma coisa, o que muda é só o tamanho do pool: mesmo SHA de aplicação
+(`meta.githubCommitSha` idêntico em D1 e D2), mesmo modo (Transaction Pooler
+`:6543`, `DATABASE_URL_RUNTIME` inalterada), mesmo endpoint e mesma rota,
+mesma carga (300 reqs / conc 10 / intervalo ≥ 15 min), mesma instrumentação
+(mesmo token, mesmos headers, mesmo runner). E o D2 comprova `pmax=2` **no
+runtime** (healthz autorizado) — ver `DB_POOL_MAX=2` no painel da Vercel não
+é comprovação, é intenção.
+
 **Ordem 2 — config-first (o redeploy de configuração puro)**
 
 | # | Passo | O que acontece |
@@ -294,6 +303,23 @@ ausentes, 0 objetos sem privilégio**; 3 tabelas extras no banco
 `airsoft_app`) e depende da autorização do item B. Sem esse veredito, o D1
 não deve acontecer — é o gate que impede o deploy de código derrubar a API
 por coluna faltando.
+
+**O que este veredito NÃO cobre** — é uma **primeira barreira de
+existência**, não garantia de compatibilidade integral:
+
+| Não verificado | Consequência |
+|---|---|
+| tipos, precisão e escala das colunas | coluna existe mas com tipo divergente pode truncar ou falhar em runtime |
+| nullability e valores default | divergência pode quebrar insert do runtime ou aceitar o que não deveria |
+| índices e constraints | query pode rodar sem o índice (ou pior, violar uma constraint) |
+| foreign keys | integridade referencial não é conferida |
+| triggers, funções e views | objetos de código do banco podem divergir ou faltar |
+| compatibilidade semântica das consultas | duas colunas com o mesmo nome e tipos diferentes não são detectadas |
+
+O gate responde "a estrutura que o código espera **existe**?" — não "o banco
+se comporta como o código precisa?". Para o primeiro deploy de código, essa
+é a barreira mínima com custo de leitura zero em escrita; uma verificação
+semântica mais fundo fica para a fase de bootstrap, com a credencial DDL.
 
 ### 2.3 `DATABASE_URL` (preservada)
 

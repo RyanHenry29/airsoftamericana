@@ -60,10 +60,24 @@ escopo deste documento (§7) e da autorização A/B/C/D.
 | SHA esperado | `codigo.deployedCommit` do artefato × `meta.githubCommitSha` do deployment |
 | Deployment ID | id do novo deployment (≠ o do deployment anterior) |
 | Domínio de produção atendido pelo novo deployment | alias de produção aponta para ele |
+| **Tráfego realmente chegando ao D1** | o alias resolve para o D1 **e** os `inst` observados no trace depois do deploy são **novos** (o `inst` é gerado por processo, com `randomBytes`) — um deployment criado com sucesso não garante, sozinho, que o tráfego chegue nele |
 | `db.status` | `connected` no healthz autorizado |
 | `pmax` | **1** — default observado no runtime, não inferido do código |
 | `ctmo` | `10000` |
-| Trace autorizado | `x-db-trace` emitido com o token; `x-db-trace-token` não aceito sem ele |
+| Trace autorizado | `x-db-trace` emitido com o token; **verificação negativa**: token ausente ou incorreto não emite telemetria |
+
+**Invariantes da comparação de capacidade** (D1 → D2): para que
+`pmax=1` vs `pmax=2` signifique alguma coisa, o que muda é **só** o tamanho
+do pool. O D2 tem de comprovar, no runtime:
+
+| Invariante | Verificação |
+|---|---|
+| mesmo SHA de aplicação | `meta.githubCommitSha` idêntico em D1 e D2 |
+| mesmo modo (Transaction Pooler, `:6543`) | `DATABASE_URL_RUNTIME` inalterada |
+| mesmo endpoint e mesma rota | mesma URL de produção, `/api/store/home` |
+| mesma carga | 300 requisições / concorrência 10 / intervalo ≥ 15 min |
+| mesma instrumentação | mesmo token, mesmos headers, mesmo runner |
+| **`pmax = 2` no runtime** | healthz autorizado — **não** basta ver `DB_POOL_MAX=2` no painel da Vercel |
 
 **Gate de schema antes do D1**: o diff de schema (§2.9 do checklist) tem de
 vir `compativel` contra o banco de produção. `schema.ts` byte-idêntico entre
@@ -162,6 +176,12 @@ checklist) compara as 57 tabelas / 497 colunas que o código espera com o
 catálogo do banco de produção. É leitura pura, com o papel de runtime. Sem
 veredito `compativel`, o deploy de código não deve acontecer — é o gate que
 impede o D1 de derrubar a API por coluna faltando.
+
+O veredito é de **existência de estrutura**, não de compatibilidade integral:
+tipos e precisão, nullability e defaults, índices, constraints, foreign keys,
+triggers/funções e compatibilidade semântica das consultas **não** são
+verificados. É a primeira barreira antes do primeiro deploy de código — a
+verificação semântica fica para a fase de bootstrap, com a credencial DDL.
 
 **O fingerprint é detector de alterações, não prova criptográfica de
 imutabilidade.** O que ele sustenta é "nenhuma alteração **detectada** no
@@ -329,9 +349,10 @@ com o retry que ele tem.
 7. **Registro dos redeploys (D1/D2/R2)** — id do novo deployment, SHA
    (tem de ser o mesmo do deployment em serviço no momento do redeploy),
    confirmação de que o novo deployment é o que atende o domínio de
-   produção e o estado do trace depois dele (`x-db-trace` presente e
-   `pmax`/`ctmo` legíveis, em D1/D2; `trace_disabled` e nenhum `x-db-trace`,
-   em R2).
+   produção, confirmação de que o tráfego de diagnóstico chega a ele (via
+   `inst` novos) e o estado do trace depois dele (`x-db-trace` presente e
+   `pmax`/`ctmo` legíveis — em D1 com `pmax=1`, em D2 com `pmax=2`
+   **observado no runtime**; em R2, `trace_disabled` e nenhum `x-db-trace`).
 8. **Veredito do diff de schema** — `compativel` + contagens (esperado vs
    real), sem nomes de coluna de negócio além do necessário.
 
