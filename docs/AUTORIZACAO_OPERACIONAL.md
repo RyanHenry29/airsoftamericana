@@ -605,10 +605,20 @@ executado — o item A nem chegou a começar.
 ### PEND-02 — PAT novo do GitHub (exposto no transcript)
 
 **Estado**: tratado como **exposto**. A credencial informada no transcript da
-sessão de 2026-11-25 foi gravada no keyring do Windows (Git Credential
-Manager) sem passar por argv, arquivo ou log, e a cópia local foi removida no
-mesmo dia — **0 cópias do PAT na máquina**. A validação da credencial (via
-`GET /user`) não expôs o valor em nenhuma saída.
+sessão de 2026-11-25 foi gravada no keyring do Windows sem passar por argv,
+arquivo ou log (`git credential approve`, entrada host-scoped
+`gh:github.com:`), e a cópia local foi removida no mesmo dia
+(`cmdkey /delete`) — **0 cópias do PAT na máquina**. A validação da credencial
+(via `GET /user`) não expôs o valor em nenhuma saída: só o login e o
+comprimento.
+
+**Verificação da remoção** (2026-11-25): store do Git Credential Manager para
+`github.com` **vazio**; chaveiro com uma única entrada GitHub
+(`gh:github.com:RyanHenry29` — o token OAuth `gho_`); `git credential fill`
+resolve `gho_`; `git ls-remote` e `gh api user` operacionais; nenhum arquivo
+do repositório, do temp de trabalho ou do `git config` contém o prefixo do PAT
+(a única ocorrência no repo é a menção ao formato `github_pat_*` em
+`docs/PROMOCAO_CAPACIDADE.md`).
 
 **Ação pendente (titular)**: revogação manual em GitHub → Settings →
 Developer settings → Personal access tokens. Enquanto o PAT não for revogado,
