@@ -20,6 +20,9 @@
 > nem a obtenção de credenciais externas. Bootstrap continua bloqueado;
 > `DATABASE_URL` → `sensitive` continua como autorização independente.
 >
+> **Execução de 2026-11-25: ABORT no gate de schema** (item B), antes do item A
+> — produção intocada. Ver §8.
+>
 > Referência técnica: `docs/PROMOCAO_CAPACIDADE.md` (checklist completo).
 > *Histórico: este documento foi redigido como pedido; a autorização acima foi
 > concedida depois, sem ampliar o escopo dos itens.*
@@ -404,7 +407,103 @@ Nenhum artefato pode conter o token, a URL derivada ou a senha.
 > merge do PR #3 → PR #4, o deploy de código D1, a promoção D2 — condicionada
 > ao resultado favorável do item C —, a observação de 24 h, o item D e o R2.
 
-## 8. Decisão após a execução
+## 8. Registro de execução — 2026-11-25 (ABORT no gate de schema)
+
+Execução iniciada com a autorização de 2026-11-25 e **interrompida no gate de
+schema (item B)**, antes do item A: **nenhuma variável gravada, nenhum merge,
+nenhum deploy, zero escrita no banco de produção**.
+
+| Marco | Instante (UTC) | Resultado |
+|---|---|---|
+| Início do procedimento (`T0`) | 2026-11-25T16:32:09.619Z | — |
+| Gate 1 — modo do pooler (harness diferencial) | 2026-11-25T16:32:3x | **PASS** |
+| Gate 2 — compatibilidade de schema (produção) | 2026-11-25T16:33:15.429Z | **FAIL — INCOMPATÍVEL** |
+| Fingerprint antes | 2026-11-25T16:33:17.117Z | 0 tabelas de config alteradas |
+| Fingerprint depois | 2026-11-25T16:37:54.756Z | 0 tabelas de config alteradas |
+
+### Gate 1 — modo do pooler: PASS
+
+O harness diferencial abriu as **duas portas do mesmo par** host/usuário/senha
+de produção, com o papel `airsoft_app`:
+
+| Porta | Pinning | Veredito |
+|---|---|---|
+| `:6543` | cliente **não** preso ao backend | comportamento de **transaction mode** |
+| `:5432` (controle) | cliente **preso** | session mode |
+
+`current_user = airsoft_app`, `BEGIN/SELECT 1/COMMIT` ok em ambas, **as duas
+conexões encerradas** (`conexao encerrada: sim`). O file-fonte da URL
+derivada foi emitido com ACL restrita e apagado ao fim.
+
+**Pré-condição 2** (Transaction Mode): o titular **não confirmou** o estado do
+painel do Supabase. O modo fica **verificado operacionalmente** pelo harness —
+evidência comportamental mais forte que o toggle do painel — mas **sem o print
+do painel**, que não entra no registro. Desvio declarado em relação à
+pré-condição 2 (responsável: titular).
+
+### Gate 2 — compatibilidade de schema: FAIL
+
+Esperado pelo código: **57 tabelas / 497 colunas**. Banco de produção:
+**55 tabelas / 479 colunas**.
+
+| Objeto | Existe em produção |
+|---|---|
+| `customer_avatars` (tabela) | **não** |
+| `password_resets` (tabela) | **não** |
+| `system_locks` (tabela) | **não** |
+| `order_status_history.actor_type` | **não** |
+| `payments.not_found_first_seen_at` | **não** |
+| `payment_events.attempts` | **não** |
+| `payment_events.dead_letter` | **não** |
+| `payment_events.last_attempt_at` | **não** |
+| `payment_events.last_error` | **não** |
+| `payment_events.lease_expires_at` | **não** |
+| `payment_events.lease_token` | **não** |
+
+`semPrivilegio: []` — não é falta de permissão: os objetos **não existem** no
+catálogo. Confirmado por probe direto em `pg_catalog` (independente do
+parser). A tabela extra `gateway_audit_status` é informativa.
+
+**A lacuna é pré-existente no runtime que já está em produção.** Três
+evidências:
+
+1. `apps/api/src/db/schema.ts` é **byte-idêntico** entre `master` `5d6a978`
+   (produção viva) e a branch de promoção — o master **já declara** os
+   objetos ausentes;
+2. o **conjunto de arquivos** que referencia os 10 símbolos é **idêntico** entre
+   `master` e PR #3 — **zero** consumidor novo chega com o D1;
+3. a rota medida (`apps/api/src/services/homepage.ts`, `/api/store/home`) não
+   referencia **nenhum** dos objetos ausentes.
+
+Ou seja: o banco de produção está atrás do schema que o código já publicado
+declara — porque migrations/bootstrap **nunca rodaram** em produção (§8 do
+checklist; bootstrap bloqueado, credencial `airsoft_ddl` ausente). O D1 não
+introduz a lacuna: ele a encontra.
+
+**Ainda assim o gate aborta a sequência.** A regra documentada é binária ("sem
+veredito `compativel`, o deploy de código não deve acontecer") e o veredito
+foi `INCOMPATÍVEL`. Reconciliar o schema exige `airsoft_ddl` + autorização de
+bootstrap — explicitamente **fora** do escopo autorizado e bloqueado. A
+sequência fica parada aguardando decisão do titular.
+
+### Estado deixado
+
+| Item | Estado |
+|---|---|
+| `production` (Vercel) | **intocada** — `DATABASE_URL` (16 d) como estava; `DATABASE_URL_RUNTIME`, `DB_TRACE_TOKEN` e `DB_POOL_MAX` continuam **só no Preview** |
+| Banco de produção | **zero escrita** — fingerprint antes/depois: 0 tabelas de config alteradas |
+| Git | `exp/arch-capacity-promotion` @ `3c702d3`; PR #3 e PR #4 **abertos**, HEAD intocado |
+| Deployments | **nenhum** — nenhum id, nenhum SHA de deploy |
+| Segredos temporários | `aa-prod-env.tmp` e `aa-runtime-url.txt` **apagados** |
+| Evidência | `docs/bench/promocao/abort-20261125-*.json` (gate de schema + fingerprint antes/depois) |
+
+Nenhum item da autorização foi executado além do gate; **o item A nem chegou
+a começar** — o gate de leitura roda antes de qualquer escrita em produção,
+então não há resíduo de configuração para reverter.
+
+
+
+## 9. Decisão após a execução
 
 A promoção **não** é automática ao fim de A–C. Com a evidência em mãos
 (harness validado, três janelas de baseline, sinais de pooler), a decisão é
